@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────
+   Curious Labs — Student LMS design system
+   Mission-control × coding-IDE: deep space bg, circuit grid, neon.
+   ─────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* surfaces */
+  --color-base: #05070d;
+  --color-panel: #0b1020;
+  --color-panel-2: #11182f;
+  --color-line: #1e2a44;
+  --color-line-soft: #16203a;
+
+  /* text */
+  --color-ink: #e8eefc;
+  --color-ink-dim: #9fb0d0;
+  --color-ink-faint: #5f7194;
+
+  /* neon accents */
+  --color-neon-cyan: #22d3ee;
+  --color-neon-blue: #3b82f6;
+  --color-neon-green: #34d399;
+  --color-neon-lime: #a3e635;
+  --color-neon-violet: #a855f7;
+  --color-neon-pink: #ec4899;
+  --color-neon-amber: #f59e0b;
+  --color-neon-red: #f43f5e;
+
+  /* subject accents (kept in sync with subjects.ts) */
+  --color-coding: #22d3ee;
+  --color-robotics: #34d399;
+  --color-ai: #a855f7;
+  --color-threed: #f59e0b;
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --radius-xl2: 1.25rem;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-base);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  min-height: 100%;
+  background-color: var(--color-base);
+  background-image:
+    radial-gradient(900px 500px at 12% -8%, rgba(34, 211, 238, 0.1), transparent 60%),
+    radial-gradient(800px 480px at 92% 4%, rgba(168, 85, 247, 0.1), transparent 60%),
+    radial-gradient(700px 700px at 50% 120%, rgba(52, 211, 153, 0.07), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* circuit-grid overlay (fixed element with .grid-bg) */
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(94, 113, 148, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 113, 148, 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 30%, black, transparent 85%);
+}
+
+/* ── typography helpers ─────────────────────────────────────── */
+.font-display {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+}
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+.tracking-tech {
+  letter-spacing: 0.12em;
+}
+
+/* ── neon utilities ──────────────────────────────────────────── */
+.neon-text {
+  text-shadow: 0 0 18px color-mix(in srgb, currentColor 55%, transparent);
+}
+.neon-ring {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, currentColor 40%, transparent),
+    0 0 24px color-mix(in srgb, currentColor 22%, transparent);
+}
+.panel {
+  background: linear-gradient(180deg, var(--color-panel) 0%, var(--color-panel-2) 100%);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xl2);
+}
+.panel-hover {
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.panel-hover:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, currentColor 55%, var(--color-line));
+  box-shadow: 0 14px 40px -18px color-mix(in srgb, currentColor 60%, transparent);
+}
+
+/* ── animations ──────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.animate-pulse-glow { animation: pulse-glow 2.4s ease-in-out infinite; }
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float { animation: float-y 5s ease-in-out infinite; }
+
+@keyframes dash {
+  to { stroke-dashoffset: -1000; }
+}
+.animate-dash {
+  stroke-dasharray: 6 10;
+  animation: dash 22s linear infinite;
+}
+
+@keyframes confetti-fall {
+  0% { transform: translateY(-12px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(140px) rotate(220deg); opacity: 0; }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Homepage animated backdrop (kid-friendly, GPU-cheap).
+   Every animation below touches ONLY transform / opacity so the
+   compositor handles it — no per-frame layout, paint, or JS.
+   Blur is applied once (static) and never animated.
+   ─────────────────────────────────────────────────────────────── */
+
+/* soft drifting colour clouds */
+.hb-aurora {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: 0.6;
+  will-change: transform;
+  /* Soft glow via radial-gradient (set inline), NOT filter: blur().
+     A big blur() is costly to rasterise on low-end devices and on every
+     re-raster; a gradient paints cheaply and animating transform is free.
+     No mix-blend-mode either — it would force per-frame re-blend. */
+}
+@keyframes hb-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(40px, -34px, 0) scale(1.14); }
+}
+@keyframes hb-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50% { transform: translate3d(-52px, 30px, 0) scale(0.92); }
+}
+@keyframes hb-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(30px, 44px, 0) scale(1.18); }
+}
+
+/* twinkling circuit nodes */
+.hb-node {
+  position: absolute;
+  border-radius: 9999px;
+  /* No will-change: these animate forever and stay composited anyway;
+     a permanent layer hint on every node would waste GPU memory on tablets. */
+}
+@keyframes hb-twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.95; transform: scale(1.5); }
+}
+
+/* floating tech glyphs (emoji — no image requests) */
+.hb-glyph {
+  position: absolute;
+  user-select: none;
+}
+@keyframes hb-float {
+  0% { transform: translate3d(0, 0, 0) rotate(var(--r, 0deg)); }
+  50% { transform: translate3d(0, -26px, 0) rotate(calc(var(--r, 0deg) + 7deg)); }
+  100% { transform: translate3d(0, 0, 0) rotate(var(--r, 0deg)); }
+}
+
+/* one slow shimmer sweep across the hero */
+@keyframes hb-sweep {
+  0% { transform: translateX(-30%); opacity: 0; }
+  20% { opacity: 0.5; }
+  80% { opacity: 0.5; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+
+/* respect users who prefer less motion — freeze everything */
+@media (prefers-reduced-motion: reduce) {
+  .hb-aurora,
+  .hb-node,
+  .hb-glyph,
+  .hb-sweep {
+    animation: none !important;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Per-subject click transitions (themed launch effects).
+   transform/opacity/stroke only — cheap. Overlay lives in the layout
+   so it survives the route change (cover → navigate → reveal).
+   ─────────────────────────────────────────────────────────────── */
+@keyframes tx-cover-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tx-cover-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes tx-rain {
+  from { transform: translateY(-120%); }
+  to { transform: translateY(120%); }
+}
+@keyframes tx-pop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes tx-ring {
+  from { transform: scale(0.15); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
+}
+@keyframes tx-trace {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes tx-voxel {
+  0% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.1) rotate(var(--dr, 0deg)); opacity: 0; }
+  70% { opacity: 1; }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-neon-cyan) 35%, transparent);
+  color: #fff;
+}
