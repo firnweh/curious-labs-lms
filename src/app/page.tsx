@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
 import { getActivityMeta } from "@/lib/activities/registry";
 import { ActivityCard } from "@/components/ActivityCard";
+import { GradeRail } from "@/components/GradeRail";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
 import { StellarCollapse } from "@/components/StellarCollapse";
@@ -22,8 +23,8 @@ const BANDS_INFO = [
   { emoji: "🧠", classes: "Class 7–10", name: "Innovators", accent: "#a855f7", thinking: "Variables, conditions, models and coordinates — real reasoning." },
 ];
 
-const SLIDE_LABELS = ["Home", "Sample Labs", "Tracks", "Gravity Lab", "How it works", "Class Bands", "Get Started"];
-const SLIDE_SECTORS = ["LAUNCH PAD", "SIMULATION BAY", "PROGRAM DECK", "EVENT HORIZON", "MISSION BRIEF", "CADET TIERS", "DOCKING BAY"];
+const SLIDE_LABELS = ["Home", "Sample Labs", "Tracks", "Grades", "Gravity Lab", "How it works", "Class Bands", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "SIMULATION BAY", "PROGRAM DECK", "STAR CHART", "EVENT HORIZON", "MISSION BRIEF", "CADET TIERS", "DOCKING BAY"];
 
 export default function Home() {
   const samples = SAMPLE_IDS.map(getActivityMeta).filter((m) => m !== undefined);
@@ -101,10 +102,24 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 4 — Black-hole showpiece */}
+        {/* 4 — Browse by grade (curriculum) */}
+        <section id="grades">
+          <div className="mb-8 text-center">
+            <div className="section-label reveal">The Curriculum</div>
+            <h2 className="section-title reveal">Browse by grade</h2>
+            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
+              Each grade has its own year of hands-on projects, straight from the curriculum.
+            </p>
+          </div>
+          <div className="reveal">
+            <GradeRail />
+          </div>
+        </section>
+
+        {/* 5 — Black-hole showpiece */}
         <StellarCollapse />
 
-        {/* 5 — How it works */}
+        {/* 6 — How it works */}
         <section id="how">
           <div className="mb-8 text-center">
             <div className="section-label reveal">How it works</div>
@@ -121,7 +136,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 6 — Grade bands */}
+        {/* 7 — Grade bands */}
         <section id="bands">
           <div className="mb-8 text-center">
             <div className="section-label reveal">Pitched for every age</div>
@@ -144,7 +159,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 7 — Launch CTA */}
+        {/* 8 — Launch CTA */}
         <section id="launch">
           <div className="panel reveal relative overflow-hidden p-12 text-center">
             <div className="pointer-events-none absolute -left-16 -top-16 h-52 w-52 rounded-full bg-neon-violet/20 blur-3xl" />

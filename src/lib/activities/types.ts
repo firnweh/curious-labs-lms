@@ -50,4 +50,11 @@ export interface ActivityMeta {
   difficulty: 1 | 2 | 3;
   estMinutes: number;
   emoji: string;
+  /** Specific grade (1–10) when this lab is tied to a curriculum project.
+   *  Omitted for the original band-only labs that span a grade range. */
+  grade?: number;
+  /** Curriculum month, e.g. "May", "Jan (I)". */
+  month?: string;
+  /** Project number within the grade's yearly plan (1–10). */
+  projectNo?: number;
 }
