@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
-import { getActivityMeta } from "@/lib/activities/registry";
-import { ActivityCard } from "@/components/ActivityCard";
 import { GradeRail } from "@/components/GradeRail";
+import { SampleLabPlayer } from "@/components/SampleLabPlayer";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
 import { StellarCollapse } from "@/components/StellarCollapse";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
-
-/** One featured lab per track — the homepage "try it now" sampler. */
-const SAMPLE_IDS = ["code-maze", "robo-circuit", "ai-sorter", "threed-voxel"];
 
 const STEPS = [
   { n: "01", t: "Pick a lab", d: "Choose a hands-on experiment from any of the four tracks." },
@@ -27,8 +23,6 @@ const SLIDE_LABELS = ["Home", "Sample Labs", "Tracks", "Grades", "Gravity Lab", 
 const SLIDE_SECTORS = ["LAUNCH PAD", "SIMULATION BAY", "PROGRAM DECK", "STAR CHART", "EVENT HORIZON", "MISSION BRIEF", "CADET TIERS", "DOCKING BAY"];
 
 export default function Home() {
-  const samples = SAMPLE_IDS.map(getActivityMeta).filter((m) => m !== undefined);
-
   return (
     <>
       <CosmosFX />
@@ -36,25 +30,16 @@ export default function Home() {
         {/* 1 — Hero */}
         <CinematicHero />
 
-        {/* 2 — Sample labs */}
+        {/* 2 — Sample labs — play one right here */}
         <section id="samples">
           <div className="mb-8 text-center">
             <div className="section-label reveal">Interactive Lab</div>
             <h2 className="section-title reveal">Try a sample lab</h2>
             <p className="section-sub reveal mx-auto mt-3 max-w-xl">
-              Jump straight into a hands-on experiment — one from each track.
+              Pick a track and play a real experiment right here — no sign-up, nothing to install.
             </p>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {samples.map((meta) => (
-              <div key={meta.id} className="tilt reveal">
-                <ActivityCard meta={meta} />
-              </div>
-            ))}
-          </div>
-          <div className="mt-8 text-center">
-            <Link href="/tracks" className="btn-secondary reveal">See all labs →</Link>
-          </div>
+          <SampleLabPlayer />
         </section>
 
         {/* 3 — The four tracks */}
