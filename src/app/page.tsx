@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
-import { ACTIVITIES, activitiesBySubject } from "@/lib/activities/registry";
-import { SubjectCard } from "@/components/SubjectCard";
+import { ACTIVITIES } from "@/lib/activities/registry";
+import { TrackGrid } from "@/components/TrackGrid";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Pill } from "@/components/ui";
 
@@ -18,12 +18,12 @@ export default function Home() {
 
       <div className="relative z-10">
         {/* ── Hero ─────────────────────────────────────────── */}
-      <section className="relative pt-16 pb-14 sm:pt-24">
+      <section className="relative pt-20 pb-16 sm:pt-28">
         <div className="flex flex-col items-center text-center">
           <Pill>
             <span className="text-neon-green">●</span> Learn by doing · grades 1–10
           </Pill>
-          <h1 className="mt-5 max-w-3xl font-display text-4xl font-bold leading-[1.1] text-ink sm:text-6xl">
+          <h1 className="mt-6 max-w-3xl font-display text-4xl font-bold leading-[1.15] text-[#dfe6f2] sm:text-6xl [text-shadow:0_0_22px_rgba(124,108,240,0.18)]">
             Build robots, code,
             <br />
             and teach machines to think.
@@ -32,10 +32,10 @@ export default function Home() {
             A hands-on lab for young makers. No textbooks — just experiments you run
             in your browser across coding, robotics, AI and 3D modelling.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="#tracks"
-              className="rounded-xl bg-neon-cyan px-6 py-3 font-semibold text-base text-[#05070d] transition-transform hover:scale-[1.03] neon-ring"
+              className="rounded-xl bg-[#3fd8d4] px-6 py-3 font-semibold text-base text-[#060810] transition-transform hover:scale-[1.03] shadow-[0_0_30px_rgba(63,216,212,0.16)]"
             >
               Start experimenting →
             </Link>
@@ -49,6 +49,18 @@ export default function Home() {
           <p className="mt-6 font-mono text-xs tracking-tech text-ink-faint">
             {ACTIVITIES.length} LIVE LABS · {SUBJECTS.length} TRACKS · 0 INSTALLS
           </p>
+
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <Link href="/create" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
+              🎨 Create
+            </Link>
+            <Link href="/base" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
+              ✨ My Base
+            </Link>
+            <Link href="/profile" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
+              🏅 Progress
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -57,14 +69,10 @@ export default function Home() {
         <div className="mb-6 flex items-end justify-between">
           <div>
             <h2 className="font-display text-2xl font-bold text-ink">Choose your track</h2>
-            <p className="mt-1 text-ink-dim">Four worlds of making. Pick one and dive in.</p>
+            <p className="mt-1 text-ink-dim">Pick your class, then dive into a world of making.</p>
           </div>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2">
-          {SUBJECTS.map((s) => (
-            <SubjectCard key={s.id} subject={s} activities={activitiesBySubject(s.id)} />
-          ))}
-        </div>
+        <TrackGrid />
       </section>
 
       {/* ── How it works ─────────────────────────────────── */}

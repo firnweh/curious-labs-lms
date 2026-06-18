@@ -7,7 +7,7 @@
 
 @theme {
   /* surfaces */
-  --color-base: #05070d;
+  --color-base: #060810;
   --color-panel: #0b1020;
   --color-panel-2: #11182f;
   --color-line: #1e2a44;
@@ -56,9 +56,11 @@ body {
   min-height: 100%;
   background-color: var(--color-base);
   background-image:
-    radial-gradient(900px 500px at 12% -8%, rgba(34, 211, 238, 0.1), transparent 60%),
-    radial-gradient(800px 480px at 92% 4%, rgba(168, 85, 247, 0.1), transparent 60%),
-    radial-gradient(700px 700px at 50% 120%, rgba(52, 211, 153, 0.07), transparent 60%);
+    radial-gradient(1100px 620px at 12% -10%, rgba(45, 212, 217, 0.06), transparent 64%),
+    radial-gradient(1000px 600px at 90% 2%, rgba(99, 102, 241, 0.06), transparent 64%),
+    radial-gradient(900px 820px at 50% 122%, rgba(139, 120, 246, 0.045), transparent 62%),
+    radial-gradient(760px 720px at 50% 124%, rgba(245, 180, 120, 0.035), transparent 60%),
+    radial-gradient(135% 120% at 50% 38%, transparent 56%, rgba(2, 4, 9, 0.55) 100%);
   background-attachment: fixed;
 }
 
@@ -69,10 +71,10 @@ body {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(94, 113, 148, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 113, 148, 0.07) 1px, transparent 1px);
+    linear-gradient(rgba(94, 113, 148, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 113, 148, 0.05) 1px, transparent 1px);
   background-size: 44px 44px;
-  mask-image: radial-gradient(circle at 50% 30%, black, transparent 85%);
+  mask-image: radial-gradient(circle at 50% 28%, black, transparent 78%);
 }
 
 /* ── typography helpers ─────────────────────────────────────── */
@@ -158,15 +160,15 @@ body {
 }
 @keyframes hb-drift-a {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(40px, -34px, 0) scale(1.14); }
+  50% { transform: translate3d(24px, -20px, 0) scale(1.08); }
 }
 @keyframes hb-drift-b {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
-  50% { transform: translate3d(-52px, 30px, 0) scale(0.92); }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.03); }
+  50% { transform: translate3d(-32px, 18px, 0) scale(0.96); }
 }
 @keyframes hb-drift-c {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(30px, 44px, 0) scale(1.18); }
+  50% { transform: translate3d(18px, 26px, 0) scale(1.10); }
 }
 
 /* twinkling circuit nodes */
@@ -177,8 +179,8 @@ body {
      a permanent layer hint on every node would waste GPU memory on tablets. */
 }
 @keyframes hb-twinkle {
-  0%, 100% { opacity: 0.12; transform: scale(1); }
-  50% { opacity: 0.95; transform: scale(1.5); }
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.22); }
 }
 
 /* floating tech glyphs (emoji — no image requests) */
@@ -188,24 +190,15 @@ body {
 }
 @keyframes hb-float {
   0% { transform: translate3d(0, 0, 0) rotate(var(--r, 0deg)); }
-  50% { transform: translate3d(0, -26px, 0) rotate(calc(var(--r, 0deg) + 7deg)); }
+  50% { transform: translate3d(0, -16px, 0) rotate(calc(var(--r, 0deg) + 4deg)); }
   100% { transform: translate3d(0, 0, 0) rotate(var(--r, 0deg)); }
-}
-
-/* one slow shimmer sweep across the hero */
-@keyframes hb-sweep {
-  0% { transform: translateX(-30%); opacity: 0; }
-  20% { opacity: 0.5; }
-  80% { opacity: 0.5; }
-  100% { transform: translateX(130%); opacity: 0; }
 }
 
 /* respect users who prefer less motion — freeze everything */
 @media (prefers-reduced-motion: reduce) {
   .hb-aurora,
   .hb-node,
-  .hb-glyph,
-  .hb-sweep {
+  .hb-glyph {
     animation: none !important;
   }
 }
@@ -248,4 +241,22 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--color-neon-cyan) 35%, transparent);
   color: #fff;
+}
+
+/* Print: isolate the certificate, keep its colours */
+@media print {
+  header,
+  footer,
+  .grid-bg,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  .certificate {
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

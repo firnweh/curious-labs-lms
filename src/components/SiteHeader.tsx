@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useProgress } from "@/lib/progress";
 import { useMounted } from "@/lib/progress";
+import { useGameStats } from "@/lib/gamification";
+import { useCosmetics } from "@/lib/cosmetics";
 
 export function SiteHeader() {
-  const { completedCount } = useProgress();
+  const stats = useGameStats();
+  const cos = useCosmetics();
   const mounted = useMounted();
+  const level = stats.level;
+  const accent = cos.equipped.accent.value;
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/60 bg-base/70 backdrop-blur-xl">
@@ -24,20 +28,49 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-5 text-sm">
-          <Link href="/#tracks" className="text-ink-dim hover:text-ink transition-colors hidden sm:block">
+        <nav className="flex items-center gap-3 text-sm sm:gap-4">
+          <Link href="/#tracks" className="text-ink-dim hover:text-ink transition-colors hidden md:block">
             Tracks
           </Link>
-          <Link href="/#how" className="text-ink-dim hover:text-ink transition-colors hidden sm:block">
-            How it works
+          <Link href="/create" className="text-ink-dim hover:text-ink transition-colors hidden md:block">
+            Create
           </Link>
-          <span className="flex items-center gap-2 rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-xs">
-            <span className="h-1.5 w-1.5 rounded-full bg-neon-green animate-pulse-glow" />
-            <span className="text-ink-dim">
-              {mounted ? completedCount : 0}
-              <span className="text-ink-faint"> done</span>
+
+          {/* streak */}
+          {mounted && stats.streak > 0 && (
+            <span className="flex items-center gap-1 font-mono text-xs text-neon-amber" title={`${stats.streak}-day streak`}>
+              <span className="animate-pulse-glow">🔥</span>
+              {stats.streak}
             </span>
-          </span>
+          )}
+
+          {/* avatar + level → profile */}
+          <Link
+            href="/profile"
+            className="flex items-center gap-2 rounded-full border border-line bg-panel/60 px-2 py-1 transition-colors hover:border-ink-faint"
+            style={{ borderColor: mounted ? `${accent}55` : undefined }}
+            title={`Level ${level.index} · ${stats.xp} XP`}
+          >
+            <span
+              className="grid h-6 w-6 place-items-center rounded-full text-sm"
+              style={{ background: `${accent}1a`, border: `1px solid ${accent}66` }}
+              aria-hidden
+            >
+              {mounted ? cos.equipped.avatar.value : "🧑‍🚀"}
+            </span>
+            <span className="flex flex-col leading-none">
+              <span className="font-mono text-[11px] text-ink">
+                Lv {mounted ? level.index : 1}
+                <span className="ml-1 hidden text-ink-faint sm:inline">{level.title}</span>
+              </span>
+              <span className="mt-1 hidden h-1 w-16 overflow-hidden rounded-full bg-line sm:block">
+                <span
+                  className="block h-full rounded-full transition-all"
+                  style={{ width: `${mounted ? level.pct : 0}%`, background: accent }}
+                />
+              </span>
+            </span>
+          </Link>
         </nav>
       </div>
     </header>

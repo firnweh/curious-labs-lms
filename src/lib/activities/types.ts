@@ -2,6 +2,10 @@ import type { ComponentType } from "react";
 
 export type SubjectId = "coding" | "robotics" | "ai" | "threed";
 
+/** Grade band — sets the cognitive / problem-solving level of a lab.
+ *  junior = Class 1-3, explorer = Class 4-6, innovator = Class 7-10. */
+export type Band = "junior" | "explorer" | "innovator";
+
 /** Result an activity reports back when the learner's attempt is graded. */
 export interface ActivityResult {
   passed: boolean;
@@ -27,6 +31,8 @@ export type ActivityComponent = ComponentType<ActivityProps>;
 export interface ActivityMeta {
   id: string;
   subject: SubjectId;
+  /** Grade band this lab is pitched for. */
+  band: Band;
   title: string;
   /** One-line hook shown on cards. */
   blurb: string;
@@ -34,6 +40,10 @@ export interface ActivityMeta {
   objective: string;
   /** Plain-language steps shown in the lab instructions panel. */
   steps: string[];
+  /** Progressive Socratic hints, revealed one at a time. Never the answer. */
+  hints: string[];
+  /** "How it works" — connects the lab to real-world technology. */
+  realWorld: string;
   /** Concept tags, e.g. ["loops", "sequencing"]. */
   concepts: string[];
   grades: string; // e.g. "3-6"

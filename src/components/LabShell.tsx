@@ -3,18 +3,28 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ACTIVITY_COMPONENTS } from "@/lib/activities/componentMap";
-import { getActivityMeta, activitiesBySubject } from "@/lib/activities/registry";
+import { getActivityMeta, activitiesBySubjectAndBand } from "@/lib/activities/registry";
 import { SUBJECT_MAP } from "@/lib/subjects";
-import { useProgress } from "@/lib/progress";
+import { useProgress, snapshotStore, readStreak } from "@/lib/progress";
+import { BADGES, earnedBadgeIds, XP_PER_STAR, type Badge } from "@/lib/gamification";
 import type { ActivityResult } from "@/lib/activities/types";
 import { Stars, Difficulty, Tag, BackLink } from "@/components/ui";
+
+interface Reward {
+  xpGained: number;
+  newBadges: Badge[];
+  streak: number;
+  streakUp: boolean;
+}
 
 export function LabShell({ id }: { id: string }) {
   const meta = getActivityMeta(id);
   const Activity = ACTIVITY_COMPONENTS[id];
   const { markComplete, starsFor } = useProgress();
   const [result, setResult] = useState<ActivityResult | null>(null);
+  const [reward, setReward] = useState<Reward | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [hintsShown, setHintsShown] = useState(0);
 
   if (!meta || !Activity) {
     return (
@@ -30,17 +40,36 @@ export function LabShell({ id }: { id: string }) {
   const subject = SUBJECT_MAP[meta.subject];
   const accent = subject.accent;
   const earned = starsFor(id);
-  const peers = activitiesBySubject(meta.subject);
+  const peers = activitiesBySubjectAndBand(meta.subject, meta.band);
   const idx = peers.findIndex((a) => a.id === id);
   const next = peers[idx + 1];
 
   function handleComplete(r: ActivityResult) {
+    if (r.passed) {
+      const stars = r.stars ?? 3;
+      const beforeStore = snapshotStore();
+      const beforeStreak = readStreak().current;
+      const beforeBadges = earnedBadgeIds(beforeStore, beforeStreak);
+      const prevStars = beforeStore[id]?.stars ?? 0;
+
+      markComplete(id, stars); // sync write + streak bump
+
+      const afterStreak = readStreak().current;
+      const afterBadges = earnedBadgeIds(snapshotStore(), afterStreak);
+      const newBadges = BADGES.filter((b) => afterBadges.has(b.id) && !beforeBadges.has(b.id));
+      const xpGained = Math.max(0, Math.max(prevStars, stars) - prevStars) * XP_PER_STAR;
+
+      setReward({ xpGained, newBadges, streak: afterStreak, streakUp: afterStreak > beforeStreak });
+    } else {
+      setReward(null);
+    }
     setResult(r);
-    if (r.passed) markComplete(id, r.stars ?? 3);
   }
 
   function restart() {
     setResult(null);
+    setReward(null);
+    setHintsShown(0);
     setAttempt((n) => n + 1);
   }
 
@@ -115,6 +144,48 @@ export function LabShell({ id }: { id: string }) {
             </p>
           </div>
 
+          {/* hints */}
+          <div className="panel p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-mono text-xs tracking-tech text-ink-faint">💡 HINTS</h2>
+              {hintsShown > 0 && (
+                <span className="font-mono text-[11px] text-ink-faint">
+                  {Math.min(hintsShown, meta.hints.length)} / {meta.hints.length}
+                </span>
+              )}
+            </div>
+            {hintsShown === 0 ? (
+              <p className="mt-2 text-sm text-ink-faint">Stuck? Get a nudge — not the answer.</p>
+            ) : (
+              <ol className="mt-3 space-y-2">
+                {meta.hints.slice(0, hintsShown).map((h, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-ink-dim">
+                    <span className="font-mono text-xs" style={{ color: accent }}>{i + 1}.</span>
+                    <span>{h}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {hintsShown < meta.hints.length && (
+              <button
+                onClick={() => setHintsShown((n) => n + 1)}
+                className="mt-3 w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
+                style={{ borderColor: `${accent}66`, color: accent }}
+              >
+                {hintsShown === 0 ? "Show a hint" : "Next hint"}
+              </button>
+            )}
+          </div>
+
+          {/* how it works */}
+          <details className="panel group p-5">
+            <summary className="flex cursor-pointer items-center justify-between font-mono text-xs tracking-tech text-ink-faint marker:content-['']">
+              🌍 HOW IT WORKS
+              <span className="text-ink-faint transition-transform group-open:rotate-180">▾</span>
+            </summary>
+            <p className="mt-3 text-sm text-ink-dim">{meta.realWorld}</p>
+          </details>
+
           <button
             onClick={restart}
             className="w-full rounded-xl border border-line bg-panel/60 px-4 py-2.5 text-sm text-ink-dim transition-colors hover:border-ink-faint hover:text-ink"
@@ -128,6 +199,8 @@ export function LabShell({ id }: { id: string }) {
       {result && (
         <ResultBanner
           result={result}
+          reward={reward}
+          realWorld={meta.realWorld}
           accent={accent}
           nextHref={next ? `/activity/${next.id}` : `/subjects/${meta.subject}`}
           nextLabel={next ? `Next: ${next.title}` : `Back to ${subject.name}`}
@@ -140,12 +213,16 @@ export function LabShell({ id }: { id: string }) {
 
 function ResultBanner({
   result,
+  reward,
+  realWorld,
   accent,
   nextHref,
   nextLabel,
   onRetry,
 }: {
   result: ActivityResult;
+  reward: Reward | null;
+  realWorld: string;
   accent: string;
   nextHref: string;
   nextLabel: string;
@@ -188,7 +265,47 @@ function ResultBanner({
         <p className="mt-2 text-sm text-ink-dim">
           {result.detail ?? "You cracked it. Your progress is saved on this device."}
         </p>
-        <div className="mt-6 flex flex-col gap-2">
+
+        {reward && (
+          <div className="mt-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {reward.xpGained > 0 && (
+                <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1 font-mono text-xs text-neon-cyan">
+                  +{reward.xpGained} XP
+                </span>
+              )}
+              {reward.streakUp && (
+                <span className="rounded-full border border-neon-amber/40 bg-neon-amber/10 px-3 py-1 font-mono text-xs text-neon-amber">
+                  🔥 {reward.streak}-day streak
+                </span>
+              )}
+            </div>
+            {reward.newBadges.length > 0 && (
+              <div className="rounded-xl border border-neon-amber/40 bg-neon-amber/5 p-3">
+                <p className="font-mono text-[11px] tracking-tech text-neon-amber">
+                  NEW BADGE{reward.newBadges.length > 1 ? "S" : ""} UNLOCKED
+                </p>
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  {reward.newBadges.map((b) => (
+                    <span key={b.id} className="flex items-center gap-1.5 rounded-lg bg-panel/70 px-2.5 py-1 text-sm">
+                      <span className="animate-float">{b.emoji}</span>
+                      <span className="text-ink">{b.name}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 rounded-xl border border-line bg-panel/50 p-3 text-left">
+          <p className="font-mono text-[11px] tracking-tech" style={{ color: accent }}>
+            🌍 IN THE REAL WORLD
+          </p>
+          <p className="mt-1 text-sm text-ink-dim">{realWorld}</p>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2">
           <Link
             href={nextHref}
             className="rounded-xl px-4 py-2.5 font-medium text-base transition-transform hover:scale-[1.02]"

@@ -5,8 +5,8 @@ export function HomeBackground() {
   return (
     <AmbientBackground
       tone="rich"
-      palette={["#22d3ee", "#a855f7", "#34d399", "#f59e0b", "#ec4899"]}
-      glyphs={["🤖", "🚀", "⚙️", "✨", "🧊", "💡", "🛰️", "🔭", "⭐", "🧠"]}
+      palette={["#3fd8d4", "#5e9bf0", "#7c6cf0", "#9d7bf2", "#46c7b0"]}
+      glyphs={["✨", "🛰️", "🔭", "⭐", "🪐"]}
     />
   );
 }

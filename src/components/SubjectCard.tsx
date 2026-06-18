@@ -48,19 +48,23 @@ export function SubjectCard({
       </p>
       <p className="mt-3 flex-1 text-sm text-ink-dim">{subject.blurb}</p>
 
-      {/* progress bar */}
-      <div className="mt-5">
-        <div className="flex items-center justify-between font-mono text-[11px] text-ink-faint">
-          <span>{done}/{total} complete</span>
-          <span>{pct}%</span>
+      {/* progress bar — or a coming-soon note for an empty band */}
+      {total === 0 ? (
+        <p className="mt-5 font-mono text-xs text-ink-faint">✨ New labs coming soon</p>
+      ) : (
+        <div className="mt-5">
+          <div className="flex items-center justify-between font-mono text-[11px] text-ink-faint">
+            <span>{done}/{total} complete</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${pct}%`, background: accent, boxShadow: `0 0 12px ${accent}` }}
+            />
+          </div>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${pct}%`, background: accent, boxShadow: `0 0 12px ${accent}` }}
-          />
-        </div>
-      </div>
+      )}
     </Link>
   );
 }

@@ -28,4 +28,14 @@ export const ACTIVITY_COMPONENTS: Record<string, ActivityComponent> = {
   "ai-weights": dynamic(() => import("./impl/ai-weights"), { ssr: false, loading: LabLoading }),
   "threed-voxel": dynamic(() => import("./impl/threed-voxel"), { ssr: false, loading: LabLoading }),
   "threed-transform": dynamic(() => import("./impl/threed-transform"), { ssr: false, loading: LabLoading }),
+
+  // Juniors (Class 1–3)
+  "j-code-path": dynamic(() => import("./impl/j-code-path"), { ssr: false, loading: LabLoading }),
+  "j-code-pattern": dynamic(() => import("./impl/j-code-pattern"), { ssr: false, loading: LabLoading }),
+  "j-robo-light": dynamic(() => import("./impl/j-robo-light"), { ssr: false, loading: LabLoading }),
+  "j-robo-build": dynamic(() => import("./impl/j-robo-build"), { ssr: false, loading: LabLoading }),
+  "j-ai-sort": dynamic(() => import("./impl/j-ai-sort"), { ssr: false, loading: LabLoading }),
+  "j-ai-odd": dynamic(() => import("./impl/j-ai-odd"), { ssr: false, loading: LabLoading }),
+  "j-3d-stack": dynamic(() => import("./impl/j-3d-stack"), { ssr: false, loading: LabLoading }),
+  "j-3d-spin": dynamic(() => import("./impl/j-3d-spin"), { ssr: false, loading: LabLoading }),
 };

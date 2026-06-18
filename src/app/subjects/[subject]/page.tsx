@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { SUBJECTS, getSubject } from "@/lib/subjects";
-import { activitiesBySubject } from "@/lib/activities/registry";
-import { ActivityCard } from "@/components/ActivityCard";
 import { AmbientBackground } from "@/components/AmbientBackground";
+import { SubjectLabList } from "@/components/SubjectLabList";
 import { BackLink } from "@/components/ui";
 
 export function generateStaticParams() {
@@ -29,7 +28,6 @@ export default async function SubjectPage({
   const s = getSubject(subject);
   if (!s) notFound();
 
-  const activities = activitiesBySubject(s.id);
   const accent = s.accent;
 
   return (
@@ -62,11 +60,7 @@ export default async function SubjectPage({
         style={{ background: `linear-gradient(90deg, ${accent}66, transparent)` }}
       />
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {activities.map((meta) => (
-          <ActivityCard key={meta.id} meta={meta} />
-        ))}
-      </div>
+      <SubjectLabList subject={s.id} />
       </div>
     </div>
   );
