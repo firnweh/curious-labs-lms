@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
 import { ACTIVITIES } from "@/lib/activities/registry";
 import { TrackGrid } from "@/components/TrackGrid";
+import { GradeRail } from "@/components/GradeRail";
 import { HomeBackground } from "@/components/HomeBackground";
 import { Pill } from "@/components/ui";
 
@@ -62,6 +63,17 @@ export default function Home() {
             </Link>
           </div>
         </div>
+      </section>
+
+      {/* ── Grades ───────────────────────────────────────── */}
+      <section id="grades" className="scroll-mt-20 py-10">
+        <div className="mb-6">
+          <h2 className="font-display text-2xl font-bold text-ink">Browse by grade</h2>
+          <p className="mt-1 text-ink-dim">
+            Each grade has its own year of projects, straight from the curriculum.
+          </p>
+        </div>
+        <GradeRail />
       </section>
 
       {/* ── Tracks ───────────────────────────────────────── */}

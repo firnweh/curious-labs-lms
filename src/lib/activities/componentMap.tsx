@@ -38,4 +38,16 @@ export const ACTIVITY_COMPONENTS: Record<string, ActivityComponent> = {
   "j-ai-odd": dynamic(() => import("./impl/j-ai-odd"), { ssr: false, loading: LabLoading }),
   "j-3d-stack": dynamic(() => import("./impl/j-3d-stack"), { ssr: false, loading: LabLoading }),
   "j-3d-spin": dynamic(() => import("./impl/j-3d-spin"), { ssr: false, loading: LabLoading }),
+
+  // Grade 1 — "Think, Build, Play" curriculum labs
+  "g1-robot-buddy": dynamic(() => import("./impl/g1-robot-buddy"), { ssr: false, loading: LabLoading }),
+  "g1-traffic-light": dynamic(() => import("./impl/g1-traffic-light"), { ssr: false, loading: LabLoading }),
+  "g1-paper-circuit": dynamic(() => import("./impl/g1-paper-circuit"), { ssr: false, loading: LabLoading }),
+  "g1-windmill": dynamic(() => import("./impl/g1-windmill"), { ssr: false, loading: LabLoading }),
+  "g1-smart-house": dynamic(() => import("./impl/g1-smart-house"), { ssr: false, loading: LabLoading }),
+  "g1-pattern-art": dynamic(() => import("./impl/g1-pattern-art"), { ssr: false, loading: LabLoading }),
+  "g1-maze": dynamic(() => import("./impl/g1-maze"), { ssr: false, loading: LabLoading }),
+  "g1-pulley": dynamic(() => import("./impl/g1-pulley"), { ssr: false, loading: LabLoading }),
+  "g1-animal-robot": dynamic(() => import("./impl/g1-animal-robot"), { ssr: false, loading: LabLoading }),
+  "g1-machine-book": dynamic(() => import("./impl/g1-machine-book"), { ssr: false, loading: LabLoading }),
 };
