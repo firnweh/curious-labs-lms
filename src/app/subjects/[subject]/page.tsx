@@ -35,7 +35,7 @@ export default async function SubjectPage({
       <AmbientBackground palette={s.palette} glyphs={s.glyphs} tone="calm" />
 
       <div className="relative z-10">
-      <BackLink href="/" label="All tracks" />
+      <BackLink href="/tracks" label="All tracks" />
 
       <header className="mt-6 flex items-start gap-5">
         <span
