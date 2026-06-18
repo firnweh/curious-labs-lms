@@ -1,94 +1,164 @@
 import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
-import { ACTIVITIES } from "@/lib/activities/registry";
-import { TrackGrid } from "@/components/TrackGrid";
-import { HomeBackground } from "@/components/HomeBackground";
-import { Pill } from "@/components/ui";
+import { getActivityMeta } from "@/lib/activities/registry";
+import { ActivityCard } from "@/components/ActivityCard";
+import { CosmosFX } from "@/components/CosmosFX";
+import { CinematicHero } from "@/components/CinematicHero";
+import { StellarCollapse } from "@/components/StellarCollapse";
+import { CosmicCarousel } from "@/components/CosmicCarousel";
+
+/** One featured lab per track — the homepage "try it now" sampler. */
+const SAMPLE_IDS = ["code-maze", "robo-circuit", "ai-sorter", "threed-voxel"];
+
+const STEPS = [
+  { n: "01", t: "Pick a lab", d: "Choose a hands-on experiment from any of the four tracks." },
+  { n: "02", t: "Build & run", d: "Drag, click, wire and tune — right in the browser, nothing to install." },
+  { n: "03", t: "Auto-checked", d: "Each lab grades your result instantly and saves your progress." },
+];
+
+const BANDS_INFO = [
+  { emoji: "🐣", classes: "Class 1–3", name: "Juniors", accent: "#34d399", thinking: "Tap, match and sort — playful, no reading needed." },
+  { emoji: "🚀", classes: "Class 4–6", name: "Explorers", accent: "#22d3ee", thinking: "Use loops and logic, build circuits, train a model." },
+  { emoji: "🧠", classes: "Class 7–10", name: "Innovators", accent: "#a855f7", thinking: "Variables, conditions, models and coordinates — real reasoning." },
+];
+
+const SLIDE_LABELS = ["Home", "Sample Labs", "Tracks", "Gravity Lab", "How it works", "Class Bands", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "SIMULATION BAY", "PROGRAM DECK", "EVENT HORIZON", "MISSION BRIEF", "CADET TIERS", "DOCKING BAY"];
 
 export default function Home() {
-  const steps = [
-    { n: "01", t: "Pick a lab", d: "Choose a hands-on experiment from any of the four tracks." },
-    { n: "02", t: "Build & run", d: "Drag, click, wire and tune — right in the browser, nothing to install." },
-    { n: "03", t: "Auto-checked", d: "Each lab grades your result instantly and saves your progress." },
-  ];
+  const samples = SAMPLE_IDS.map(getActivityMeta).filter((m) => m !== undefined);
 
   return (
-    <div className="relative mx-auto max-w-6xl px-5">
-      <HomeBackground />
+    <>
+      <CosmosFX />
+      <CosmicCarousel labels={SLIDE_LABELS} sectors={SLIDE_SECTORS}>
+        {/* 1 — Hero */}
+        <CinematicHero />
 
-      <div className="relative z-10">
-        {/* ── Hero ─────────────────────────────────────────── */}
-      <section className="relative pt-20 pb-16 sm:pt-28">
-        <div className="flex flex-col items-center text-center">
-          <Pill>
-            <span className="text-neon-green">●</span> Learn by doing · grades 1–10
-          </Pill>
-          <h1 className="mt-6 max-w-3xl font-display text-4xl font-bold leading-[1.15] text-[#dfe6f2] sm:text-6xl [text-shadow:0_0_22px_rgba(124,108,240,0.18)]">
-            Build robots, code,
-            <br />
-            and teach machines to think.
-          </h1>
-          <p className="mt-5 max-w-xl text-lg text-ink-dim">
-            A hands-on lab for young makers. No textbooks — just experiments you run
-            in your browser across coding, robotics, AI and 3D modelling.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="#tracks"
-              className="rounded-xl bg-[#3fd8d4] px-6 py-3 font-semibold text-base text-[#060810] transition-transform hover:scale-[1.03] shadow-[0_0_30px_rgba(63,216,212,0.16)]"
-            >
-              Start experimenting →
-            </Link>
-            <Link
-              href="#how"
-              className="rounded-xl border border-line bg-panel/60 px-6 py-3 font-medium text-ink-dim transition-colors hover:text-ink"
-            >
-              How it works
-            </Link>
+        {/* 2 — Sample labs */}
+        <section id="samples">
+          <div className="mb-8 text-center">
+            <div className="section-label reveal">Interactive Lab</div>
+            <h2 className="section-title reveal">Try a sample lab</h2>
+            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
+              Jump straight into a hands-on experiment — one from each track.
+            </p>
           </div>
-          <p className="mt-6 font-mono text-xs tracking-tech text-ink-faint">
-            {ACTIVITIES.length} LIVE LABS · {SUBJECTS.length} TRACKS · 0 INSTALLS
-          </p>
-
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <Link href="/create" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
-              🎨 Create
-            </Link>
-            <Link href="/base" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
-              ✨ My Base
-            </Link>
-            <Link href="/profile" className="rounded-full border border-line bg-panel/60 px-4 py-1.5 text-sm text-ink-dim transition-colors hover:text-ink">
-              🏅 Progress
-            </Link>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {samples.map((meta) => (
+              <div key={meta.id} className="tilt reveal">
+                <ActivityCard meta={meta} />
+              </div>
+            ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── Tracks ───────────────────────────────────────── */}
-      <section id="tracks" className="scroll-mt-20 py-10">
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <h2 className="font-display text-2xl font-bold text-ink">Choose your track</h2>
-            <p className="mt-1 text-ink-dim">Pick your class, then dive into a world of making.</p>
+          <div className="mt-8 text-center">
+            <Link href="/tracks" className="btn-secondary reveal">See all labs →</Link>
           </div>
-        </div>
-        <TrackGrid />
-      </section>
+        </section>
 
-      {/* ── How it works ─────────────────────────────────── */}
-      <section id="how" className="scroll-mt-20 py-12">
-        <h2 className="font-display text-2xl font-bold text-ink">How it works</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {steps.map((s) => (
-            <div key={s.n} className="panel p-6">
-              <span className="font-mono text-sm text-neon-cyan">{s.n}</span>
-              <h3 className="mt-2 font-display text-lg font-semibold text-ink">{s.t}</h3>
-              <p className="mt-1.5 text-sm text-ink-dim">{s.d}</p>
+        {/* 3 — The four tracks */}
+        <section id="tracks">
+          <div className="mb-8 text-center">
+            <div className="section-label reveal">Our Programs</div>
+            <h2 className="section-title reveal">Lab-First Learning Tracks</h2>
+            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
+              Coding, Robotics, AI and 3D Modelling — each a world of hands-on making, for grades 1–10.
+            </p>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2">
+            {SUBJECTS.map((s) => (
+              <Link
+                key={s.id}
+                href={`/subjects/${s.id}`}
+                className="panel tilt reveal group relative flex flex-col overflow-hidden p-7"
+                style={{ color: s.accent }}
+              >
+                <div
+                  className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full opacity-40 blur-2xl transition-opacity group-hover:opacity-70"
+                  style={{ background: s.accent }}
+                />
+                <div className="flex items-center gap-4">
+                  <span
+                    className="grid h-14 w-14 place-items-center rounded-2xl text-3xl"
+                    style={{ background: `${s.accent}1a`, border: `1px solid ${s.accent}40` }}
+                  >
+                    {s.emoji}
+                  </span>
+                  <div>
+                    <h3 className="font-orbitron text-lg font-bold text-ink">{s.name}</h3>
+                    <p className="text-sm" style={{ color: s.accent }}>{s.tagline}</p>
+                  </div>
+                </div>
+                <p className="mt-4 flex-1 text-sm text-ink-dim">{s.blurb}</p>
+                <span
+                  className="mt-5 font-mono text-xs tracking-tech opacity-80 transition-transform group-hover:translate-x-1"
+                  style={{ color: s.accent }}
+                >
+                  ENTER TRACK →
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* 4 — Black-hole showpiece */}
+        <StellarCollapse />
+
+        {/* 5 — How it works */}
+        <section id="how">
+          <div className="mb-8 text-center">
+            <div className="section-label reveal">How it works</div>
+            <h2 className="section-title reveal">Three steps to your first build</h2>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-3">
+            {STEPS.map((s) => (
+              <div key={s.n} className="panel tilt reveal p-7">
+                <span className="font-orbitron text-lg text-neon-cyan">{s.n}</span>
+                <h3 className="mt-2 font-orbitron text-lg font-bold text-ink">{s.t}</h3>
+                <p className="mt-2 text-sm text-ink-dim">{s.d}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 6 — Grade bands */}
+        <section id="bands">
+          <div className="mb-8 text-center">
+            <div className="section-label reveal">Pitched for every age</div>
+            <h2 className="section-title reveal">Three class bands</h2>
+            <p className="section-sub reveal mx-auto mt-3 max-w-xl">The same track, tuned to how each age group thinks and plays.</p>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-3">
+            {BANDS_INFO.map((b) => (
+              <div key={b.name} className="panel tilt reveal p-7" style={{ color: b.accent }}>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl" aria-hidden>{b.emoji}</span>
+                  <div className="leading-tight">
+                    <h3 className="font-orbitron text-lg font-bold text-ink">{b.classes}</h3>
+                    <p className="font-mono text-[11px]" style={{ color: b.accent }}>{b.name}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-ink-dim">{b.thinking}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 7 — Launch CTA */}
+        <section id="launch">
+          <div className="panel reveal relative overflow-hidden p-12 text-center">
+            <div className="pointer-events-none absolute -left-16 -top-16 h-52 w-52 rounded-full bg-neon-violet/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 -bottom-16 h-52 w-52 rounded-full bg-neon-cyan/20 blur-3xl" />
+            <div className="relative">
+              <h2 className="font-orbitron text-3xl font-bold text-ink neon-text">Ready to start making?</h2>
+              <p className="mx-auto mt-3 max-w-md text-ink-dim">
+                Pick a track, pick your class, and run your first experiment in seconds.
+              </p>
+              <Link href="/tracks" className="btn-primary mt-8">🚀 Enter the Labs</Link>
             </div>
-          ))}
-        </div>
-      </section>
-      </div>
-    </div>
+          </div>
+        </section>
+      </CosmicCarousel>
+    </>
   );
 }
