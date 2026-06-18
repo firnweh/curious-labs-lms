@@ -59,6 +59,25 @@ export function CosmicCarousel({
     return () => window.removeEventListener("keydown", onKey);
   }, [i, go]);
 
+  // anchor / deep-link nav: an in-page link like #samples or #grades jumps to
+  // the slide that contains that element (the body is scroll-locked, so plain
+  // anchor scrolling can't reach off-screen slides).
+  useEffect(() => {
+    const gotoHash = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      if (!id) return;
+      const slideEl = document.getElementById(id)?.closest(".cl-slide");
+      const parent = slideEl?.parentElement;
+      if (slideEl && parent) {
+        const idx = Array.prototype.indexOf.call(parent.children, slideEl);
+        if (idx >= 0) go(idx);
+      }
+    };
+    window.addEventListener("hashchange", gotoHash);
+    gotoHash(); // honour deep links on first load
+    return () => window.removeEventListener("hashchange", gotoHash);
+  }, [go]);
+
   return (
     <div className="cl-carousel">
       {pulse > 0 && <div key={pulse} className="cl-flash" aria-hidden />}
