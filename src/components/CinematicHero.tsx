@@ -28,8 +28,13 @@ function StatNum({ target, suffix }: { target: number; suffix: string }) {
       if (p < 1) raf = requestAnimationFrame(step);
     };
     const t = window.setTimeout(() => (raf = requestAnimationFrame(step)), 700);
+    // Safety net: requestAnimationFrame can stall in a background/throttled tab,
+    // freezing the count-up partway. setTimeout still fires, so guarantee the
+    // number always lands on its true target.
+    const settle = window.setTimeout(() => setVal(target), 700 + dur + 400);
     return () => {
       clearTimeout(t);
+      clearTimeout(settle);
       cancelAnimationFrame(raf);
     };
   }, [target]);
