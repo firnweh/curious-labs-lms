@@ -70,7 +70,7 @@ export function SampleLabPlayer() {
       onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* track selector chips */}
-      <div className="mb-5 flex flex-wrap justify-center gap-2">
+      <div className="mb-3 flex flex-wrap justify-center gap-2">
         {samples.map((id) => {
           const m = getActivityMeta(id);
           if (!m) return null;
@@ -176,7 +176,7 @@ export function SampleLabPlayer() {
       </div>
 
       {/* footer */}
-      <div className="mt-4 flex items-center justify-center gap-4">
+      <div className="mt-3 flex items-center justify-center gap-4">
         <p className="font-mono text-xs text-ink-faint">No sign-up · plays right here</p>
         <Link href="/tracks" className="btn-secondary reveal !px-5 !py-2 !text-sm">
           See all labs →

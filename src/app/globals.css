@@ -386,9 +386,9 @@ body.cl-carousel-page main { min-height: 0; }
 .cl-track { position: relative; z-index: 1; display: flex; height: 100%; width: 100%; will-change: transform;
   transition: transform .85s cubic-bezier(.76,0,.24,1); }
 .cl-slide { flex: 0 0 100%; height: 100%; overflow-y: auto; overflow-x: hidden;
-  display: flex; align-items: center; justify-content: center; }
+  display: flex; align-items: safe center; justify-content: center; }
 .cl-slide-inner { position: relative; z-index: 1; width: 100%; max-width: 1180px; margin: 0 auto;
-  padding: 40px 24px; min-height: 0; }
+  padding: 32px 24px 64px; min-height: 0; }
 
 /* transition aurora bloom — pulses across the cosmos behind the slides */
 .cl-flash { position: absolute; inset: 0; z-index: 0; pointer-events: none;

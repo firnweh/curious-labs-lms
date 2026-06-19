@@ -37,12 +37,9 @@ export default function Home() {
 
         {/* 3 — Sample labs — play one right here */}
         <section id="samples">
-          <div className="mb-8 text-center">
+          <div className="mb-4 text-center">
             <div className="section-label reveal">Interactive Lab</div>
             <h2 className="section-title reveal">Try a sample lab</h2>
-            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
-              Pick a track and play a real experiment right here — no sign-up, nothing to install.
-            </p>
           </div>
           <SampleLabPlayer />
         </section>

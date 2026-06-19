@@ -21,8 +21,10 @@ export function CosmicCarousel({
   const n = slides.length;
   const [i, setI] = useState(0);
   const [pulse, setPulse] = useState(0);
+  const [paused, setPaused] = useState(false);
   const touchX = useRef<number | null>(null);
   const first = useRef(true);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // keep latest sector labels without making them an effect dependency
   const sectorsRef = useRef(sectors);
@@ -59,6 +61,53 @@ export function CosmicCarousel({
     return () => window.removeEventListener("keydown", onKey);
   }, [i, go]);
 
+  // autoplay — advance every 3s and loop. Pauses on hover (set via paused) and
+  // honours reduced-motion. The timer is keyed to `i`, so any manual nav resets
+  // the countdown for clean pacing.
+  useEffect(() => {
+    if (paused || n <= 1) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setTimeout(() => setI((cur) => (cur + 1) % n), 3000);
+    return () => window.clearTimeout(t);
+  }, [i, paused, n]);
+
+  // zero-scroll: scale the active slide's content with CSS `zoom` so it always
+  // fits the viewport — no scrollbar. `offsetHeight` reports the natural
+  // (zoom-independent) content height, so we compute the target directly and
+  // only write it when it actually changes — that's idempotent, so the
+  // ResizeObserver can safely re-fit when content settles or the sample lab is
+  // switched without ever looping. Floored at 0.45 (the slide's overflow
+  // scroll stays as a last-resort fallback below that).
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const slide = root.querySelectorAll<HTMLElement>(".cl-slide")[i];
+    const inner = slide?.querySelector<HTMLElement>(".cl-slide-inner");
+    if (!slide || !inner) return;
+
+    const fit = () => {
+      const avail = slide.clientHeight;
+      const natural = inner.offsetHeight;
+      if (!avail || !natural) return;
+      const target = natural > avail ? Math.max(0.42, (avail - 2) / natural) : 1;
+      const current = parseFloat(inner.style.zoom) || 1;
+      if (Math.abs(current - target) > 0.003) inner.style.zoom = target === 1 ? "" : String(target);
+    };
+
+    fit();
+    const t1 = window.setTimeout(fit, 300); // catch late layout (fonts, lab init)
+    const t2 = window.setTimeout(fit, 1200);
+    window.addEventListener("resize", fit);
+    const ro = new ResizeObserver(fit);
+    ro.observe(inner);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener("resize", fit);
+      ro.disconnect();
+    };
+  }, [i]);
+
   // anchor / deep-link nav: an in-page link like #samples or #grades jumps to
   // the slide that contains that element (the body is scroll-locked, so plain
   // anchor scrolling can't reach off-screen slides).
@@ -79,7 +128,14 @@ export function CosmicCarousel({
   }, [go]);
 
   return (
-    <div className="cl-carousel">
+    <div
+      ref={rootRef}
+      className="cl-carousel"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
       {pulse > 0 && <div key={pulse} className="cl-flash" aria-hidden />}
       <div className="cl-track" style={{ transform: `translateX(-${i * 100}%)` }}>
         {slides.map((slide, idx) => (
