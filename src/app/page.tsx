@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HomeTrackCards } from "@/components/HomeTrackCards";
 import { GradePickerSlide } from "@/components/GradePickerSlide";
+import { ClassBandCards } from "@/components/ClassBandCards";
 import MakerspaceStats from "@/components/MakerspaceStats";
 import LabsInAction from "@/components/LabsInAction";
 import StudentShowcase from "@/components/StudentShowcase";
@@ -16,12 +17,6 @@ const STEPS = [
   { n: "01", t: "Pick a lab", d: "Choose a hands-on experiment from any of the four tracks." },
   { n: "02", t: "Build & run", d: "Drag, click, wire and tune — right in the browser, nothing to install." },
   { n: "03", t: "Auto-checked", d: "Each lab grades your result instantly and saves your progress." },
-];
-
-const BANDS_INFO = [
-  { emoji: "🐣", classes: "Class 1–3", name: "Juniors", accent: "#34d399", thinking: "Tap, match and sort — playful, no reading needed." },
-  { emoji: "🚀", classes: "Class 4–6", name: "Explorers", accent: "#22d3ee", thinking: "Use loops and logic, build circuits, train a model." },
-  { emoji: "🧠", classes: "Class 7–10", name: "Innovators", accent: "#a855f7", thinking: "Variables, conditions, models and coordinates — real reasoning." },
 ];
 
 // NOTE: candidate slides for review. Labels/sectors stay index-aligned with the
@@ -103,20 +98,7 @@ export default function Home() {
             <h2 className="section-title reveal">Three class bands</h2>
             <p className="section-sub reveal mx-auto mt-3 max-w-xl">The same track, tuned to how each age group thinks and plays.</p>
           </div>
-          <div className="grid gap-5 sm:grid-cols-3">
-            {BANDS_INFO.map((b) => (
-              <div key={b.name} className="panel tilt reveal p-7" style={{ color: b.accent }}>
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl" aria-hidden>{b.emoji}</span>
-                  <div className="leading-tight">
-                    <h3 className="font-orbitron text-lg font-bold text-ink">{b.classes}</h3>
-                    <p className="font-mono text-[11px]" style={{ color: b.accent }}>{b.name}</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm text-ink-dim">{b.thinking}</p>
-              </div>
-            ))}
-          </div>
+          <ClassBandCards />
         </section>
 
         {/* 12 — For parents & teachers (NEW) */}
