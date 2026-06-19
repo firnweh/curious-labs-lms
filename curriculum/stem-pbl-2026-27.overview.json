@@ -1,0 +1,166 @@
+{
+  "months": [
+    "May",
+    "July",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+    "Jan (I)",
+    "Jan (II)",
+    "Feb"
+  ],
+  "grades": {
+    "1": {
+      "theme": "Exploration & Logical Thinking",
+      "months": {
+        "May": "Cardboard Robot Buddy",
+        "July": "Traffic Light Model",
+        "Aug": "Paper Circuit Greeting Card",
+        "Sep": "Windmill Power Toy",
+        "Oct": "My Smart House Model",
+        "Nov": "Pattern Art using Shapes",
+        "Dec": "Maze Board Game",
+        "Jan (I)": "Simple Pulley Lifter",
+        "Jan (II)": "Animal Robot Craft",
+        "Feb": "My First Machine Book"
+      }
+    },
+    "2": {
+      "theme": "Cause & Effect Systems",
+      "months": {
+        "May": "Torch Light Circuit",
+        "July": "Buzz Wire Game",
+        "Aug": "Smart Fan Model",
+        "Sep": "Moving Car Model",
+        "Oct": "Scratch Jr Story Animation",
+        "Nov": "Bridge Building Challenge",
+        "Dec": "Shape-Based 3D Model",
+        "Jan (I)": "Automatic Door Model",
+        "Jan (II)": "Sound-Activated Toy",
+        "Feb": "Mini Science Fair"
+      }
+    },
+    "3": {
+      "theme": "Motion, Control & Digital Creativity",
+      "months": {
+        "May": "Motor-Powered Robot",
+        "July": "Traffic Police Signal",
+        "Aug": "Scratch Animated Game",
+        "Sep": "Smart Dustbin",
+        "Oct": "Water Level Indicator",
+        "Nov": "Earthquake-Safe Building",
+        "Dec": "3D House Design in Tinkercad",
+        "Jan (I)": "Smart Alarm System",
+        "Jan (II)": "Maze-Solving Algorithm Game",
+        "Feb": "Innovation Expo"
+      }
+    },
+    "4": {
+      "theme": "Real Robotics Begins",
+      "months": {
+        "May": "Line Follower Robot",
+        "July": "Automatic Night Lamp",
+        "Aug": "Smart Parking System",
+        "Sep": "Obstacle Avoidance Robot",
+        "Oct": "Digital Weather Station",
+        "Nov": "Scratch Game with Score & Timer",
+        "Dec": "Personalised 3D Keychain",
+        "Jan (I)": "Wireless Doorbell System",
+        "Jan (II)": "Plant Watering Reminder",
+        "Feb": "Assistive Device Design Challenge"
+      }
+    },
+    "5": {
+      "theme": "Automation & Design Thinking",
+      "months": {
+        "May": "Smart Home Automation System",
+        "July": "Automatic Fire Alarm System",
+        "Aug": "Servo-Powered Robotic Arm",
+        "Sep": "Automated Irrigation System",
+        "Oct": "Personal Health Monitor",
+        "Nov": "Python Rule-Based Chatbot",
+        "Dec": "3D Pen Holder Design",
+        "Jan (I)": "Solar-Powered Car",
+        "Jan (II)": "RFID Attendance System",
+        "Feb": "Community STEM Challenge"
+      }
+    },
+    "6": {
+      "theme": "Coding Meets Hardware",
+      "months": {
+        "May": "Bluetooth-Controlled Robot",
+        "July": "Ultrasonic Smart Dustbin",
+        "Aug": "Automated Watering Bot",
+        "Sep": "Multi-Sensor Weather Station",
+        "Oct": "Advanced Line Follower",
+        "Nov": "Python Generative Art",
+        "Dec": "3D Mobile Stand Design",
+        "Jan (I)": "PIR Security Alarm System",
+        "Jan (II)": "Energy Consumption Monitor",
+        "Feb": "Startup Innovation Project"
+      }
+    },
+    "7": {
+      "theme": "AI & Data Awareness",
+      "months": {
+        "May": "Voice-Controlled Robot",
+        "July": "Face Recognition Door System",
+        "Aug": "Adaptive Traffic Management System",
+        "Sep": "Python Automated Attendance",
+        "Oct": "Robotic Arm with Python GUI",
+        "Nov": "Data Visualisation Dashboard",
+        "Dec": "Precision Gear Design",
+        "Jan (I)": "Electronic Blind Stick",
+        "Jan (II)": "Real-Time Energy Dashboard",
+        "Feb": "AI for Social Good"
+      }
+    },
+    "8": {
+      "theme": "Intelligent Decision Systems",
+      "months": {
+        "May": "Object Detection System",
+        "July": "Farming Robot (Line Follower + Soil Sensor + Spray)",
+        "Aug": "Autonomous Delivery Bot",
+        "Sep": "Emotion Recognition App",
+        "Oct": "Smart Waste Sorting System",
+        "Nov": "Weather Prediction AI",
+        "Dec": "Drone Frame Design",
+        "Jan (I)": "Smart Classroom Automation",
+        "Jan (II)": "NLP Text Classification Chatbot",
+        "Feb": "Grade 8 Capstone"
+      }
+    },
+    "9": {
+      "theme": "Engineering & Research",
+      "months": {
+        "May": "Autonomous Navigation Robot",
+        "July": "AI Health Diagnosis System",
+        "Aug": "Smart City Simulation",
+        "Sep": "Robotic Warehouse Sorter",
+        "Oct": "Face Recognition Attendance System",
+        "Nov": "Stock Market Prediction",
+        "Dec": "3D Prototype: Product Design",
+        "Jan (I)": "IoT Smart Electricity Meter",
+        "Jan (II)": "Disaster Response Robot",
+        "Feb": "Grade 9 Research & Innovation"
+      }
+    },
+    "10": {
+      "theme": "Industry & Entrepreneurship",
+      "months": {
+        "May": "Self-Driving Car Simulation",
+        "July": "AI Recommendation System",
+        "Aug": "Smart Surveillance System",
+        "Sep": "Crop Yield Prediction AI",
+        "Oct": "Industrial Robotic Arm",
+        "Nov": "AI Resume Screener",
+        "Dec": "3D Startup Product Design",
+        "Jan (I)": "IoT Smart Hospital",
+        "Jan (II)": "Cybersecurity Lab",
+        "Feb": "Grade 10 Final Capstone"
+      }
+    }
+  }
+}
