@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ACTIVITIES, gradesWithContent } from "@/lib/activities/registry";
+import { SUBJECTS } from "@/lib/subjects";
 
 type Stat = {
   value: number;
@@ -8,10 +10,11 @@ type Stat = {
   accent: string;
 };
 
+// Computed from the registry so the homepage never undersells itself again.
 const STATS: Stat[] = [
-  { value: 26, label: "LIVE LABS", accent: "#22d3ee" },
-  { value: 4, label: "TRACKS", accent: "#34d399" },
-  { value: 10, label: "GRADES (1–10)", accent: "#a855f7" },
+  { value: ACTIVITIES.length, label: "LIVE LABS", accent: "#22d3ee" },
+  { value: SUBJECTS.length, label: "TRACKS", accent: "#34d399" },
+  { value: gradesWithContent().length, label: "GRADES (1–10)", accent: "#a855f7" },
   { value: 0, label: "INSTALLS", accent: "#f59e0b" },
 ];
 
@@ -47,9 +50,13 @@ function CountUp({ target }: { target: number }) {
     };
 
     frameRef.current = requestAnimationFrame(tick);
+    // Safety net: rAF can stall in a background/throttled tab and freeze the
+    // count partway. setTimeout still fires, so guarantee the final value lands.
+    const settle = window.setTimeout(() => setValue(target), duration + 400);
 
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      clearTimeout(settle);
     };
   }, [target]);
 
