@@ -1,10 +1,15 @@
 import Link from "next/link";
-import { GradeRail } from "@/components/GradeRail";
 import { HomeTrackCards } from "@/components/HomeTrackCards";
+import { GradePickerSlide } from "@/components/GradePickerSlide";
+import MakerspaceStats from "@/components/MakerspaceStats";
+import LabsInAction from "@/components/LabsInAction";
+import StudentShowcase from "@/components/StudentShowcase";
+import ParentsTeachers from "@/components/ParentsTeachers";
+import AchievementsPreview from "@/components/AchievementsPreview";
+import SupernovaBurst from "@/components/SupernovaBurst";
 import { SampleLabPlayer } from "@/components/SampleLabPlayer";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
-import { StellarCollapse } from "@/components/StellarCollapse";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
 
 const STEPS = [
@@ -19,8 +24,10 @@ const BANDS_INFO = [
   { emoji: "🧠", classes: "Class 7–10", name: "Innovators", accent: "#a855f7", thinking: "Variables, conditions, models and coordinates — real reasoning." },
 ];
 
-const SLIDE_LABELS = ["Home", "Sample Labs", "Tracks", "Grades", "Gravity Lab", "How it works", "Class Bands", "Get Started"];
-const SLIDE_SECTORS = ["LAUNCH PAD", "SIMULATION BAY", "PROGRAM DECK", "STAR CHART", "EVENT HORIZON", "MISSION BRIEF", "CADET TIERS", "DOCKING BAY"];
+// NOTE: candidate slides for review. Labels/sectors stay index-aligned with the
+// children below — keep them in sync if you add/remove a slide.
+const SLIDE_LABELS = ["Home", "Stats", "Sample Labs", "Labs in Action", "Tracks", "Grades", "Supernova", "How it works", "Showcase", "Rewards", "Class Bands", "Educators", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "TELEMETRY", "SIMULATION BAY", "OBSERVATION DECK", "PROGRAM DECK", "STAR CHART", "EVENT HORIZON", "MISSION BRIEF", "GALLERY BAY", "MEDAL BAY", "CADET TIERS", "COMMAND DECK", "DOCKING BAY"];
 
 export default function Home() {
   return (
@@ -30,7 +37,10 @@ export default function Home() {
         {/* 1 — Hero */}
         <CinematicHero />
 
-        {/* 2 — Sample labs — play one right here */}
+        {/* 2 — Makerspace stats (NEW) */}
+        <MakerspaceStats />
+
+        {/* 3 — Sample labs — play one right here */}
         <section id="samples">
           <div className="mb-8 text-center">
             <div className="section-label reveal">Interactive Lab</div>
@@ -42,7 +52,10 @@ export default function Home() {
           <SampleLabPlayer />
         </section>
 
-        {/* 3 — The four tracks */}
+        {/* 4 — Labs in action / demo reel (NEW) */}
+        <LabsInAction />
+
+        {/* 5 — The four tracks */}
         <section id="tracks">
           <div className="mb-8 text-center">
             <div className="section-label reveal">Our Programs</div>
@@ -54,24 +67,13 @@ export default function Home() {
           <HomeTrackCards />
         </section>
 
-        {/* 4 — Browse by grade (curriculum) */}
-        <section id="grades">
-          <div className="mb-8 text-center">
-            <div className="section-label reveal">The Curriculum</div>
-            <h2 className="section-title reveal">Browse by grade</h2>
-            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
-              Each grade has its own year of hands-on projects, straight from the curriculum.
-            </p>
-          </div>
-          <div className="reveal">
-            <GradeRail />
-          </div>
-        </section>
+        {/* 6 — Pick your grade (NEW — re-adds grade entry point) */}
+        <GradePickerSlide />
 
-        {/* 5 — Black-hole showpiece */}
-        <StellarCollapse />
+        {/* 7 — Supernova showpiece (NEW — replaces black hole) */}
+        <SupernovaBurst />
 
-        {/* 6 — How it works */}
+        {/* 8 — How it works */}
         <section id="how">
           <div className="mb-8 text-center">
             <div className="section-label reveal">How it works</div>
@@ -88,7 +90,13 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 7 — Grade bands */}
+        {/* 9 — Student showcase (NEW) */}
+        <StudentShowcase />
+
+        {/* 10 — Achievements & certificates (NEW) */}
+        <AchievementsPreview />
+
+        {/* 11 — Grade bands */}
         <section id="bands">
           <div className="mb-8 text-center">
             <div className="section-label reveal">Pitched for every age</div>
@@ -111,7 +119,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 8 — Launch CTA */}
+        {/* 12 — For parents & teachers (NEW) */}
+        <ParentsTeachers />
+
+        {/* 13 — Launch CTA */}
         <section id="launch">
           <div className="panel reveal relative overflow-hidden p-12 text-center">
             <div className="pointer-events-none absolute -left-16 -top-16 h-52 w-52 rounded-full bg-neon-violet/20 blur-3xl" />
