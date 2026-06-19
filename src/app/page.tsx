@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { SUBJECTS } from "@/lib/subjects";
 import { GradeRail } from "@/components/GradeRail";
+import { HomeTrackCards } from "@/components/HomeTrackCards";
 import { SampleLabPlayer } from "@/components/SampleLabPlayer";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
@@ -51,40 +51,7 @@ export default function Home() {
               Coding, Robotics, AI and 3D Modelling — each a world of hands-on making, for grades 1–10.
             </p>
           </div>
-          <div className="grid gap-6 sm:grid-cols-2">
-            {SUBJECTS.map((s) => (
-              <Link
-                key={s.id}
-                href={`/subjects/${s.id}`}
-                className="panel tilt reveal group relative flex flex-col overflow-hidden p-7"
-                style={{ color: s.accent }}
-              >
-                <div
-                  className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full opacity-40 blur-2xl transition-opacity group-hover:opacity-70"
-                  style={{ background: s.accent }}
-                />
-                <div className="flex items-center gap-4">
-                  <span
-                    className="grid h-14 w-14 place-items-center rounded-2xl text-3xl"
-                    style={{ background: `${s.accent}1a`, border: `1px solid ${s.accent}40` }}
-                  >
-                    {s.emoji}
-                  </span>
-                  <div>
-                    <h3 className="font-orbitron text-lg font-bold text-ink">{s.name}</h3>
-                    <p className="text-sm" style={{ color: s.accent }}>{s.tagline}</p>
-                  </div>
-                </div>
-                <p className="mt-4 flex-1 text-sm text-ink-dim">{s.blurb}</p>
-                <span
-                  className="mt-5 font-mono text-xs tracking-tech opacity-80 transition-transform group-hover:translate-x-1"
-                  style={{ color: s.accent }}
-                >
-                  ENTER TRACK →
-                </span>
-              </Link>
-            ))}
-          </div>
+          <HomeTrackCards />
         </section>
 
         {/* 4 — Browse by grade (curriculum) */}
