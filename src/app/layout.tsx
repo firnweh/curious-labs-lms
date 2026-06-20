@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Inter, JetBrains_Mono, Orbitron } from "next/font/google";
+import { Space_Grotesk, Inter, JetBrains_Mono, Orbitron, Fredoka } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TransitionProvider } from "@/components/SubjectTransition";
@@ -27,6 +27,12 @@ const orbitron = Orbitron({
   weight: ["400", "700", "900"],
 });
 
+const round = Fredoka({
+  variable: "--font-round",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "Curious Labs — Hands-on Learning",
   description:
@@ -39,7 +45,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable} ${orbitron.variable} h-full antialiased`}
+      className={`${display.variable} ${body.variable} ${mono.variable} ${orbitron.variable} ${round.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <div className="grid-bg" aria-hidden />

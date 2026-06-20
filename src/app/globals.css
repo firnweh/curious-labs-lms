@@ -376,6 +376,22 @@ body {
 /* header logo pulse */
 @keyframes pulse-logo { 0%,100% { box-shadow: 0 0 18px rgba(56,189,248,.4); } 50% { box-shadow: 0 0 32px rgba(56,189,248,.7); } }
 
+/* circuit studio — spinning motor shaft + flowing-current dashes */
+@keyframes cl-spin { to { transform: rotate(360deg); } }
+@keyframes cl-flow { to { stroke-dashoffset: -24; } }
+.cl-wire-live { stroke-dasharray: 2 6; animation: cl-flow 0.6s linear infinite; }
+
+/* kid-friendly studio chrome */
+.font-round { font-family: var(--font-round), "Fredoka", ui-rounded, system-ui, sans-serif; }
+.cs-board { background: radial-gradient(125% 125% at 50% 0%, #20305f 0%, #16224a 52%, #0e1733 100%); }
+.cs-tile { transition: transform .14s ease, border-color .14s ease, background .14s ease; }
+.cs-tile:hover { transform: translateY(-2px); }
+.cs-tile:active { transform: scale(0.95); }
+@keyframes cs-pin { 0%,100% { r: 9; opacity: .9; } 50% { r: 11; opacity: 1; } }
+.cs-pin-pulse { animation: cs-pin 1.4s ease-in-out infinite; }
+@keyframes cs-pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
+.cs-pop { animation: cs-pop .25s ease-out; }
+
 /* ═══════════ COSMIC CAROUSEL ═══════════ */
 body.cl-carousel-page { height: 100vh; overflow: hidden; }
 body.cl-carousel-page footer { display: none; }
