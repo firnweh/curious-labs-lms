@@ -378,6 +378,7 @@ body {
 
 /* ═══════════ COSMIC CAROUSEL ═══════════ */
 body.cl-carousel-page { height: 100vh; overflow: hidden; }
+body.cl-carousel-page header { display: none; }
 body.cl-carousel-page footer { display: none; }
 /* let the flex main shrink to the frame so the carousel fills exactly one screen */
 body.cl-carousel-page main { min-height: 0; }
