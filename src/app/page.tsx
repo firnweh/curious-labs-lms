@@ -7,11 +7,12 @@ import { SampleLabPlayer } from "@/components/SampleLabPlayer";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
+import { HeroIntro3D, HeroIntroRobotics, HeroIntroAI, HeroIntroWeb } from "@/components/HeroIntro";
 
-// 7 tight slides, grades pulled forward (they're the headline now: 100 labs,
-// Grades 1–10). Labels/sectors stay index-aligned with the children below.
-const SLIDE_LABELS = ["Home", "Stats", "Grades", "Sample Lab", "Tracks", "Class Bands", "Get Started"];
-const SLIDE_SECTORS = ["LAUNCH PAD", "TELEMETRY", "STAR CHART", "SIMULATION BAY", "PROGRAM DECK", "CADET TIERS", "DOCKING BAY"];
+// 11 slides: Home, the 4 studio-intro sections, then the rest of the journey.
+// Labels/sectors stay index-aligned with the children below.
+const SLIDE_LABELS = ["Home", "3D Modelling", "Robotics", "AI", "Web Dev", "Stats", "Grades", "Sample Lab", "Tracks", "Class Bands", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "MODEL BAY", "ROBOTICS BAY", "NEURAL CORE", "WEB FORGE", "TELEMETRY", "STAR CHART", "SIMULATION BAY", "PROGRAM DECK", "CADET TIERS", "DOCKING BAY"];
 
 export default function Home() {
   return (
@@ -21,7 +22,13 @@ export default function Home() {
         {/* 1 — Hero */}
         <CinematicHero />
 
-        {/* 2 — Makerspace stats (live from the registry) */}
+        {/* 2–5 — Studio intro: one looping slide per section, transparent over the home cosmos */}
+        <HeroIntro3D />
+        <HeroIntroRobotics />
+        <HeroIntroAI />
+        <HeroIntroWeb />
+
+        {/* 6 — Makerspace stats (live from the registry) */}
         <MakerspaceStats />
 
         {/* 3 — Pick your grade — the curriculum is the headline */}

@@ -12,14 +12,19 @@ export function CosmicCarousel({
   children,
   labels = [],
   sectors = [],
+  immersiveSlides = [],
 }: {
   children: React.ReactNode;
   labels?: string[];
   sectors?: string[];
+  /** Slide indices that play as a full-screen film: autoplay pauses and all
+   *  page chrome (header, nav arrows, dots, mission HUD) is hidden while active. */
+  immersiveSlides?: number[];
 }) {
   const slides = Children.toArray(children);
   const n = slides.length;
   const [i, setI] = useState(0);
+  const immersive = immersiveSlides.includes(i);
   const [pulse, setPulse] = useState(0);
   const [paused, setPaused] = useState(false);
   const touchX = useRef<number | null>(null);
@@ -40,6 +45,13 @@ export function CosmicCarousel({
     document.body.classList.add("cl-carousel-page");
     return () => document.body.classList.remove("cl-carousel-page");
   }, []);
+
+  // immersive (cinematic) slides take over the screen: strip header + carousel
+  // chrome + cosmos HUD via a body class (see .cl-takeover in globals.css)
+  useEffect(() => {
+    document.body.classList.toggle("cl-takeover", immersive);
+    return () => document.body.classList.remove("cl-takeover");
+  }, [immersive]);
 
   // on each slide change: replay the aurora bloom + update the mission HUD sector
   useEffect(() => {
@@ -65,11 +77,11 @@ export function CosmicCarousel({
   // honours reduced-motion. The timer is keyed to `i`, so any manual nav resets
   // the countdown for clean pacing.
   useEffect(() => {
-    if (paused || n <= 1) return;
+    if (paused || n <= 1 || immersive) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const t = window.setTimeout(() => setI((cur) => (cur + 1) % n), 3000);
     return () => window.clearTimeout(t);
-  }, [i, paused, n]);
+  }, [i, paused, n, immersive]);
 
   // zero-scroll: scale the active slide's content with CSS `zoom` so it always
   // fits the viewport — no scrollbar. `offsetHeight` reports the natural
