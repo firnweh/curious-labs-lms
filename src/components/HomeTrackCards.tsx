@@ -2,22 +2,24 @@
 
 import Link from "next/link";
 import { SUBJECTS } from "@/lib/subjects";
+import { activitiesBySubject } from "@/lib/activities/registry";
 import { useSubjectTransition } from "@/components/SubjectTransition";
+import { TrackCardFX } from "@/components/TrackCardFX";
 
 /**
- * The four track cards on the home "Lab-First Learning Tracks" slide.
- * Same look as before, but a click now fires the per-track launch animation
- * (code-rain / circuit / neural-net / voxels) before opening the track page —
- * matching the behaviour on /tracks. Falls back to a plain link if the
- * transition provider isn't mounted or reduced-motion is on.
+ * Minimal "live tiles" for the home Tracks slide. Each tile is mostly its
+ * signature looping animation (code-rain / circuit / neural-net / voxel cube),
+ * with a clean label resting at the bottom over a soft scrim. A click fires the
+ * per-track launch animation before opening the track page.
  */
 export function HomeTrackCards() {
   const transition = useSubjectTransition();
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    <div className="mx-auto grid max-w-4xl gap-4 sm:grid-cols-2">
       {SUBJECTS.map((s) => {
         const href = `/subjects/${s.id}`;
+        const count = activitiesBySubject(s.id).length;
         return (
           <Link
             key={s.id}
@@ -28,32 +30,37 @@ export function HomeTrackCards() {
                 transition.go(s.id, href);
               }
             }}
-            className="panel tilt reveal group relative flex flex-col overflow-hidden p-7"
+            aria-label={`${s.name} — ${count} labs`}
+            className="group relative flex min-h-[200px] flex-col justify-end overflow-hidden rounded-3xl border border-line/40 bg-[#080d1a] p-6 transition-all duration-300 hover:-translate-y-1"
             style={{ color: s.accent }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = `${s.accent}66`)}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "")}
           >
-            <div
-              className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full opacity-40 blur-2xl transition-opacity group-hover:opacity-70"
-              style={{ background: s.accent }}
-            />
-            <div className="flex items-center gap-4">
-              <span
-                className="grid h-14 w-14 place-items-center rounded-2xl text-3xl"
-                style={{ background: `${s.accent}1a`, border: `1px solid ${s.accent}40` }}
-              >
-                {s.emoji}
-              </span>
+            {/* living backdrop (hero) */}
+            <TrackCardFX subject={s.id} accent={s.accent} />
+
+            {/* legibility scrim under the label */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[#080d1a] via-[#080d1a]/70 to-transparent" />
+
+            {/* minimal label */}
+            <div className="relative flex items-end justify-between gap-3">
               <div>
-                <h3 className="font-orbitron text-lg font-bold text-ink">{s.name}</h3>
-                <p className="text-sm" style={{ color: s.accent }}>{s.tagline}</p>
+                <span className="inline-block text-4xl transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110" aria-hidden>
+                  {s.emoji}
+                </span>
+                <h3 className="mt-2 font-orbitron text-2xl font-bold text-ink">{s.name}</h3>
+                <p className="mt-0.5 font-mono text-[11px] tracking-tech" style={{ color: s.accent }}>
+                  {count} LABS
+                </p>
               </div>
+              <span
+                className="mb-1 -translate-x-1 text-2xl opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100"
+                style={{ color: s.accent }}
+                aria-hidden
+              >
+                →
+              </span>
             </div>
-            <p className="mt-4 flex-1 text-sm text-ink-dim">{s.blurb}</p>
-            <span
-              className="mt-5 font-mono text-xs tracking-tech opacity-80 transition-transform group-hover:translate-x-1"
-              style={{ color: s.accent }}
-            >
-              ENTER TRACK →
-            </span>
           </Link>
         );
       })}
