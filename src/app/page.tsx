@@ -1,18 +1,14 @@
 import Link from "next/link";
-import { HomeTrackCards } from "@/components/HomeTrackCards";
-import { GradePickerSlide } from "@/components/GradePickerSlide";
-import { ClassBandCards } from "@/components/ClassBandCards";
 import MakerspaceStats from "@/components/MakerspaceStats";
-import { SampleLabPlayer } from "@/components/SampleLabPlayer";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
 import { HeroIntro3D, HeroIntroRobotics, HeroIntroAI, HeroIntroWeb } from "@/components/HeroIntro";
 
-// 11 slides: Home, the 4 studio-intro sections, then the rest of the journey.
+// 7 slides: Home, the 4 studio-intro sections, Stats, and the launch CTA.
 // Labels/sectors stay index-aligned with the children below.
-const SLIDE_LABELS = ["Home", "3D Modelling", "Robotics", "AI", "Web Dev", "Stats", "Grades", "Sample Lab", "Tracks", "Class Bands", "Get Started"];
-const SLIDE_SECTORS = ["LAUNCH PAD", "MODEL BAY", "ROBOTICS BAY", "NEURAL CORE", "WEB FORGE", "TELEMETRY", "STAR CHART", "SIMULATION BAY", "PROGRAM DECK", "CADET TIERS", "DOCKING BAY"];
+const SLIDE_LABELS = ["Home", "3D Modelling", "Robotics", "AI", "Web Dev", "Stats", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "MODEL BAY", "ROBOTICS BAY", "NEURAL CORE", "WEB FORGE", "TELEMETRY", "DOCKING BAY"];
 
 export default function Home() {
   return (
@@ -30,39 +26,6 @@ export default function Home() {
 
         {/* 6 — Makerspace stats (live from the registry) */}
         <MakerspaceStats />
-
-        {/* 3 — Pick your grade — the curriculum is the headline */}
-        <GradePickerSlide />
-
-        {/* 4 — Sample lab — play one right here */}
-        <section id="samples">
-          <div className="mb-3 text-center">
-            <h2 className="section-title reveal">Try a sample lab</h2>
-          </div>
-          <SampleLabPlayer />
-        </section>
-
-        {/* 5 — The four tracks */}
-        <section id="tracks">
-          <div className="mb-8 text-center">
-            <div className="section-label reveal">Our Programs</div>
-            <h2 className="section-title reveal">Lab-First Learning Tracks</h2>
-            <p className="section-sub reveal mx-auto mt-3 max-w-xl">
-              Coding, Robotics, AI and 3D Modelling — each a world of hands-on making, for grades 1–10.
-            </p>
-          </div>
-          <HomeTrackCards />
-        </section>
-
-        {/* 6 — Grade bands */}
-        <section id="bands">
-          <div className="mb-8 text-center">
-            <div className="section-label reveal">Pitched for every age</div>
-            <h2 className="section-title reveal">Three class bands</h2>
-            <p className="section-sub reveal mx-auto mt-3 max-w-xl">The same track, tuned to how each age group thinks and plays.</p>
-          </div>
-          <ClassBandCards />
-        </section>
 
         {/* 7 — Launch CTA */}
         <section id="launch">
