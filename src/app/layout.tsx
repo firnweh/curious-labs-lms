@@ -51,7 +51,7 @@ export default function RootLayout({
         <div className="grid-bg" aria-hidden />
         <TransitionProvider>
           <SiteHeader />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1 pt-16">{children}</main>
           <footer className="border-t border-line/60 mt-20">
           <div className="mx-auto max-w-6xl px-5 py-8 text-sm text-ink-faint flex flex-wrap items-center justify-between gap-3">
             <span className="font-mono tracking-tech">

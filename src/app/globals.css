@@ -394,10 +394,9 @@ body {
 
 /* ═══════════ COSMIC CAROUSEL ═══════════ */
 body.cl-carousel-page { height: 100vh; overflow: hidden; }
-body.cl-carousel-page header { display: none; }
 body.cl-carousel-page footer { display: none; }
 /* let the flex main shrink to the frame so the carousel fills exactly one screen */
-body.cl-carousel-page main { min-height: 0; }
+body.cl-carousel-page main { min-height: 0; padding-top: 0; }
 
 .cl-carousel { position: relative; z-index: 1; height: 100%; width: 100%; overflow: hidden; }
 .cl-track { position: relative; z-index: 1; display: flex; height: 100%; width: 100%; will-change: transform;
@@ -422,9 +421,21 @@ body.cl-carousel-page main { min-height: 0; }
 /* the hero + black-hole slides go full-bleed so their glow runs edge-to-edge
    instead of being clipped into a floating box on the starfield */
 .cl-slide-inner:has(> .hero),
+.cl-slide-inner:has(> .hero-video),
+.cl-slide-inner:has(> .hero-intro),
 .cl-slide-inner:has(> .singularity) { max-width: none; padding: 0; height: 100%; }
 .cl-slide-inner > .hero { min-height: 100%; padding: 24px; }
+.cl-slide-inner > .hero-video { height: 100%; }
+.cl-slide-inner > .hero-intro { height: 100%; }
 .cl-slide-inner > .singularity { padding: 0; background: none; }
+
+/* immersive takeover: while a cinematic slide (the 3D hero video) is active,
+   strip ALL chrome so it reads as a pure full-screen film. Navigation still
+   works via swipe / ← → arrow keys. */
+body.cl-takeover .cl-nav,
+body.cl-takeover .cl-rail,
+body.cl-takeover .mission-hud,
+body.cl-takeover .scroll-progress { display: none !important; }
 
 /* prev / next */
 .cl-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 30;
