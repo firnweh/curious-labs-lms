@@ -149,4 +149,20 @@ export const ACTIVITY_COMPONENTS: Record<string, ActivityComponent> = {
   "g10-iot-hospital": dynamic(() => import("./impl/g10-iot-hospital"), { ssr: false, loading: LabLoading }),
   "g10-sql-injection": dynamic(() => import("./impl/g10-sql-injection"), { ssr: false, loading: LabLoading }),
   "g10-capstone-pipeline": dynamic(() => import("./impl/g10-capstone-pipeline"), { ssr: false, loading: LabLoading }),
+  // Junior coding practice set (Class 1-3)
+  "jc-go": dynamic(() => import("./impl/jc-go"), { ssr: false, loading: LabLoading }),
+  "jc-steps": dynamic(() => import("./impl/jc-steps"), { ssr: false, loading: LabLoading }),
+  "jc-next": dynamic(() => import("./impl/jc-next"), { ssr: false, loading: LabLoading }),
+  "jc-loop": dynamic(() => import("./impl/jc-loop"), { ssr: false, loading: LabLoading }),
+  "jc-maze": dynamic(() => import("./impl/jc-maze"), { ssr: false, loading: LabLoading }),
+  "jc-dance": dynamic(() => import("./impl/jc-dance"), { ssr: false, loading: LabLoading }),
+  "jc-rule": dynamic(() => import("./impl/jc-rule"), { ssr: false, loading: LabLoading }),
+  // Junior robotics practice set (Class 1-3)
+  "jr-light": dynamic(() => import("./impl/jr-light"), { ssr: false, loading: LabLoading }),
+  "jr-build": dynamic(() => import("./impl/jr-build"), { ssr: false, loading: LabLoading }),
+  "jr-button": dynamic(() => import("./impl/jr-button"), { ssr: false, loading: LabLoading }),
+  "jr-spin": dynamic(() => import("./impl/jr-spin"), { ssr: false, loading: LabLoading }),
+  "jr-sensor": dynamic(() => import("./impl/jr-sensor"), { ssr: false, loading: LabLoading }),
+  "jr-drive": dynamic(() => import("./impl/jr-drive"), { ssr: false, loading: LabLoading }),
+  "jr-helper": dynamic(() => import("./impl/jr-helper"), { ssr: false, loading: LabLoading }),
 };
