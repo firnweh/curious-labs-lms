@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ACTIVITIES, gradesWithContent } from "@/lib/activities/registry";
 import { SUBJECTS } from "@/lib/subjects";
@@ -104,31 +105,87 @@ export default function MakerspaceStats() {
         ))}
       </div>
 
-      {/* Labs-by-track distribution — the "richer visual" beat */}
-      <div className="panel mx-auto mt-5 max-w-3xl p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="font-mono text-xs tracking-tech text-ink-faint">LABS BY TRACK</span>
-          <span className="font-mono text-xs text-ink-faint">{TOTAL} total</span>
-        </div>
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-line/40" role="img" aria-label="Labs by track distribution">
-          {BY_TRACK.map((t) => (
-            <div
-              key={t.id}
-              style={{ width: `${(t.count / TOTAL) * 100}%`, background: t.accent }}
-              title={`${t.name}: ${t.count}`}
-            />
-          ))}
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-          {BY_TRACK.map((t) => (
-            <div key={t.id} className="flex items-center gap-2 text-sm">
-              <span aria-hidden>{t.emoji}</span>
-              <span className="text-ink-dim">{t.name}</span>
-              <span className="ml-auto font-mono font-semibold" style={{ color: t.accent }}>{t.count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Labs-by-track distribution — a tappable shortcut into each track */}
+      <TrackBar />
     </section>
+  );
+}
+
+/**
+ * The "Labs by track" bar. Each segment + legend row links to that track's labs,
+ * and the segments grow in (staggered) the first time the bar scrolls into view.
+ */
+function TrackBar() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [grow, setGrow] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (prefersReducedMotion()) {
+      setGrow(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setGrow(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    // Fallback in case the observer never fires (e.g. odd transforms).
+    const t = window.setTimeout(() => setGrow(true), 1400);
+    return () => {
+      io.disconnect();
+      clearTimeout(t);
+    };
+  }, []);
+
+  return (
+    <div className="panel mx-auto mt-5 max-w-3xl p-6">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="font-mono text-xs tracking-tech text-ink-faint">LABS BY TRACK</span>
+        <span className="font-mono text-xs text-ink-faint">tap a colour →</span>
+      </div>
+      <div
+        ref={ref}
+        className="flex h-3 w-full overflow-hidden rounded-full bg-line/40"
+        role="group"
+        aria-label="Labs by track — tap a segment to open that track"
+      >
+        {BY_TRACK.map((t, i) => (
+          <Link
+            key={t.id}
+            href={`/subjects/${t.id}`}
+            title={`${t.name}: ${t.count} labs`}
+            aria-label={`${t.name}: ${t.count} labs — open this track`}
+            className="block h-full transition-[width,filter] duration-700 ease-out hover:brightness-125"
+            style={{
+              width: grow ? `${(t.count / TOTAL) * 100}%` : "0%",
+              background: t.accent,
+              transitionDelay: `${i * 110}ms`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        {BY_TRACK.map((t) => (
+          <Link
+            key={t.id}
+            href={`/subjects/${t.id}`}
+            aria-label={`${t.name}: ${t.count} labs — open this track`}
+            className="group flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-white/5"
+          >
+            <span aria-hidden>{t.emoji}</span>
+            <span className="text-ink-dim transition-colors group-hover:text-ink">{t.name}</span>
+            <span className="ml-auto font-mono font-semibold" style={{ color: t.accent }}>{t.count}</span>
+            <span className="font-mono text-ink-faint transition-transform group-hover:translate-x-0.5" aria-hidden>→</span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
