@@ -43,6 +43,9 @@ export function SiteHeader() {
         </div>
 
         <nav className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">
+          <Link href="/circuits" className="text-ink-dim hover:text-ink transition-colors hidden lg:block">
+            Circuits
+          </Link>
           <Link href="/create" className="text-ink-dim hover:text-ink transition-colors hidden lg:block">
             Create
           </Link>
