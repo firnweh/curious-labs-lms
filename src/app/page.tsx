@@ -29,8 +29,7 @@ export default function Home() {
 
         {/* 4 — Sample lab — play one right here */}
         <section id="samples">
-          <div className="mb-4 text-center">
-            <div className="section-label reveal">Interactive Lab</div>
+          <div className="mb-3 text-center">
             <h2 className="section-title reveal">Try a sample lab</h2>
           </div>
           <SampleLabPlayer />
