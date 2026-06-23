@@ -54,6 +54,16 @@ function getSnapshot(): Creation[] {
   return cache;
 }
 
+/** Read / overwrite the gallery — cloud sync seam (hydrate / sign-out). */
+export function readCreations(): Creation[] {
+  return read();
+}
+export function replaceCreations(list: Creation[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
+  window.dispatchEvent(new Event(EVENT));
+}
+
 export function useCreations() {
   const creations = useSyncExternalStore(subscribe, getSnapshot, () => cache);
 

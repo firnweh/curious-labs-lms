@@ -89,6 +89,13 @@ export function snapshotStore(): Store {
   return read();
 }
 
+/** Overwrite the whole progress store — cloud sync seam (hydrate / sign-out). */
+export function replaceProgress(next: Store) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(EVENT));
+}
+
 /* ── Daily streak ─────────────────────────────────────────────────────────
    A lightweight "days active" counter, bumped whenever a lab is completed.
    Stored separately so it never pollutes the activity map. */
@@ -112,6 +119,14 @@ export function readStreak(): Streak {
   } catch {
     return EMPTY_STREAK;
   }
+}
+
+/** Overwrite the streak — cloud sync seam. Dispatches the progress event so
+ *  streak readers (which share the same subscription) refresh immediately. */
+export function replaceStreak(next: Streak) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STREAK_KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(EVENT));
 }
 
 /** Bumps the streak for "today". Does NOT dispatch — the caller's progress

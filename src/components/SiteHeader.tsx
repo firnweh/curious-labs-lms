@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { HeaderAuth } from "@/components/HeaderAuth";
 
 /**
  * Global site header — fixed on every page. Curious Labs logo on the left,
- * Login button on the right. Nothing else (per design): no track tabs, no
- * level/streak chrome. The fixed height is offset by `main { padding-top }`
- * in globals.css so page content clears the bar.
+ * auth state (Login, or the signed-in learner chip) on the right. The fixed
+ * height is offset by `main { padding-top }` in globals.css so page content
+ * clears the bar.
  */
 export function SiteHeader() {
   return (
@@ -19,12 +20,7 @@ export function SiteHeader() {
           />
         </Link>
 
-        <Link
-          href="/login"
-          className="rounded-full border border-neon-cyan/50 bg-neon-cyan/10 px-5 py-2 font-mono text-sm font-semibold tracking-tech text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20"
-        >
-          Login
-        </Link>
+        <HeaderAuth />
       </div>
     </header>
   );

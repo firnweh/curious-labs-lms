@@ -1,29 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SUBJECT_MAP } from "@/lib/subjects";
 import { activitiesBySubject } from "@/lib/activities/registry";
 import { useProgress, useMounted } from "@/lib/progress";
+import { useName } from "@/lib/name";
 import type { SubjectId } from "@/lib/activities/types";
 import { Stars } from "@/components/ui";
-
-const NAME_KEY = "cl-lms-name";
 
 export function CertificateView({ subjectId }: { subjectId: SubjectId }) {
   const s = SUBJECT_MAP[subjectId];
   const { store } = useProgress();
   const mounted = useMounted();
-  const [name, setName] = useState("");
-
-  useEffect(() => {
-    setName(window.localStorage.getItem(NAME_KEY) || "");
-  }, []);
-
-  function onName(v: string) {
-    setName(v);
-    window.localStorage.setItem(NAME_KEY, v);
-  }
+  const [name, setName] = useName();
 
   const labs = activitiesBySubject(subjectId);
   const done = labs.filter((l) => store[l.id]).length;
@@ -74,7 +63,7 @@ export function CertificateView({ subjectId }: { subjectId: SubjectId }) {
             <label className="font-mono text-xs text-ink-faint">Your name (shown on the certificate)</label>
             <input
               value={name}
-              onChange={(e) => onName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="Type your name…"
               className="mt-1 w-full rounded-lg border border-line bg-panel/60 px-3 py-2 text-ink outline-none focus:border-neon-cyan/60"
               maxLength={40}

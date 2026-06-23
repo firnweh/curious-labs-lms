@@ -3,6 +3,8 @@ import { Space_Grotesk, Inter, JetBrains_Mono, Orbitron, Fredoka } from "next/fo
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TransitionProvider } from "@/components/SubjectTransition";
+import { SessionProvider } from "@/components/SessionProvider";
+import { SyncProvider } from "@/components/SyncProvider";
 
 const display = Space_Grotesk({
   variable: "--font-display",
@@ -49,18 +51,22 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <div className="grid-bg" aria-hidden />
-        <TransitionProvider>
-          <SiteHeader />
-          <main className="flex-1 pt-16">{children}</main>
-          <footer className="border-t border-line/60 mt-20">
-          <div className="mx-auto max-w-6xl px-5 py-8 text-sm text-ink-faint flex flex-wrap items-center justify-between gap-3">
-            <span className="font-mono tracking-tech">
-              CURIOUS<span className="text-neon-cyan">LABS</span> // LEARN BY DOING
-            </span>
-            <span>Browser experiments · zero installs · grades 1–10</span>
-          </div>
-        </footer>
-        </TransitionProvider>
+        <SessionProvider>
+          <SyncProvider>
+            <TransitionProvider>
+              <SiteHeader />
+              <main className="flex-1 pt-16">{children}</main>
+              <footer className="border-t border-line/60 mt-20">
+              <div className="mx-auto max-w-6xl px-5 py-8 text-sm text-ink-faint flex flex-wrap items-center justify-between gap-3">
+                <span className="font-mono tracking-tech">
+                  CURIOUS<span className="text-neon-cyan">LABS</span> // LEARN BY DOING
+                </span>
+                <span>Browser experiments · zero installs · grades 1–10</span>
+              </div>
+            </footer>
+            </TransitionProvider>
+          </SyncProvider>
+        </SessionProvider>
       </body>
     </html>
   );

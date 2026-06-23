@@ -1,23 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useCosmetics, type Cosmetic } from "@/lib/cosmetics";
 import { useGameStats } from "@/lib/gamification";
 import { useMounted } from "@/lib/progress";
-
-const NAME_KEY = "cl-lms-name";
+import { useName } from "@/lib/name";
 
 export function BaseView() {
   const cos = useCosmetics();
   const stats = useGameStats();
   const mounted = useMounted();
-  const [name, setName] = useState("");
-
-  useEffect(() => setName(window.localStorage.getItem(NAME_KEY) || ""), []);
-  function onName(v: string) {
-    setName(v);
-    window.localStorage.setItem(NAME_KEY, v);
-  }
+  const [name, setName] = useName();
 
   const accent = cos.equipped.accent.value;
 
@@ -39,7 +32,7 @@ export function BaseView() {
             </p>
             <input
               value={name}
-              onChange={(e) => onName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="Type your name…"
               maxLength={32}
               className="mt-1 w-full max-w-xs bg-transparent font-display text-3xl font-bold text-ink outline-none placeholder:text-ink-faint"

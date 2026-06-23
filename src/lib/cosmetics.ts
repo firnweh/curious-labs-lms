@@ -66,7 +66,7 @@ const DEFAULTS: Record<CosmeticType, Cosmetic> = {
   title: BY_ID.get("ti-maker")!,
 };
 
-interface CosmeticState {
+export interface CosmeticState {
   owned: string[];
   equipped: Partial<Record<CosmeticType, string>>;
 }
@@ -105,6 +105,16 @@ function getSnapshot(): CosmeticState {
     cache = read();
   }
   return cache;
+}
+
+/** Read / overwrite the cosmetics state — cloud sync seam. */
+export function readCosmeticState(): CosmeticState {
+  return read();
+}
+export function replaceCosmeticState(next: CosmeticState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(EVENT));
 }
 
 export interface Equipped {
