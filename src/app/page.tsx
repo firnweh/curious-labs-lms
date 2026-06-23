@@ -1,9 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import MakerspaceStats from "@/components/MakerspaceStats";
 import { CosmosFX } from "@/components/CosmosFX";
 import { CinematicHero } from "@/components/CinematicHero";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
-import { HeroIntro3D, HeroIntroRobotics, HeroIntroAI, HeroIntroWeb } from "@/components/HeroIntro";
+import { HeroIntro3D, HeroIntroRobotics, HeroIntroAI, HeroIntroWeb } from "@/components/HeroIntroLazy";
 import { StartQR } from "@/components/StartQR";
 
 // 7 slides: Home, the 4 studio-intro sections, Stats, and the launch CTA.
