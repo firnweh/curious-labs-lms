@@ -42,7 +42,7 @@ export function GradeView({ grade }: { grade: number }) {
 
       {/* cards, each tagged with its curriculum month */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((meta) => (
+        {shown.map((meta, i) => (
           <div key={meta.id} className="flex flex-col gap-1.5">
             <span className="font-mono text-[11px] tracking-tech text-ink-faint">
               {(meta.month ?? "").toUpperCase()}
@@ -51,7 +51,7 @@ export function GradeView({ grade }: { grade: number }) {
                 {SUBJECT_MAP[meta.subject].name}
               </span>
             </span>
-            <ActivityCard meta={meta} />
+            <ActivityCard meta={meta} index={i} />
           </div>
         ))}
       </div>

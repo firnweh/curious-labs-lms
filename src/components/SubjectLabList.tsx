@@ -15,7 +15,7 @@ export function SubjectLabList({ subject }: { subject: SubjectId }) {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-xs tracking-tech text-ink-faint">
           {info.classes.toUpperCase()} · {labs.length} LAB{labs.length === 1 ? "" : "S"}
         </p>
@@ -30,8 +30,8 @@ export function SubjectLabList({ subject }: { subject: SubjectId }) {
         </div>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {labs.map((meta) => (
-            <ActivityCard key={meta.id} meta={meta} />
+          {labs.map((meta, i) => (
+            <ActivityCard key={meta.id} meta={meta} index={i} />
           ))}
         </div>
       )}

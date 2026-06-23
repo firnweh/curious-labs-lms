@@ -19,8 +19,8 @@ export function TrackGrid() {
         <span style={{ color: info.accent }}>{info.classes}:</span> {info.thinking}
       </p>
       <div className="grid gap-5 sm:grid-cols-2">
-        {SUBJECTS.map((s) => (
-          <SubjectCard key={s.id} subject={s} activities={activitiesBySubjectAndBand(s.id, b)} />
+        {SUBJECTS.map((s, i) => (
+          <SubjectCard key={s.id} subject={s} activities={activitiesBySubjectAndBand(s.id, b)} index={i} />
         ))}
       </div>
     </>
