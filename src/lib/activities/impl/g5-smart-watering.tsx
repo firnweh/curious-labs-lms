@@ -16,6 +16,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
    both pots in the band the entire day. Too HIGH a threshold floods (overwater,
    blue). Too LOW lets them wilt (dry, red). Mistakes only cost a heart and end
    the day with a kind nudge — never a scold, always retryable.
+
+   OPTIMIZATION GOAL (the real challenge): merely surviving the day earns the
+   garden 1 star. To earn ⭐⭐⭐ the rule must also be EFFICIENT — water the plants
+   on as FEW pump runs as the day allows. A sloppy rule (high threshold + short
+   bursts) survives but waters constantly (many runs → fewer stars). An elegant
+   rule (let the soil dry closer to the line, then a longer run) keeps both pots
+   green on far fewer runs → full stars. There are MANY surviving rules but only
+   the lean ones max out, so the kid plans and reasons instead of guessing.
    ──────────────────────────────────────────────────────────────────────────── */
 
 const ACCENT = "#a855f7";
@@ -65,6 +73,20 @@ const RUN_LABEL: Record<RunTime, string> = {
 const RUN_WATER: Record<RunTime, number> = { short: 1, medium: 2, long: 3 };
 const RUN_ORDER: readonly RunTime[] = ["short", "medium", "long"] as const;
 
+/* ── Efficiency scoring ──────────────────────────────────────────────────────
+   Surviving the whole day earns 1 star. To earn 3, the rule must water both pots
+   on FEW pump runs. The day needs roughly fern(13×96=1248)+cactus(8×96=768)=2016
+   moisture replaced. With LONG runs (330 each) that floor is ~7 runs; lazy short
+   bursts near a high threshold can fire 20+ times. These bounds are reachable
+   with an efficient rule (low threshold + long run) yet reward real planning. */
+const STARS_3_MAX_RUNS = 10; // lean, well-planned rule
+const STARS_2_MAX_RUNS = 15; // decent but a bit eager
+function starsForRuns(runs: number): 1 | 2 | 3 {
+  if (runs <= STARS_3_MAX_RUNS) return 3;
+  if (runs <= STARS_2_MAX_RUNS) return 2;
+  return 1;
+}
+
 interface PotState {
   moisture: number;
   pumping: number; // ticks left of the watering animation
@@ -111,6 +133,9 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
   const [hearts, setHearts] = useState<number>(3);
   const [water, setWater] = useState<number>(0);
   const [day, setDay] = useState<number>(0);
+  const [earnedStars, setEarnedStars] = useState<1 | 2 | 3>(3);
+  // Best (fewest-run) clean win so far — lets the kid see if they're improving.
+  const [bestRuns, setBestRuns] = useState<number | null>(null);
 
   // Refs so the deterministic loop reads fresh values without re-binding.
   const phaseRef = useRef<Phase>("idle");
@@ -147,11 +172,17 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
         phaseRef.current = "won";
         if (!doneRef.current) {
           doneRef.current = true;
-          onComplete({
-            passed: true,
-            stars: 3,
-            detail: `Both plants thrived all day on ${waterRef.current} pump runs!`,
-          });
+          const runs = waterRef.current;
+          const stars = starsForRuns(runs);
+          setEarnedStars(stars);
+          setBestRuns((b) => (b === null ? runs : Math.min(b, runs)));
+          const detail =
+            stars === 3
+              ? `Both plants thrived on just ${runs} pump runs — a lean, efficient rule!`
+              : stars === 2
+                ? `Both plants survived on ${runs} runs. Let the soil dry a little more, or use a longer pump, to water less often for ⭐⭐⭐.`
+                : `Both plants survived, but on ${runs} runs the pump ran a lot. Lower the threshold and lengthen the pump to water far less often.`;
+          onComplete({ passed: true, stars, detail });
         }
       } else {
         setPhase("lost");
@@ -352,11 +383,14 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
   );
 
   const status = useMemo(() => {
-    if (phase === "won") return "Both plants happy all day! ✨";
+    if (phase === "won")
+      return earnedStars === 3
+        ? "Both plants happy — and on so few runs! ✨"
+        : "Both plants happy! Now try to water on fewer runs.";
     if (phase === "lost") return "Day ended early — tune the rule and retry.";
     if (phase === "running") return `Day running… ${clock} · ${hour}/${HOURS}h`;
     return "Set the rule, then press Run Day ▶";
-  }, [phase, clock, hour]);
+  }, [phase, clock, hour, earnedStars]);
 
   return (
     <div className="flex w-full max-w-[440px] flex-col gap-3 text-ink">
@@ -542,7 +576,22 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
           >
             {status}
           </span>
-          <span className="font-mono text-[11px] text-ink-faint">💧 {water} runs</span>
+          <span
+            className="font-mono text-[11px] tabular-nums"
+            style={{
+              color:
+                water === 0
+                  ? undefined
+                  : water <= STARS_3_MAX_RUNS
+                    ? GREEN
+                    : water <= STARS_2_MAX_RUNS
+                      ? ACCENT
+                      : RED,
+            }}
+            aria-label={`${water} pump runs so far`}
+          >
+            💧 {water} runs
+          </span>
         </div>
 
         {/* win celebration */}
@@ -555,7 +604,13 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
               ✨🎉
             </span>
             <span className="font-display text-sm" style={{ color: ACCENT }}>
-              ⭐⭐⭐ Garden saved!
+              {"⭐".repeat(earnedStars)}
+              {" "}
+              {earnedStars === 3
+                ? "Lean & green!"
+                : earnedStars === 2
+                  ? `Saved on ${water} runs`
+                  : `Saved on ${water} runs`}
             </span>
           </div>
         )}
@@ -565,6 +620,11 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
       <div className="panel flex flex-col gap-3 rounded-xl p-3">
         <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
           Automation rule: water when moisture is below…
+        </p>
+        <p className="-mt-1 text-[11px] text-ink-dim">
+          🎯 Goal: keep <span style={{ color: GREEN }}>both</span> plants green all
+          day — then do it on as <span style={{ color: ACCENT }}>few pump runs</span>{" "}
+          as you can. Fewer runs ⇒ more ⭐ (≤{STARS_3_MAX_RUNS} runs = ⭐⭐⭐).
         </p>
 
         <div className="flex items-center gap-3">
@@ -690,7 +750,14 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
 
         {/* controls */}
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[11px] text-ink-faint">Day: {day}</span>
+          <span className="font-mono text-[11px] text-ink-faint">
+            Day: {day}
+            {bestRuns !== null && (
+              <span className="ml-2" style={{ color: ACCENT }}>
+                best: {bestRuns} runs {"⭐".repeat(starsForRuns(bestRuns))}
+              </span>
+            )}
+          </span>
           <div className="flex gap-2">
             <button
               type="button"

@@ -1,17 +1,27 @@
 "use client";
 import type { ActivityProps } from "@/lib/activities/types";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Press to Go 🔘 — a JUNIOR (Class 1-3, age ~6-8) ROBOTICS lab.
- * ONE learning goal: pressing a button (an INPUT) makes the robot DO something
- * (an OUTPUT) — cause and effect.
+ * Core idea (unchanged): an INPUT (pressing a button) makes the robot DO an
+ * OUTPUT — cause and effect. But now it is a real PROBLEM, not a one-tap toy.
  *
- * A friendly robot has an empty slot in its chest. The child first TAPS to
- * snap the big glowing button into the circuit, then PRESSES it — the robot
- * springs to life: eyes light up, the fan on its head spins, and it bounces
- * and dances with a confetti party. Win when the robot is activated.
- * Round 1 = snap + press to turn ON. Round 2 = press AGAIN to make it dance.
+ * The robot shows a WISH on its chest screen — a picture of what it wants to
+ * do: 💡 light up, 🌀 spin its fan, or 🎵 play music. Below sit the control
+ * buttons, each wired to ONE output (shown by its own picture + colour). The
+ * child must LOOK at the wish and press the matching button — the button's
+ * place CHANGES every round, so "always press the green one" fails; you must
+ * read the picture and reason which input makes that output.
+ *
+ *   Round 1 — 2 buttons, one wish.            (read + match)
+ *   Round 2 — 3 buttons, shuffled, one wish.  (more inputs, must search)
+ *   Round 3 — 3 buttons, a TWO-step wish 💡→🎵 in order.  (plan a sequence)
+ *
+ * The twist that defeats luck: round 3 needs the RIGHT outputs in the RIGHT
+ * ORDER. A wrong/early press gives a gentle wobble and the plan restarts —
+ * never a scold. Solve all three → the robot dances, ⭐⭐⭐, onComplete once.
  *
  * Understood from VISUALS alone — emoji, colour, big shapes; near-zero reading.
  * Touch-first, huge tap targets, deterministic, always winnable, no scolding.
@@ -19,7 +29,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const ACCENT = "#34d399";
 
-type Phase = "needsButton" | "ready" | "on" | "won";
+/** The three outputs the robot can do. Each has a picture and a button colour
+ *  so the child can match by SHAPE and COLOUR — no reading needed. */
+type Output = "light" | "fan" | "music";
+
+interface OutputDef {
+  icon: string; // what the robot DOES, shown on its screen and on the button
+  color: string; // button colour so each input is its own thing
+  shadow: string; // 3D press-shadow under the button
+  label: string; // accessibility only — never shown
+}
+
+const OUTPUTS: Readonly<Record<Output, OutputDef>> = {
+  light: { icon: "💡", color: "#f5c451", shadow: "#9c7510", label: "light up" },
+  fan: { icon: "🌀", color: "#5cc8f0", shadow: "#1d7aa0", label: "spin the fan" },
+  music: { icon: "🎵", color: "#e07ad8", shadow: "#9a3c93", label: "play music" },
+};
+
+/** A round = which buttons are on the panel (in this left-to-right order) and
+ *  the WISH the robot makes (a sequence of outputs to perform in order).
+ *  Hand-authored & deterministic: the button order is deliberately shuffled so
+ *  the matching button sits in a different place each round (guess-defeating).
+ *  Round 3's wish has TWO steps → the child must plan & press them in order. */
+interface RoundDef {
+  buttons: ReadonlyArray<Output>; // panel layout, left → right
+  wish: ReadonlyArray<Output>; // do these outputs, in this order
+}
+
+const ROUNDS: ReadonlyArray<RoundDef> = [
+  { buttons: ["light", "fan"], wish: ["fan"] }, // 2 buttons, match the spin
+  { buttons: ["music", "light", "fan"], wish: ["light"] }, // 3 buttons shuffled, match the light
+  { buttons: ["fan", "music", "light"], wish: ["light", "music"] }, // twist: a 2-step plan in order
+];
+
+type Phase = "play" | "doing" | "won" | "oops" | "done";
 
 interface Spark {
   id: number;
@@ -30,21 +73,33 @@ interface Spark {
 
 const CONFETTI = ["⭐", "✨", "🎉", "💚", "🌟", "🎊"] as const;
 
-let SPARK_UID = 1;
+/** Deterministic spark fan — no randomness, so grading/visuals stay reproducible. */
+function makeSparks(count: number, seed: number): Spark[] {
+  return Array.from({ length: count }).map((_, i) => ({
+    id: seed * 100 + i,
+    angle: (360 / count) * i + (i % 3) * 9,
+    dist: 80 + (i % 4) * 16,
+    emoji: CONFETTI[i % CONFETTI.length],
+  }));
+}
 
 export default function PresstoGo({ onComplete }: ActivityProps) {
-  const [phase, setPhase] = useState<Phase>("needsButton");
-  // How many times the live button has been pressed (drives the 2 rounds).
-  const [presses, setPresses] = useState<number>(0);
-  // Brief springy "depress" pulse on the live button.
+  const [round, setRound] = useState<number>(0);
+  // How many steps of THIS round's wish are already correctly done.
+  const [progress, setProgress] = useState<number>(0);
+  const [phase, setPhase] = useState<Phase>("play");
+  // Which output the robot is currently performing (drives the live animation).
+  const [active, setActive] = useState<Output | null>(null);
+  // Springy "depress" pulse keyed per button + a wobble for a wrong press.
   const [poke, setPoke] = useState<number>(0);
-  // Gentle friendly wobble when the child taps the empty button (pre-snap).
-  const [nudge, setNudge] = useState<number>(0);
+  const [pokedKey, setPokedKey] = useState<string>("");
+  const [wobbleKey, setWobbleKey] = useState<string>("");
   const [sparks, setSparks] = useState<Spark[]>([]);
   const [stars, setStars] = useState<number>(0);
 
   const reportedRef = useRef<boolean>(false);
   const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const audioRef = useRef<AudioContext | null>(null);
 
   const addTimer = useCallback((fn: () => void, ms: number): void => {
     const t = setTimeout(fn, ms);
@@ -58,83 +113,161 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
-  const buttonPlaced = phase !== "needsButton";
-  const robotOn = phase === "on" || phase === "won";
+  const def = ROUNDS[round];
+  const wish = def.wish;
+  const lastRound = round >= ROUNDS.length - 1;
+
+  // Fresh round: clear the plan + idle the robot.
+  useEffect(() => {
+    setProgress(0);
+    setActive(null);
+    setSparks([]);
+    setPhase("play");
+  }, [round]);
+
+  const robotOn = phase === "doing" || phase === "won" || phase === "done";
   const won = phase === "won";
+  const done = phase === "done";
+  const celebrating = won || done;
+  const busy = phase === "doing" || celebrating;
 
-  // ── Snap the button into the chest slot ──
-  const snapButton = useCallback((): void => {
-    if (phase !== "needsButton") return;
-    setPhase("ready");
-  }, [phase]);
-
-  // ── Throw a burst of confetti outward from the robot ──
-  const burst = useCallback((count: number): void => {
-    const next: Spark[] = Array.from({ length: count }).map((_, i) => ({
-      id: SPARK_UID++,
-      angle: (360 / count) * i + Math.random() * 18,
-      dist: 80 + Math.random() * 56,
-      emoji: CONFETTI[i % CONFETTI.length],
-    }));
-    setSparks(next);
-    addTimer(() => setSparks([]), 1100);
-  }, [addTimer]);
-
-  // ── Press the LIVE button: the cause → effect moment ──
-  const pressButton = useCallback((): void => {
-    if (phase === "needsButton" || phase === "won") return;
-    setPoke((p) => p + 1);
-    const n = presses + 1;
-    setPresses(n);
-
-    if (phase === "ready") {
-      // Round 1: robot wakes up.
-      setPhase("on");
-      burst(8);
-    } else if (phase === "on") {
-      // Round 2: robot does a happy dance → WIN.
-      setPhase("won");
-      burst(14);
-      // Pop the three stars in one at a time.
-      setStars(0);
-      addTimer(() => setStars(1), 180);
-      addTimer(() => setStars(2), 460);
-      addTimer(() => setStars(3), 740);
-      if (!reportedRef.current) {
-        reportedRef.current = true;
-        onComplete({
-          passed: true,
-          stars: 3,
-          detail: "Press → Go! The button switched the robot on. 🔘🤖",
-        });
-      }
+  // ── Soft optional sound, made on the user's gesture; never throws/blocks. ──
+  const blip = useCallback((freq: number, dur: number): void => {
+    try {
+      type WinAudio = typeof AudioContext;
+      const w = window as unknown as { webkitAudioContext?: WinAudio };
+      const Ctx: WinAudio | undefined = window.AudioContext ?? w.webkitAudioContext;
+      if (!Ctx) return;
+      const ac = audioRef.current ?? new Ctx();
+      audioRef.current = ac;
+      if (ac.state === "suspended") void ac.resume();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ac.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, ac.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start();
+      osc.stop(ac.currentTime + dur + 0.02);
+    } catch {
+      /* sound is a nicety — silently ignore any failure */
     }
-  }, [phase, presses, burst, addTimer, onComplete]);
+  }, []);
 
-  // ── Tapping the EMPTY button: gentle nudge, no scolding ──
-  const wiggleHint = useCallback((): void => {
-    if (phase !== "needsButton") return;
-    setNudge((n) => n + 1);
-  }, [phase]);
+  const chime = useCallback((): void => {
+    [523, 659, 784, 1046].forEach((f, i) => {
+      window.setTimeout(() => blip(f, 0.18), i * 110);
+    });
+  }, [blip]);
+
+  const burst = useCallback(
+    (count: number, seed: number): void => {
+      setSparks(makeSparks(count, seed));
+      addTimer(() => setSparks([]), 1100);
+    },
+    [addTimer],
+  );
+
+  // ── Press a control button: the cause → effect moment, now a CHOICE. ──
+  const press = useCallback(
+    (out: Output, slot: number): void => {
+      if (busy) return;
+      const key = `${round}-${slot}`;
+
+      const want = wish[progress];
+      if (out !== want) {
+        // Wrong input → gentle wobble, never a scold. A multi-step plan restarts
+        // so the child re-counts; a single-step round just lets them try again.
+        blip(220, 0.12);
+        setWobbleKey(key);
+        setActive(null);
+        if (wish.length > 1 && progress > 0) {
+          setProgress(0);
+          setPhase("oops");
+          addTimer(() => setPhase("play"), 620);
+        }
+        return;
+      }
+
+      // Right input → the robot performs that output.
+      setPoke((p) => p + 1);
+      setPokedKey(key);
+      setActive(out);
+      setPhase("doing");
+      blip(out === "light" ? 740 : out === "fan" ? 590 : 880, 0.12);
+
+      const next = progress + 1;
+      setProgress(next);
+
+      if (next < wish.length) {
+        // More steps remain in this round's plan — flash the output, keep going.
+        burst(6, next);
+        addTimer(() => {
+          setActive(null);
+          setPhase("play");
+        }, 560);
+        return;
+      }
+
+      // Whole wish done → this round is solved.
+      if (lastRound) {
+        setPhase("done");
+        burst(16, 99);
+        chime();
+        setStars(0);
+        addTimer(() => setStars(1), 200);
+        addTimer(() => setStars(2), 480);
+        addTimer(() => setStars(3), 760);
+        if (!reportedRef.current) {
+          reportedRef.current = true;
+          onComplete({
+            passed: true,
+            stars: 3,
+            detail: "You matched every wish — input → output! 🔘🤖",
+          });
+        }
+      } else {
+        setPhase("won");
+        burst(10, round + 1);
+        chime();
+        addTimer(() => setRound((r) => r + 1), 1150);
+      }
+    },
+    [busy, round, wish, progress, lastRound, blip, burst, chime, addTimer, onComplete],
+  );
 
   const reset = useCallback((): void => {
     clearTimers();
     reportedRef.current = false;
-    setPhase("needsButton");
-    setPresses(0);
+    setRound(0);
+    setProgress(0);
+    setActive(null);
     setPoke(0);
-    setNudge(0);
+    setPokedKey("");
+    setWobbleKey("");
     setSparks([]);
     setStars(0);
+    setPhase("play");
   }, [clearTimers]);
 
-  // Big visual hint emoji for the floating coach bubble.
+  // Coach bubble emoji — wholly visual, no sentences.
   const coach = useMemo<string>(() => {
-    if (phase === "needsButton") return "👇🔘";
-    if (phase === "ready") return "👆";
-    if (phase === "on") return "👆";
-    return "🎉";
-  }, [phase]);
+    if (done) return "🏆";
+    if (won) return "🎉";
+    if (phase === "oops") return "🤔";
+    if (phase === "doing") return "✨";
+    return "👀"; // "look at the wish, then choose"
+  }, [done, won, phase]);
+
+  // The screen shows the FULL wish (so multi-step plans are visible), with the
+  // already-done steps checked off — a readable, count-able plan.
+  const screenIcons: ReadonlyArray<{ out: Output; doneStep: boolean }> = wish.map((o, i) => ({
+    out: o,
+    doneStep: i < progress,
+  }));
 
   return (
     <div className="flex w-full flex-col items-center gap-3 font-mono text-ink">
@@ -157,22 +290,17 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
           0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px ${ACCENT}); }
           50% { opacity: 0.55; filter: drop-shadow(0 0 10px ${ACCENT}); }
         }
-        @keyframes jrbutton-snap {
-          0% { transform: translateY(-26px) scale(0.4); opacity: 0; }
-          60% { transform: translateY(4px) scale(1.18); opacity: 1; }
-          80% { transform: translateY(-2px) scale(0.94); }
-          100% { transform: translateY(0) scale(1); }
-        }
         @keyframes jrbutton-poke {
           0% { transform: scale(1); }
-          35% { transform: scale(0.8) translateY(6px); }
+          35% { transform: scale(0.86) translateY(6px); }
           100% { transform: scale(1) translateY(0); }
         }
         @keyframes jrbutton-wobble {
           0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(-7deg); }
-          60% { transform: rotate(5deg); }
-          85% { transform: rotate(-3deg); }
+          20% { transform: rotate(-9deg); }
+          45% { transform: rotate(7deg); }
+          70% { transform: rotate(-4deg); }
+          90% { transform: rotate(2deg); }
         }
         @keyframes jrbutton-starpop {
           0% { transform: scale(0) rotate(-40deg); opacity: 0; }
@@ -188,37 +316,84 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-6px); }
         }
+        @keyframes jrbutton-wishpop {
+          0% { transform: scale(0.5); opacity: 0; }
+          60% { transform: scale(1.18); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes jrbutton-ready {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+        .jrbutton-spring {
+          transition: transform 0.16s cubic-bezier(.34,1.56,.64,1);
+          will-change: transform;
+        }
+        .jrbutton-spring:active:not(:disabled) { transform: scale(0.9); }
         @media (prefers-reduced-motion: reduce) {
           .jrbutton-anim { animation: none !important; }
+          .jrbutton-spring { transition: none; }
         }
       `}</style>
 
-      {/* ── Coach bubble (emoji only) ── */}
+      {/* ── Coach bubble + round dots (emoji only, no sentences) ── */}
       <div
-        className="flex items-center gap-2 rounded-full px-5 py-1.5 text-3xl"
+        className="flex items-center gap-3 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "The robot is dancing! You did it!"
-            : phase === "needsButton"
-              ? "Tap to snap the button in"
-              : "Press the button to start the robot"
+          done
+            ? "You matched all three wishes! Well done!"
+            : won
+              ? "Wish granted! Next robot wish coming up"
+              : phase === "doing"
+                ? "The robot is doing it!"
+                : phase === "oops"
+                  ? "Not that one — try again"
+                  : wish.length > 1
+                    ? `Round ${round + 1} of 3. Press the buttons that match the robot's wishes, in order`
+                    : `Round ${round + 1} of 3. Press the button that matches the robot's wish`
         }
         style={{
           background: robotOn ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
           border: `2px solid ${robotOn ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 20px ${ACCENT}66` : undefined,
+          boxShadow: celebrating ? `0 0 20px ${ACCENT}66` : undefined,
         }}
       >
         <span
           aria-hidden="true"
           className="jrbutton-anim"
-          style={{ animation: won ? undefined : "jrbutton-bob 1.6s ease-in-out infinite" }}
+          style={{
+            display: "inline-block",
+            animation: celebrating ? "jrbutton-ready 0.7s ease-in-out infinite" : "jrbutton-bob 1.6s ease-in-out infinite",
+          }}
         >
           {coach}
         </span>
-        {won && (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || done;
+            const current = i === round && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 13,
+                  width: 13,
+                  background: solved ? ACCENT : current ? "rgba(52,211,153,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jrbutton-ready 1.5s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done && (
           <span aria-hidden="true" className="text-2xl">
             {stars >= 1 && (
               <span className="jrbutton-anim" style={{ display: "inline-block", animation: "jrbutton-starpop 0.5s ease-out" }}>⭐</span>
@@ -234,10 +409,7 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
       </div>
 
       {/* ── The robot stage ── */}
-      <div
-        className="panel relative w-full overflow-hidden rounded-3xl border border-line p-3"
-        style={{ maxWidth: 430 }}
-      >
+      <div className="panel relative w-full overflow-hidden rounded-3xl border border-line p-3" style={{ maxWidth: 430 }}>
         {/* confetti layer (centred on the robot) */}
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           {sparks.map((s) => {
@@ -254,7 +426,7 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
                     "--dx": `${dx}px`,
                     "--dy": `${dy}px`,
                     animation: "jrbutton-fly 1s ease-out forwards",
-                  } as React.CSSProperties
+                  } as CSSProperties
                 }
               >
                 {s.emoji}
@@ -268,7 +440,7 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
           className="block w-full select-none"
           style={{ touchAction: "manipulation" }}
           role="img"
-          aria-label="A friendly robot with a fan on its head and a button slot in its chest"
+          aria-label="A friendly robot with a fan on its head and a screen on its chest showing what it wants to do"
         >
           <defs>
             <filter id="jrb-glow" x="-60%" y="-60%" width="220%" height="220%">
@@ -286,28 +458,24 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
             style={{
               transformOrigin: "150px 200px",
               transformBox: "view-box",
-              animation: won
+              animation: celebrating
                 ? "jrbutton-dance 0.7s ease-in-out infinite"
                 : "jrbutton-breathe 2.6s ease-in-out infinite",
             }}
           >
-            {/* head fan ── spins only when the robot is ON */}
+            {/* head fan ── spins only while the robot is performing the fan, or celebrating */}
             <g
               className="jrbutton-anim"
               style={{
                 transformOrigin: "150px 54px",
                 transformBox: "view-box",
-                animation: robotOn ? "jrbutton-spin 0.5s linear infinite" : "none",
+                animation:
+                  (active === "fan" && phase === "doing") || celebrating
+                    ? "jrbutton-spin 0.5s linear infinite"
+                    : "none",
               }}
             >
-              <text
-                x="150"
-                y="66"
-                textAnchor="middle"
-                fontSize="40"
-                aria-hidden="true"
-                opacity={robotOn ? 1 : 0.45}
-              >
+              <text x="150" y="66" textAnchor="middle" fontSize="40" aria-hidden="true" opacity={robotOn ? 1 : 0.45}>
                 {robotOn ? "🌀" : "✜"}
               </text>
             </g>
@@ -327,22 +495,25 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
               style={{ transition: "stroke 240ms ease" }}
             />
 
-            {/* eyes ── light up when ON */}
-            {[120, 180].map((ex) => (
-              <g key={ex}>
-                <circle
-                  cx={ex}
-                  cy="126"
-                  r="15"
-                  fill={robotOn ? ACCENT : "#1b2436"}
-                  stroke={robotOn ? ACCENT : "#3a4866"}
-                  strokeWidth="3"
-                  filter={robotOn ? "url(#jrb-glow)" : undefined}
-                  style={{ transition: "fill 240ms ease, stroke 240ms ease" }}
-                />
-                <circle cx={ex} cy="126" r="6" fill={robotOn ? "#05140d" : "#2a3550"} />
-              </g>
-            ))}
+            {/* eyes ── light up when the robot is doing the LIGHT output, or celebrating */}
+            {[120, 180].map((ex) => {
+              const lit = (active === "light" && phase === "doing") || celebrating;
+              return (
+                <g key={ex}>
+                  <circle
+                    cx={ex}
+                    cy="126"
+                    r="15"
+                    fill={lit ? "#f5c451" : robotOn ? ACCENT : "#1b2436"}
+                    stroke={lit ? "#f5c451" : robotOn ? ACCENT : "#3a4866"}
+                    strokeWidth="3"
+                    filter={lit || robotOn ? "url(#jrb-glow)" : undefined}
+                    style={{ transition: "fill 220ms ease, stroke 220ms ease" }}
+                  />
+                  <circle cx={ex} cy="126" r="6" fill={robotOn ? "#05140d" : "#2a3550"} />
+                </g>
+              );
+            })}
 
             {/* mouth: flat when off, big smile when on */}
             <path
@@ -371,7 +542,7 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
             <g style={{ transition: "transform 240ms ease" }}>
               <rect
                 x="56"
-                y={won ? 176 : 200}
+                y={celebrating ? 176 : 200}
                 width="22"
                 height="60"
                 rx="11"
@@ -382,7 +553,7 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
               />
               <rect
                 x="222"
-                y={won ? 176 : 200}
+                y={celebrating ? 176 : 200}
                 width="22"
                 height="60"
                 rx="11"
@@ -393,128 +564,109 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
               />
             </g>
 
-            {/* CHEST SLOT — empty dashed circle, or the snapped-in button */}
-            {!buttonPlaced ? (
-              <circle
-                cx="150"
-                cy="238"
-                r="30"
-                fill="#05080f"
-                stroke="#4a567e"
-                strokeWidth="3"
-                strokeDasharray="7 6"
-              >
-                <animate
-                  attributeName="opacity"
-                  values="0.55;1;0.55"
-                  dur="1.4s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-            ) : (
-              <g
-                key={`slot-${presses}`}
-                className="jrbutton-anim"
-                style={{
-                  transformOrigin: "150px 238px",
-                  transformBox: "view-box",
-                  animation:
-                    presses === 0
-                      ? "jrbutton-snap 0.5s cubic-bezier(.34,1.56,.64,1)"
-                      : undefined,
-                }}
-              >
-                <circle cx="150" cy="238" r="32" fill="#05140d" stroke={ACCENT} strokeWidth="3" />
-                <circle
-                  cx="150"
-                  cy="238"
-                  r="22"
-                  fill={robotOn ? ACCENT : "#0e3b29"}
-                  className={robotOn ? "jrbutton-anim" : undefined}
-                  style={{
-                    transition: "fill 200ms ease",
-                    transformBox: "view-box",
-                    transformOrigin: "150px 238px",
-                    animation: robotOn ? "jrbutton-pulse 1s ease-in-out infinite" : undefined,
-                  }}
-                />
-              </g>
-            )}
+            {/* CHEST SCREEN — the robot's WISH: the picture(s) it wants to do.
+                Already-done steps get a soft ✓ tint so a 2-step plan reads clearly. */}
+            <rect
+              x="98"
+              y="206"
+              width="104"
+              height="64"
+              rx="14"
+              fill="#05080f"
+              stroke={robotOn ? ACCENT : "#4a567e"}
+              strokeWidth="3"
+              style={{ transition: "stroke 220ms ease" }}
+            />
+            <g transform="translate(150 238)">
+              {screenIcons.map((it, i) => {
+                const n = screenIcons.length;
+                // space the wish icons across the little screen
+                const spread = n > 1 ? 30 : 0;
+                const x = (i - (n - 1) / 2) * spread;
+                const isNow = i === progress && !celebrating && phase !== "oops";
+                return (
+                  <g key={`${round}-wish-${i}`} transform={`translate(${x} 0)`}>
+                    {/* highlight ring around the CURRENT step to chase */}
+                    {isNow && (
+                      <circle
+                        cx="0"
+                        cy="0"
+                        r="17"
+                        fill="none"
+                        stroke={ACCENT}
+                        strokeWidth="2.5"
+                        opacity="0.9"
+                        className="jrbutton-anim"
+                        style={{ animation: "jrbutton-pulse 1.2s ease-in-out infinite" }}
+                      />
+                    )}
+                    <text
+                      x="0"
+                      y="1"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize="26"
+                      aria-hidden="true"
+                      className="jrbutton-anim"
+                      opacity={it.doneStep ? 0.4 : 1}
+                      style={{ animation: isNow ? "jrbutton-wishpop 0.4s ease-out" : undefined }}
+                    >
+                      {OUTPUTS[it.out].icon}
+                    </text>
+                    {/* tiny tick over a step that's already been performed */}
+                    {it.doneStep && (
+                      <text x="9" y="-9" textAnchor="middle" dominantBaseline="central" fontSize="15" aria-hidden="true">
+                        ✅
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
           </g>
         </svg>
       </div>
 
-      {/* ── THE BIG BUTTON ──
-          Before snap: tap to snap it in (gentle wiggle if pressed prematurely
-          handled elsewhere). After snap: the live cause→effect button. */}
-      {!buttonPlaced ? (
-        <button
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            snapButton();
-          }}
-          aria-label="Snap the button into the robot"
-          className="jrbutton-anim grid place-items-center rounded-full"
-          style={{
-            width: 132,
-            height: 132,
-            touchAction: "manipulation",
-            background: "radial-gradient(circle at 50% 38%, #10b981, #065f46)",
-            border: `4px solid ${ACCENT}`,
-            color: "#05140d",
-            fontSize: 56,
-            boxShadow: `0 9px 0 0 #043d2c`,
-            animation: "jrbutton-bob 2.2s ease-in-out infinite",
-          }}
-        >
-          <span aria-hidden="true">🔘</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          key={`live-${poke}`}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            pressButton();
-          }}
-          disabled={won}
-          aria-label={won ? "The robot is dancing" : "Press the button to start the robot"}
-          className="jrbutton-anim grid place-items-center rounded-full disabled:opacity-95"
-          style={{
-            width: 132,
-            height: 132,
-            touchAction: "manipulation",
-            background: "radial-gradient(circle at 50% 38%, #34d399, #047857)",
-            border: `5px solid ${ACCENT}`,
-            color: "#05140d",
-            fontSize: 40,
-            fontWeight: 800,
-            boxShadow: `0 10px 0 0 #045c41, 0 0 22px ${ACCENT}88`,
-            animation:
-              poke > 0
-                ? "jrbutton-poke 0.32s cubic-bezier(.34,1.56,.64,1)"
-                : won
-                  ? undefined
-                  : "jrbutton-bob 1.5s ease-in-out infinite",
-          }}
-        >
-          <span aria-hidden="true">{won ? "🎉" : "GO"}</span>
-        </button>
-      )}
-
-      {/* gentle wobble target: tapping anywhere on the empty slot hint
-          (handled by the snap button above); the empty-button wiggle is a
-          friendly nudge if needed. Invisible helper keeps lints happy. */}
-      <span
-        aria-hidden="true"
-        className="jrbutton-anim"
-        style={{
-          height: 0,
-          animation: nudge > 0 ? "jrbutton-wobble 0.5s ease-in-out" : undefined,
-        }}
-        onPointerDown={wiggleHint}
-      />
+      {/* ── THE CONTROL PANEL: one button per output, shuffled each round.
+            Read the robot's wish, then press the matching picture. ── */}
+      <div className="flex w-full max-w-[430px] items-stretch justify-center gap-3">
+        {def.buttons.map((out, slot) => {
+          const o = OUTPUTS[out];
+          const key = `${round}-${slot}`;
+          const isPoked = pokedKey === key && poke > 0;
+          const isWobbling = wobbleKey === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                press(out, slot);
+              }}
+              disabled={busy}
+              aria-label={`Button to make the robot ${o.label}`}
+              className="jrbutton-spring grid flex-1 place-items-center rounded-full disabled:opacity-70"
+              style={{
+                height: 96,
+                maxWidth: 120,
+                touchAction: "manipulation",
+                background: o.color,
+                border: `4px solid rgba(255,255,255,0.55)`,
+                color: "#05140d",
+                fontSize: 44,
+                boxShadow: `0 8px 0 0 ${o.shadow}`,
+                animation: isWobbling
+                  ? "jrbutton-wobble 0.5s ease-in-out"
+                  : isPoked
+                    ? "jrbutton-poke 0.32s cubic-bezier(.34,1.56,.64,1)"
+                    : undefined,
+              }}
+            >
+              <span aria-hidden="true">{o.icon}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* ── Reset ── */}
       <button
@@ -523,8 +675,8 @@ export default function PresstoGo({ onComplete }: ActivityProps) {
           e.preventDefault();
           reset();
         }}
-        aria-label="Start over"
-        className="grid h-[64px] w-[64px] place-items-center rounded-2xl text-3xl transition active:scale-90"
+        aria-label="Start over from round one"
+        className="jrbutton-spring grid h-[56px] w-[56px] place-items-center rounded-2xl text-2xl"
         style={{
           touchAction: "manipulation",
           background: "rgba(255,255,255,0.05)",

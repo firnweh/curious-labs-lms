@@ -6,36 +6,136 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
    GRADE 5 (explorer, age ~10–11). Subject: ROBOTICS.
    ONE learning goal: AUTOMATION WITH IF–THEN RULES — a smart home links each
    sensor TRIGGER (the IF) to a relay ACTION (the THEN). The learner wires three
-   rooms by dragging a condition chip into each IF slot and an action chip into
-   each THEN slot, then presses Run Day to step a clock through 4 scenarios and
-   watch the appliances fire ONLY when their rule's condition is true.
+   rooms by dropping a trigger chip into each IF slot and an action chip into each
+   THEN slot, then presses Run Day to step a clock through scripted scenarios and
+   watch each appliance fire ONLY when its rule's condition is true.
 
-   The intended wiring (deterministic, always winnable):
-     Hallway     IF  motion = yes      THEN  lamp ON
-     Living Room IF  brightness < 30    THEN  night-light ON
-     Bedroom     IF  temp > 30          THEN  fan ON
-   Only 3 condition chips and 3 action chips exist, each used once, so trying
-   combinations guarantees the solution. The simulation is pure + fixed — no
-   randomness — and it never scolds: a mis-wired appliance shows a red X and a
-   kind hint, and the lab is always recoverable.
+   This is now a real PROBLEM, not a guess-the-pair toy. THREE escalating rounds:
+
+   ROUND 1 · LEARN  — clean 1-to-1 wiring (motion→lamp, dark→night, hot→fan).
+                      Teaches the mechanic.
+   ROUND 2 · READ THE DATA — the tray now hides DECOY triggers with the wrong
+                      THRESHOLD ("brightness < 60", "temp > 20") that look right
+                      but fire at the wrong moments. Brute force fails: you must
+                      read the day's sensor numbers and pick the threshold that
+                      fires EXACTLY when the appliance should. Plus one room needs
+                      a COMPOUND idea — the fan must run only when it's hot AND
+                      someone's home, so an empty room doesn't waste power.
+   ROUND 3 · DEBUG  — the rooms arrive PRE-WIRED with one sabotaged trigger.
+                      Find the buggy room, swap in the right chip, re-run.
+
+   OPTIMIZATION → STARS: clean play earns 3⭐. Each failed Run Day in a round
+   costs a star (floor 1⭐). A clean three-round sweep = ⭐⭐⭐.
+
+   Everything is pure + deterministic (no randomness, no clock reads in grading),
+   always winnable, and never scolds — a mis-wired appliance shows a red X and a
+   kind, targeted hint, and the lab is always recoverable.
    ──────────────────────────────────────────────────────────────────────────── */
 
 const ACCENT = "#34d399";
 const DANGER = "#f87171";
 
 type RoomId = "hall" | "living" | "bed";
-type CondId = "motion" | "dark" | "hot";
 type ActId = "lamp" | "night" | "fan";
+/** Every trigger chip in the game (across all rounds). Some are DECOYS. */
+type CondId =
+  | "motion"
+  | "noMotion"
+  | "darkLt30"
+  | "darkLt60"
+  | "hotGt30"
+  | "hotGt20"
+  | "hotAndHome";
+
+interface Reading {
+  motion: boolean;
+  bright: number;
+  temp: number;
+}
 
 interface Scenario {
   name: string;
   clock: string;
-  /** Per-room live sensor reading for this moment of the day. */
-  sense: Record<RoomId, { motion: boolean; bright: number; temp: number }>;
+  sense: Record<RoomId, Reading>;
 }
 
-/** The 4 scripted moments of a day. Fixed → deterministic + always winnable. */
-const SCENARIOS: readonly Scenario[] = [
+interface CondDef {
+  id: CondId;
+  label: string;
+  glyph: string;
+  /** Does this trigger fire for the given room reading? Pure. */
+  test: (s: Reading) => boolean;
+}
+
+const CONDS: readonly CondDef[] = [
+  { id: "motion", label: "motion = yes", glyph: "🏃", test: (s) => s.motion },
+  { id: "noMotion", label: "motion = no", glyph: "🚫", test: (s) => !s.motion },
+  { id: "darkLt30", label: "brightness < 30", glyph: "🌙", test: (s) => s.bright < 30 },
+  { id: "darkLt60", label: "brightness < 60", glyph: "🌗", test: (s) => s.bright < 60 },
+  { id: "hotGt30", label: "temp > 30°C", glyph: "🔥", test: (s) => s.temp > 30 },
+  { id: "hotGt20", label: "temp > 20°C", glyph: "🌡️", test: (s) => s.temp > 20 },
+  {
+    id: "hotAndHome",
+    label: "temp > 30°C AND someone home",
+    glyph: "🔥🏠",
+    test: (s) => s.temp > 30 && s.motion,
+  },
+];
+
+const condDef = (id: CondId): CondDef => CONDS.find((c) => c.id === id) as CondDef;
+
+interface ActDef {
+  id: ActId;
+  label: string;
+  glyph: string;
+}
+const ACTS: readonly ActDef[] = [
+  { id: "lamp", label: "lamp ON", glyph: "💡" },
+  { id: "night", label: "night-light ON", glyph: "🔦" },
+  { id: "fan", label: "fan ON", glyph: "🌀" },
+];
+const actDef = (id: ActId): ActDef => ACTS.find((a) => a.id === id) as ActDef;
+
+interface RoomDef {
+  id: RoomId;
+  name: string;
+  appliance: ActId;
+}
+const ROOMS: readonly RoomDef[] = [
+  { id: "hall", name: "Hallway", appliance: "lamp" },
+  { id: "living", name: "Living Room", appliance: "night" },
+  { id: "bed", name: "Bedroom", appliance: "fan" },
+];
+
+/** What the learner has dropped into each room's IF and THEN slot. */
+interface Rule {
+  cond: CondId | null;
+  act: ActId | null;
+}
+type Rules = Record<RoomId, Rule>;
+
+interface RoundDef {
+  title: string;
+  brief: string;
+  scenarios: readonly Scenario[];
+  /** Trigger chips offered in the tray this round (order shown). */
+  condTray: readonly CondId[];
+  /** Action chips offered in the tray this round. */
+  actTray: readonly ActId[];
+  /** The one correct trigger per room for THIS round's data. */
+  answer: Record<RoomId, CondId>;
+  /** Optional starting wiring (debug round arrives pre-wired). */
+  preset?: Rules;
+}
+
+const EMPTY: Rules = {
+  hall: { cond: null, act: null },
+  living: { cond: null, act: null },
+  bed: { cond: null, act: null },
+};
+
+/* ── ROUND 1 · LEARN — clean 1-to-1, classic wiring ─────────────────────────── */
+const R1_SCN: readonly Scenario[] = [
   {
     name: "Someone walks in",
     clock: "08:00",
@@ -46,7 +146,7 @@ const SCENARIOS: readonly Scenario[] = [
     },
   },
   {
-    name: "Evening dims the room",
+    name: "Evening dims the rooms",
     clock: "19:30",
     sense: {
       hall: { motion: false, bright: 26, temp: 22 },
@@ -74,70 +174,141 @@ const SCENARIOS: readonly Scenario[] = [
   },
 ];
 
-interface CondDef {
-  id: CondId;
-  label: string;
-  glyph: string;
-  /** Does this trigger fire for the given room reading? */
-  test: (s: { motion: boolean; bright: number; temp: number }) => boolean;
-}
-
-const CONDS: readonly CondDef[] = [
-  { id: "motion", label: "motion = yes", glyph: "🏃", test: (s) => s.motion },
-  { id: "dark", label: "brightness < 30", glyph: "🌙", test: (s) => s.bright < 30 },
-  { id: "hot", label: "temp > 30°C", glyph: "🔥", test: (s) => s.temp > 30 },
+/* ── ROUND 2 · READ THE DATA — decoy thresholds + a compound rule ────────────
+   Living-room night-light must come on ONLY in the two real-dark moments
+   (bright 18 & 24). Decoy "brightness < 60" also fires at bright 45 → wrong.
+   Bedroom fan must run ONLY when hot AND someone is home. There's a hot moment
+   with an EMPTY bedroom (no one there) — plain "temp > 30" would waste power, so
+   only "temp > 30 AND someone home" is correct. Decoy "temp > 20" fires always. */
+const R2_SCN: readonly Scenario[] = [
+  {
+    name: "Morning rush",
+    clock: "07:30",
+    sense: {
+      hall: { motion: true, bright: 65, temp: 22 },
+      living: { motion: false, bright: 24, temp: 22 },
+      bed: { motion: true, bright: 70, temp: 33 }, // hot AND someone home → fan
+    },
+  },
+  {
+    name: "Empty house, sun blazing",
+    clock: "13:00",
+    sense: {
+      hall: { motion: false, bright: 90, temp: 31 },
+      living: { motion: false, bright: 88, temp: 31 },
+      bed: { motion: false, bright: 85, temp: 34 }, // HOT but NOBODY home → fan stays OFF
+    },
+  },
+  {
+    name: "Cloudy dusk",
+    clock: "18:45",
+    sense: {
+      hall: { motion: false, bright: 45, temp: 24 }, // dim, but NOT < 30 → night-light OFF
+      living: { motion: false, bright: 45, temp: 24 },
+      bed: { motion: true, bright: 50, temp: 26 }, // someone home but COOL → fan OFF (defeats plain "motion")
+    },
+  },
+  {
+    name: "Family home, lights low",
+    clock: "21:15",
+    sense: {
+      hall: { motion: true, bright: 18, temp: 28 },
+      living: { motion: false, bright: 18, temp: 28 }, // truly dark → night-light ON
+      bed: { motion: true, bright: 40, temp: 33 }, // hot AND home → fan ON
+    },
+  },
 ];
 
-interface ActDef {
-  id: ActId;
-  label: string;
-  glyph: string;
-}
-
-const ACTS: readonly ActDef[] = [
-  { id: "lamp", label: "lamp ON", glyph: "💡" },
-  { id: "night", label: "night-light ON", glyph: "🔦" },
-  { id: "fan", label: "fan ON", glyph: "🌀" },
+/* ── ROUND 3 · DEBUG — pre-wired, one sabotaged trigger (Living Room) ────────
+   Hallway & Bedroom are wired right. Living-room IF is the DECOY "brightness<60",
+   which wrongly fires the night-light at bright 50. Learner must swap to "< 30". */
+const R3_SCN: readonly Scenario[] = [
+  {
+    name: "Bright noon",
+    clock: "12:00",
+    sense: {
+      hall: { motion: false, bright: 95, temp: 29 },
+      living: { motion: false, bright: 95, temp: 29 },
+      bed: { motion: false, bright: 90, temp: 33 }, // hot, no one home → fan ON (it's a temp rule, not presence)
+    },
+  },
+  {
+    name: "Half-light hallway",
+    clock: "17:30",
+    sense: {
+      hall: { motion: true, bright: 50, temp: 27 },
+      living: { motion: false, bright: 50, temp: 27 }, // bright 50: <60 fires (BUG), <30 does not
+      bed: { motion: false, bright: 48, temp: 30 },
+    },
+  },
+  {
+    name: "Lights out",
+    clock: "23:00",
+    sense: {
+      hall: { motion: false, bright: 20, temp: 24 },
+      living: { motion: false, bright: 20, temp: 24 }, // truly dark → night-light SHOULD be ON
+      bed: { motion: true, bright: 22, temp: 33 },
+    },
+  },
 ];
 
-interface RoomDef {
-  id: RoomId;
-  name: string;
-  /** The action this room's appliance performs. */
-  appliance: ActId;
-}
-
-const ROOMS: readonly RoomDef[] = [
-  { id: "hall", name: "Hallway", appliance: "lamp" },
-  { id: "living", name: "Living Room", appliance: "night" },
-  { id: "bed", name: "Bedroom", appliance: "fan" },
-];
-
-/** What the learner has dropped into each room's IF and THEN slot. */
-interface Rule {
-  cond: CondId | null;
-  act: ActId | null;
-}
-type Rules = Record<RoomId, Rule>;
-
-const EMPTY_RULES: Rules = {
-  hall: { cond: null, act: null },
-  living: { cond: null, act: null },
-  bed: { cond: null, act: null },
+const R3_PRESET: Rules = {
+  hall: { cond: "motion", act: "lamp" },
+  living: { cond: "darkLt60", act: "night" }, // ← the planted bug
+  bed: { cond: "hotGt30", act: "fan" },
 };
 
-const condDef = (id: CondId): CondDef => CONDS.find((c) => c.id === id) as CondDef;
-const actDef = (id: ActId): ActDef => ACTS.find((a) => a.id === id) as ActDef;
+const ROUNDS: readonly RoundDef[] = [
+  {
+    title: "Round 1 · Learn the wiring",
+    brief: "Wire each room: drop a TRIGGER in IF and the matching APPLIANCE in THEN.",
+    scenarios: R1_SCN,
+    condTray: ["motion", "darkLt30", "hotGt30"],
+    actTray: ["lamp", "night", "fan"],
+    answer: { hall: "motion", living: "darkLt30", bed: "hotGt30" },
+  },
+  {
+    title: "Round 2 · Read the data",
+    brief:
+      "Trick triggers are mixed in! Read the day's numbers and pick the one that fires at EXACTLY the right moments.",
+    scenarios: R2_SCN,
+    condTray: ["motion", "darkLt30", "darkLt60", "hotGt30", "hotGt20", "hotAndHome"],
+    actTray: ["lamp", "night", "fan"],
+    answer: { hall: "motion", living: "darkLt30", bed: "hotAndHome" },
+  },
+  {
+    title: "Round 3 · Debug the home",
+    brief:
+      "This home is pre-wired but ONE room misbehaves. Run it, watch the red X, then swap the buggy trigger.",
+    scenarios: R3_SCN,
+    condTray: ["motion", "darkLt30", "darkLt60", "hotGt30"],
+    actTray: ["lamp", "night", "fan"],
+    answer: { hall: "motion", living: "darkLt30", bed: "hotGt30" },
+    preset: R3_PRESET,
+  },
+];
 
-type Phase = "idle" | "running" | "won";
+type Phase = "idle" | "running" | "roundWon" | "won";
 type Drag = { kind: "cond"; id: CondId } | { kind: "act"; id: ActId } | null;
 
+const cloneRules = (r: Rules): Rules => ({
+  hall: { ...r.hall },
+  living: { ...r.living },
+  bed: { ...r.bed },
+});
+
 export default function SmartHomeRules({ onComplete }: ActivityProps) {
-  const [rules, setRules] = useState<Rules>(EMPTY_RULES);
+  const [roundIdx, setRoundIdx] = useState<number>(0);
+  const [rules, setRules] = useState<Rules>(cloneRules(ROUNDS[0].preset ?? EMPTY));
   const [phase, setPhase] = useState<Phase>("idle");
-  const [step, setStep] = useState<number>(-1); // current scenario index while running
+  const [step, setStep] = useState<number>(-1);
   const [drag, setDrag] = useState<Drag>(null);
   const [hint, setHint] = useState<string>("");
+  /** Stars spent: each failed Run Day this whole game drops a star (floor 1). */
+  const [stars, setStars] = useState<3 | 2 | 1>(3);
+
+  const round = ROUNDS[roundIdx];
+  const scenarios = round.scenarios;
 
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const reportedRef = useRef<boolean>(false);
@@ -150,8 +321,9 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
 
   const running = phase === "running";
   const won = phase === "won";
+  const roundWon = phase === "roundWon";
 
-  // chips already placed somewhere are removed from the tray (each used once)
+  // Chips already placed are removed from the tray (each used once per round).
   const usedConds = useMemo<Set<CondId>>(() => {
     const s = new Set<CondId>();
     for (const r of ROOMS) {
@@ -171,82 +343,108 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
 
   const allFilled = ROOMS.every((r) => rules[r.id].cond && rules[r.id].act);
 
-  /** Does a room respond correctly across ALL 4 scenarios? Pure + deterministic. */
+  /** Does a room respond correctly across ALL scenarios in this round? Pure. */
   const roomCorrect = useCallback(
     (room: RoomDef): boolean => {
       const rule = rules[room.id];
       if (!rule.cond || !rule.act) return false;
-      // The action MUST drive this room's own appliance…
-      if (rule.act !== room.appliance) return false;
-      // …and the condition must fire exactly when the appliance ought to.
-      const def = condDef(rule.cond);
-      // The "ought to" reference: the room's appliance is the action we want,
-      // and that action's intended trigger is whichever condition matches the
-      // appliance one-to-one (lamp↔motion, night↔dark, fan↔hot).
-      const want: Record<ActId, CondId> = { lamp: "motion", night: "dark", fan: "hot" };
-      if (rule.cond !== want[room.appliance]) return false;
-      // Sanity: simulate to be certain the chosen condition reproduces the
-      // appliance's correct on/off pattern across the whole day.
-      for (const sc of SCENARIOS) {
-        const r = sc.sense[room.id];
-        const fired = def.test(r);
-        const shouldFire = condDef(want[room.appliance]).test(r);
-        if (fired !== shouldFire) return false;
+      if (rule.act !== room.appliance) return false; // wrong appliance
+      const want = round.answer[room.id];
+      // Verify by simulation: chosen trigger must reproduce the intended on/off
+      // pattern across the whole day. (Equivalent to cond === want, but checked
+      // against data so decoys are caught structurally.)
+      const wantDef = condDef(want);
+      const gotDef = condDef(rule.cond);
+      for (const scn of scenarios) {
+        const reading = scn.sense[room.id];
+        if (gotDef.test(reading) !== wantDef.test(reading)) return false;
       }
       return true;
     },
-    [rules],
+    [rules, round, scenarios],
   );
 
-  const allCorrect = useMemo(
-    () => ROOMS.every((r) => roomCorrect(r)),
-    [roomCorrect],
-  );
+  const allCorrect = useMemo(() => ROOMS.every((r) => roomCorrect(r)), [roomCorrect]);
 
-  // ── Live per-room appliance state during the run ────────────────────────────
+  // Live per-room appliance state during the run (what the wiring actually does).
   const fired = useMemo<Record<RoomId, boolean>>(() => {
     const out: Record<RoomId, boolean> = { hall: false, living: false, bed: false };
-    if (step < 0 || step >= SCENARIOS.length) return out;
-    const sc = SCENARIOS[step];
+    if (step < 0 || step >= scenarios.length) return out;
+    const scn = scenarios[step];
     for (const r of ROOMS) {
       const rule = rules[r.id];
-      if (rule.cond && rule.act) {
-        out[r.id] = condDef(rule.cond).test(sc.sense[r.id]);
+      if (rule.cond && rule.act && rule.act === r.appliance) {
+        out[r.id] = condDef(rule.cond).test(scn.sense[r.id]);
       }
     }
     return out;
-  }, [step, rules]);
+  }, [step, rules, scenarios]);
 
-  // Which rooms are MIS-wired at the current step (fire when they shouldn't,
-  // or stay off when they should, OR drive the wrong appliance).
+  // Which rooms are MIS-behaving at the current step (fire when they shouldn't,
+  // stay off when they should, or drive the wrong appliance).
   const wrong = useMemo<Record<RoomId, boolean>>(() => {
     const out: Record<RoomId, boolean> = { hall: false, living: false, bed: false };
     if (step < 0) return out;
-    const want: Record<ActId, CondId> = { lamp: "motion", night: "dark", fan: "hot" };
-    const sc = SCENARIOS[step];
+    const scn = scenarios[step];
     for (const r of ROOMS) {
       const rule = rules[r.id];
       if (!rule.cond || !rule.act) continue;
       const correctAct = rule.act === r.appliance;
-      const should = condDef(want[r.appliance]).test(sc.sense[r.id]);
-      const actually = correctAct && condDef(rule.cond).test(sc.sense[r.id]);
+      const should = condDef(round.answer[r.id]).test(scn.sense[r.id]);
+      const actually = correctAct && condDef(rule.cond).test(scn.sense[r.id]);
       if (actually !== should || !correctAct) out[r.id] = true;
     }
     return out;
-  }, [step, rules]);
+  }, [step, rules, scenarios, round]);
 
-  const finishWin = useCallback((): void => {
-    setPhase("won");
+  const loadRound = useCallback((idx: number): void => {
+    clearTimers();
+    setRoundIdx(idx);
+    setRules(cloneRules(ROUNDS[idx].preset ?? EMPTY));
+    setPhase("idle");
+    setStep(-1);
+    setDrag(null);
     setHint("");
-    if (!reportedRef.current) {
-      reportedRef.current = true;
-      onComplete({
-        passed: true,
-        stars: 3,
-        detail: "Every room obeyed its IF–THEN rule all day. Home is smart! ✨",
-      });
+  }, [clearTimers]);
+
+  const finishGame = useCallback(
+    (finalStars: 3 | 2 | 1): void => {
+      setPhase("won");
+      setHint("");
+      if (!reportedRef.current) {
+        reportedRef.current = true;
+        const detail =
+          finalStars === 3
+            ? "Flawless! You learned, read the data, and debugged the home. ✨"
+            : finalStars === 2
+              ? "Smart home online — solved with a couple of test runs. ✨"
+              : "Home is smart! You got every room responding correctly. ✨";
+        onComplete({ passed: true, stars: finalStars, detail });
+      }
+    },
+    [onComplete],
+  );
+
+  // Targeted, kind nudge for the first mis-wired room (never the exact answer).
+  const buildHint = useCallback((): string => {
+    const broken = ROOMS.find((r) => !roomCorrect(r));
+    if (!broken) return "Almost — re-check each room.";
+    const rule = rules[broken.id];
+    if (rule.act && rule.act !== broken.appliance) {
+      return `${broken.name}: wrong appliance in THEN — match the room to its device.`;
     }
-  }, [onComplete]);
+    if (broken.appliance === "fan") {
+      return roundIdx >= 1
+        ? "The fan wastes power in an EMPTY hot room. It should run only when it's hot AND someone's home. 🔥🏠"
+        : "The fan should turn on when it's HOT. 🔥";
+    }
+    if (broken.appliance === "night") {
+      return roundIdx >= 1
+        ? "Check the numbers: the night-light fired when a room was only dim, not truly dark. Pick a tighter brightness limit. 🌙"
+        : "The night-light should turn on when it's DARK. 🌙";
+    }
+    return "The lamp should turn on when there's MOTION. 🏃";
+  }, [roomCorrect, rules, roundIdx]);
 
   const runDay = useCallback((): void => {
     if (running) return;
@@ -255,48 +453,38 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
     setPhase("running");
     setStep(0);
     const STEP_MS = 900;
-    for (let i = 1; i < SCENARIOS.length; i += 1) {
+    for (let i = 1; i < scenarios.length; i += 1) {
       const t = setTimeout(() => setStep(i), i * STEP_MS);
       timersRef.current.push(t);
     }
     const endT = setTimeout(() => {
       if (allCorrect) {
-        finishWin();
+        if (roundIdx === ROUNDS.length - 1) {
+          finishGame(stars);
+        } else {
+          setPhase("roundWon");
+          setHint("");
+        }
       } else {
         setPhase("idle");
         setStep(-1);
-        // find the first mis-wired room for a targeted, kind nudge
-        const broken = ROOMS.find((r) => !roomCorrect(r));
-        let msg = "Almost! Re-check which trigger each appliance needs.";
-        if (broken) {
-          const rule = rules[broken.id];
-          if (rule.act && rule.act !== broken.appliance) {
-            msg = `The ${broken.name} has the wrong appliance plugged in — match the room to its device.`;
-          } else if (broken.appliance === "fan") {
-            msg = "The fan should turn on when it's HOT. 🔥";
-          } else if (broken.appliance === "night") {
-            msg = "The night-light should turn on when it's DARK. 🌙";
-          } else {
-            msg = "The lamp should turn on when there's MOTION. 🏃";
-          }
-        }
-        setHint(msg);
-        onComplete({ passed: false, detail: msg });
+        setStars((s) => (s > 1 ? ((s - 1) as 3 | 2 | 1) : 1)); // cost a star, floor 1
+        setHint(buildHint());
+        // NOTE: do NOT report onComplete(false) — gentle retry only.
       }
-    }, SCENARIOS.length * STEP_MS);
+    }, scenarios.length * STEP_MS);
     timersRef.current.push(endT);
-  }, [running, clearTimers, allCorrect, finishWin, roomCorrect, rules, onComplete]);
+  }, [running, clearTimers, scenarios, allCorrect, roundIdx, finishGame, stars, buildHint]);
 
   const reset = useCallback((): void => {
-    clearTimers();
-    setRules(EMPTY_RULES);
-    setPhase("idle");
-    setStep(-1);
-    setDrag(null);
-    setHint("");
-  }, [clearTimers]);
+    loadRound(roundIdx);
+  }, [loadRound, roundIdx]);
 
-  // ── Drag + drop (pointer-first; tap a chip then tap a slot also works) ───────
+  const nextRound = useCallback((): void => {
+    if (roundIdx < ROUNDS.length - 1) loadRound(roundIdx + 1);
+  }, [roundIdx, loadRound]);
+
+  // ── Drag + drop (pointer-first; tap a chip then tap a slot also works) ──────
   const dropInto = useCallback(
     (room: RoomId, slot: "cond" | "act"): void => {
       if (!drag || running) return;
@@ -329,18 +517,19 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
     [running],
   );
 
-  const sc = step >= 0 && step < SCENARIOS.length ? SCENARIOS[step] : null;
+  const scn = step >= 0 && step < scenarios.length ? scenarios[step] : null;
 
   const status = useMemo<string>(() => {
-    if (won) return "Home is smart! Every room responded correctly across the whole day.";
-    if (running && sc) return `Running ${sc.clock} — ${sc.name}. Watch each appliance.`;
+    if (won) return "Home is smart! Every room responded correctly all game. ⭐";
+    if (roundWon) return "Round solved! Press Next Round for a tougher home.";
+    if (running && scn) return `Running ${scn.clock} — ${scn.name}. Watch each appliance.`;
     if (hint) return hint;
-    if (!allFilled) return "Drag a trigger into each IF slot and an appliance into each THEN slot.";
-    return "Rules are wired. Press Run Day to test them across the day.";
-  }, [won, running, sc, hint, allFilled]);
+    if (!allFilled) return round.brief;
+    return "Rules are wired. Press Run Day to test them across the whole day.";
+  }, [won, roundWon, running, scn, hint, allFilled, round]);
 
-  const availConds = CONDS.filter((c) => !usedConds.has(c.id));
-  const availActs = ACTS.filter((a) => !usedActs.has(a.id));
+  const availConds = round.condTray.filter((id) => !usedConds.has(id));
+  const availActs = round.actTray.filter((id) => !usedActs.has(id));
 
   return (
     <div className="flex w-full max-w-[440px] flex-col items-center gap-3 font-mono text-ink">
@@ -352,28 +541,41 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
         aria-label={status}
         style={{
           background: won ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
+          border: `2px solid ${won || roundWon ? ACCENT : "var(--color-line, #33405c)"}`,
           boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span aria-hidden="true">🏠</span>
         {won ? (
           <span aria-hidden="true" className="text-lg">
-            ⭐⭐⭐
+            {stars === 3 ? "⭐⭐⭐" : stars === 2 ? "⭐⭐" : "⭐"}
           </span>
         ) : (
           <span aria-hidden="true" className="text-[12px] leading-tight text-ink-dim">
-            {running && sc ? `${sc.clock} · ${sc.name}` : "IF [trigger] → THEN [action]"}
+            {running && scn ? `${scn.clock} · ${scn.name}` : `Round ${roundIdx + 1}/${ROUNDS.length}`}
           </span>
         )}
         {won && <span aria-hidden="true">✨</span>}
+      </div>
+
+      {/* ── Round title + live star meter ── */}
+      <div className="flex w-full items-center justify-between gap-2 px-0.5">
+        <span className="text-[12px] font-bold" style={{ color: roundWon || won ? ACCENT : "var(--color-ink-dim, #9aa6b2)" }}>
+          {won ? "Smart Home complete!" : round.title}
+        </span>
+        <span className="text-[12px] tabular-nums text-ink-faint" aria-label={`Stars remaining: ${stars} of 3`}>
+          <span aria-hidden="true">
+            {"⭐".repeat(stars)}
+            {"·".repeat(3 - stars)}
+          </span>
+        </span>
       </div>
 
       {/* ── Cutaway house: 3 rooms with live sensors + appliances ── */}
       <div
         className="panel w-full overflow-hidden rounded-2xl border p-2"
         style={{
-          borderColor: won ? ACCENT : "var(--color-line, #33405c)",
+          borderColor: won || roundWon ? ACCENT : "var(--color-line, #33405c)",
           boxShadow: won ? `0 0 0 1px ${ACCENT}, 0 0 22px -4px ${ACCENT}` : undefined,
           transition: "box-shadow .3s ease, border-color .3s ease",
         }}
@@ -391,19 +593,22 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
 
           {ROOMS.map((room, i) => {
             const y = 72 + i * 52;
-            const live = sc ? sc.sense[room.id] : null;
+            const live = scn ? scn.sense[room.id] : null;
             const on = fired[room.id];
             const bad = wrong[room.id] && running;
             const ad = actDef(room.appliance);
-            // sensor blurb shown in-room
+            // sensor blurb shown in-room: in rounds 2+, every room shows ALL three
+            // readings so the learner can reason about thresholds + presence.
             const reading = live
-              ? room.id === "hall"
-                ? live.motion
-                  ? "person"
-                  : "no one"
-                : room.id === "living"
-                  ? `${live.bright}% light`
-                  : `${live.temp}°C`
+              ? roundIdx >= 1
+                ? `${live.motion ? "👤" : "—"} ${live.bright}% ${live.temp}°`
+                : room.id === "hall"
+                  ? live.motion
+                    ? "person"
+                    : "no one"
+                  : room.id === "living"
+                    ? `${live.bright}% light`
+                    : `${live.temp}°C`
               : room.id === "hall"
                 ? "motion"
                 : room.id === "living"
@@ -412,9 +617,7 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
             const sensorGlyph = room.id === "hall" ? "🚶" : room.id === "living" ? "🔆" : "🌡️";
             return (
               <g key={room.id}>
-                {i > 0 && (
-                  <line x1={28} y1={y} x2={332} y2={y} stroke="#3a4866" strokeWidth={1.4} />
-                )}
+                {i > 0 && <line x1={28} y1={y} x2={332} y2={y} stroke="#3a4866" strokeWidth={1.4} />}
                 {/* room label */}
                 <text x={40} y={y + 16} fontSize={9} fill="rgba(160,180,205,0.85)">
                   {room.name}
@@ -465,7 +668,7 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
                     </g>
                   )}
                   {/* green check when this room is verified correct on a win */}
-                  {won && (
+                  {(won || roundWon) && roomCorrect(room) && (
                     <text x={14} y={-12} fontSize={11} aria-hidden="true">
                       ✅
                     </text>
@@ -481,7 +684,7 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
       <div className="panel flex w-full flex-col gap-2 rounded-xl p-3">
         {ROOMS.map((room) => {
           const rule = rules[room.id];
-          const ok = won && roomCorrect(room);
+          const ok = (won || roundWon) && roomCorrect(room);
           return (
             <div
               key={room.id}
@@ -521,7 +724,10 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
           <ChipTray
             title="Triggers (IF)"
             kind="cond"
-            chips={availConds.map((c) => ({ id: c.id, label: c.label, glyph: c.glyph }))}
+            chips={availConds.map((id) => {
+              const c = condDef(id);
+              return { id: c.id, label: c.label, glyph: c.glyph };
+            })}
             drag={drag}
             disabled={running}
             onPick={(id) => pickChip({ kind: "cond", id: id as CondId })}
@@ -529,7 +735,10 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
           <ChipTray
             title="Actions (THEN)"
             kind="act"
-            chips={availActs.map((a) => ({ id: a.id, label: a.label, glyph: a.glyph }))}
+            chips={availActs.map((id) => {
+              const a = actDef(id);
+              return { id: a.id, label: a.label, glyph: a.glyph };
+            })}
             drag={drag}
             disabled={running}
             onPick={(id) => pickChip({ kind: "act", id: id as ActId })}
@@ -540,42 +749,65 @@ export default function SmartHomeRules({ onComplete }: ActivityProps) {
         <p
           className="min-h-[28px] text-[11px] leading-tight"
           aria-hidden="true"
-          style={{ color: hint ? DANGER : won ? ACCENT : "var(--color-ink-faint, #7c8aa0)" }}
+          style={{ color: hint ? DANGER : won || roundWon ? ACCENT : "var(--color-ink-faint, #7c8aa0)" }}
         >
           {status}
         </p>
 
-        {/* ── Controls: Run Day · Reset ── */}
+        {/* ── Controls: Run Day / Next Round · Reset ── */}
         <div className="mt-1 flex items-stretch gap-2">
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              runDay();
-            }}
-            disabled={running || !allFilled || won}
-            aria-label="Run Day — step the clock through four scenarios and test every rule"
-            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-95 disabled:opacity-40"
-            style={{
-              touchAction: "none",
-              background: ACCENT,
-              color: "#04130d",
-              boxShadow: "0 5px 0 0 #15916a",
-            }}
-          >
-            <span aria-hidden="true">{running ? "⏱" : "▶"}</span>
-            <span aria-hidden="true" className="font-extrabold tracking-wide">
-              {running ? "RUNNING…" : "RUN DAY"}
-            </span>
-          </button>
+          {roundWon ? (
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                nextRound();
+              }}
+              aria-label="Next round — a tougher smart home"
+              className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-95"
+              style={{
+                touchAction: "none",
+                background: ACCENT,
+                color: "#04130d",
+                boxShadow: "0 5px 0 0 #15916a",
+              }}
+            >
+              <span aria-hidden="true">➡️</span>
+              <span aria-hidden="true" className="font-extrabold tracking-wide">
+                NEXT ROUND
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                runDay();
+              }}
+              disabled={running || !allFilled || won}
+              aria-label="Run Day — step the clock through the day and test every rule"
+              className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-95 disabled:opacity-40"
+              style={{
+                touchAction: "none",
+                background: ACCENT,
+                color: "#04130d",
+                boxShadow: "0 5px 0 0 #15916a",
+              }}
+            >
+              <span aria-hidden="true">{running ? "⏱" : "▶"}</span>
+              <span aria-hidden="true" className="font-extrabold tracking-wide">
+                {running ? "RUNNING…" : "RUN DAY"}
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onPointerDown={(e) => {
               e.preventDefault();
               reset();
             }}
-            disabled={running}
-            aria-label="Reset all rules"
+            disabled={running || won}
+            aria-label="Reset this round's rules"
             className="grid h-[50px] w-[50px] place-items-center rounded-2xl text-xl transition active:scale-90 disabled:opacity-40"
             style={{
               touchAction: "none",

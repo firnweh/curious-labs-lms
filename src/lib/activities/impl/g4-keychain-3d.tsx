@@ -3,14 +3,22 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  3D Keychain Studio 🔑 — GRADE 4 / explorer / threed                */
-/*  Single learning goal: a 3D model is built by ADDING solid shapes   */
-/*  and SUBTRACTING "hole" shapes — and only a shape set to HOLE and    */
-/*  then COMBINED punches a real opening. Plus, every part must fit     */
-/*  inside the printable size box. The learner places a name + one      */
-/*  symbol + a ring, switches the ring to HOLE, combines to cut a real */
-/*  keyring loop, scales the layout back inside 6×3×0.5 cm, then        */
-/*  exports keychain.stl.                                               */
+/*  3D Keychain Studio 🔑 — GRADE 4-6 / explorer / threed              */
+/*                                                                     */
+/*  PROBLEM (not a checklist): you run a tiny 3D-print shop. Each      */
+/*  CLIENT order is a SPEC you must read and satisfy with the CAD      */
+/*  tools — add SOLID parts (name / symbols), and CUT a real keyring   */
+/*  hole by setting the ring to HOLE then COMBINE. The catch: every    */
+/*  solid part adds material WEIGHT, holes SAVE weight, and the slab   */
+/*  must fit that order's print box. Each order has a WEIGHT BUDGET in */
+/*  grams — go over and it won't print. So you must PLAN which parts   */
+/*  to add, decide whether to punch the hole to lighten it, and scale  */
+/*  to fit — there's no "add everything" win.                          */
+/*                                                                     */
+/*  3 escalating orders. The last one is the twist: the box is small   */
+/*  AND the budget is tight, so the default layout overflows on both   */
+/*  size and weight — you must shrink AND cut the hole to survive.     */
+/*  Finish under budget with margin to spare → 3 stars.                */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#f59e0b";
@@ -20,17 +28,7 @@ const RED = "#ef4444";
 const VIEW_W = 360;
 const VIEW_H = 300;
 
-/* Printable build-volume limits (centimetres). */
-const MAX_W = 6;
-const MAX_H = 3;
-const MAX_T = 0.5;
-
-/* The un-scaled layout is intentionally a touch too big (6.6 cm wide) so the
-   learner MUST shrink it with the scale slider — teaching "fit the box". */
-const BASE_W = 6.6; // cm at scale 1.0
-const BASE_H = 2.4; // cm at scale 1.0
-const FIXED_T = 0.4; // cm — plate thickness, always within the 0.5 limit
-
+const FIXED_T = 0.4; // cm — plate thickness, always within every box's T limit
 const SCALE_RANGE = { min: 0.6, max: 1.0, step: 0.02 } as const;
 
 type SymbolId = "star" | "heart" | "shield";
@@ -39,33 +37,137 @@ interface SymbolDef {
   id: SymbolId;
   glyph: string;
   word: string;
+  /* grams this symbol adds as a raised solid (deterministic). */
+  grams: number;
 }
 
 const SYMBOLS: readonly SymbolDef[] = [
-  { id: "star", glyph: "⭐", word: "star" },
-  { id: "heart", glyph: "❤️", word: "heart" },
-  { id: "shield", glyph: "🛡️", word: "shield" },
+  { id: "star", glyph: "⭐", word: "star", grams: 3 },
+  { id: "heart", glyph: "❤️", word: "heart", grams: 4 },
+  { id: "shield", glyph: "🛡️", word: "shield", grams: 6 },
 ];
 
 type RingMode = "solid" | "hole";
 
 interface Studio {
   namePlaced: boolean;
-  symbol: SymbolId | null;
+  symbols: SymbolId[]; // can stack multiple raised symbols (each adds weight)
   ringPlaced: boolean;
   ringMode: RingMode;
-  combined: boolean; // pressed COMBINE while ring is a HOLE → real cutout
+  combined: boolean; // pressed COMBINE while ring is HOLE → real cutout
   scale: number; // 0.6 .. 1.0
 }
 
-const START: Studio = {
-  namePlaced: false,
-  symbol: null,
-  ringPlaced: false,
-  ringMode: "solid",
-  combined: false,
-  scale: 1.0,
-};
+function freshStudio(): Studio {
+  return {
+    namePlaced: false,
+    symbols: [],
+    ringPlaced: false,
+    ringMode: "solid",
+    combined: false,
+    scale: 1.0,
+  };
+}
+
+/* ---- Weight / material model (all deterministic) ---------------------------
+   The slab's base weight scales with its footprint (≈ scale²). Each solid part
+   adds grams; punching the ring hole REMOVES material. */
+const SLAB_BASE_G = 22; // grams of the slab at scale 1.0
+const NAME_G = 7; // raised name block
+const RING_SOLID_G = 5; // a solid ring blob ADDS weight
+const RING_HOLE_SAVING_G = 5; // a real punched hole REMOVES this much
+
+interface Order {
+  id: string;
+  client: string;
+  /* print box for this order (cm). */
+  boxW: number;
+  boxH: number;
+  boxT: number;
+  /* the base footprint of the un-scaled layout (cm at scale 1.0). */
+  baseW: number;
+  baseH: number;
+  /* gram budget — finished weight must be ≤ this. */
+  budget: number;
+  /* spec requirements. */
+  needName: boolean;
+  needHole: boolean;
+  minSymbols: number;
+  /* human-readable spec lines for the order card. */
+  spec: string[];
+  /* margin (g) under budget that earns "comfortable" praise (3★ band). */
+  comfyMargin: number;
+}
+
+/* THREE hand-authored, escalating orders. Each is solvable; the third forces
+   both a shrink and a hole-cut. */
+const ORDERS: readonly Order[] = [
+  {
+    id: "o1",
+    client: "Maya's backpack tag",
+    boxW: 6,
+    boxH: 3,
+    boxT: 0.5,
+    baseW: 6.6, // a touch too wide at scale 1.0 → must shrink a little
+    baseH: 2.4,
+    budget: 40,
+    needName: true,
+    needHole: true,
+    minSymbols: 1,
+    comfyMargin: 6,
+    spec: [
+      "Name on the tag",
+      "At least 1 symbol",
+      "A real keyring hole",
+      "Fits the 6×3 cm box",
+      "Weight ≤ 40 g",
+    ],
+  },
+  {
+    id: "o2",
+    client: "Coach Rao — gym locker",
+    boxW: 5,
+    boxH: 2.8,
+    boxT: 0.5,
+    baseW: 6.0,
+    baseH: 2.7,
+    budget: 34,
+    needName: true,
+    needHole: true,
+    minSymbols: 2, // must stack two symbols → more weight to manage
+    comfyMargin: 5,
+    spec: [
+      "Name on the tag",
+      "At least 2 symbols",
+      "A real keyring hole",
+      "Fits the 5×2.8 cm box",
+      "Weight ≤ 34 g",
+    ],
+  },
+  {
+    id: "o3",
+    // TWIST: tiny box + tight budget. Default scale overflows the box, and a
+    // solid (un-punched) ring blows the budget — you MUST shrink AND cut.
+    client: "Tiny drone key — featherweight",
+    boxW: 4.2,
+    boxH: 2.4,
+    boxT: 0.5,
+    baseW: 6.4,
+    baseH: 2.6,
+    budget: 26,
+    needName: true,
+    needHole: true,
+    minSymbols: 1,
+    comfyMargin: 4,
+    spec: [
+      "Name on the tag",
+      "At least 1 symbol",
+      "A real keyring hole (saves weight!)",
+      "Fits the small 4.2×2.4 cm box",
+      "Weight ≤ 26 g — featherweight!",
+    ],
+  },
+];
 
 interface Dims {
   w: number;
@@ -74,102 +176,176 @@ interface Dims {
   fits: boolean;
 }
 
-/** Pure, deterministic read-out of the current bounding box (cm). */
-function dimsOf(s: Studio): Dims {
-  const w = BASE_W * s.scale;
-  const h = BASE_H * s.scale;
+/** Pure bounding box for the current order + scale. */
+function dimsOf(s: Studio, o: Order): Dims {
+  const w = o.baseW * s.scale;
+  const h = o.baseH * s.scale;
   const t = FIXED_T;
-  const fits = w <= MAX_W + 1e-6 && h <= MAX_H + 1e-6 && t <= MAX_T + 1e-6;
+  const fits =
+    w <= o.boxW + 1e-6 && h <= o.boxH + 1e-6 && t <= o.boxT + 1e-6;
   return { w, h, t, fits };
+}
+
+/** Pure, deterministic finished weight in grams. */
+function weightOf(s: Studio): number {
+  let g = SLAB_BASE_G * s.scale * s.scale; // slab footprint ≈ scale²
+  if (s.namePlaced) g += NAME_G;
+  for (const id of s.symbols) {
+    g += SYMBOLS.find((sy) => sy.id === id)?.grams ?? 0;
+  }
+  if (s.ringPlaced) {
+    if (s.ringMode === "hole" && s.combined) g -= RING_HOLE_SAVING_G; // real cut
+    else g += RING_SOLID_G; // solid blob adds material
+  }
+  return Math.max(0, Math.round(g * 10) / 10);
 }
 
 interface Checks {
   hasName: boolean;
-  hasSymbol: boolean;
-  realHole: boolean; // ring placed + set to HOLE + combined
+  hasSymbols: boolean;
+  realHole: boolean; // ring placed + HOLE + combined
   inBox: boolean;
+  underBudget: boolean;
   all: boolean;
 }
 
-function checksOf(s: Studio, d: Dims): Checks {
-  const hasName = s.namePlaced;
-  const hasSymbol = s.symbol !== null;
-  const realHole = s.ringPlaced && s.ringMode === "hole" && s.combined;
+function checksOf(s: Studio, o: Order, d: Dims, grams: number): Checks {
+  const hasName = !o.needName || s.namePlaced;
+  const hasSymbols = s.symbols.length >= o.minSymbols;
+  const realHole = !o.needHole || (s.ringPlaced && s.ringMode === "hole" && s.combined);
   const inBox = d.fits;
+  const underBudget = grams <= o.budget + 1e-6;
   return {
     hasName,
-    hasSymbol,
+    hasSymbols,
     realHole,
     inBox,
-    all: hasName && hasSymbol && realHole && inBox,
+    underBudget,
+    all: hasName && hasSymbols && realHole && inBox && underBudget,
   };
 }
 
 export default function KeychainStudio({ onComplete }: ActivityProps) {
-  const [studio, setStudio] = useState<Studio>({ ...START });
+  const [round, setRound] = useState<number>(0); // 0..2
+  const [studio, setStudio] = useState<Studio>(() => freshStudio());
   const [done, setDone] = useState<boolean>(false);
+  const [starTotal, setStarTotal] = useState<number>(0); // sum of per-order star bands
+  const [flash, setFlash] = useState<boolean>(false); // brief "order shipped" flash
   const wonRef = useRef<boolean>(false);
   const nudgeReadyRef = useRef<boolean>(false);
+  const flashTimer = useRef<number | null>(null);
 
-  const dims: Dims = useMemo(() => dimsOf(studio), [studio]);
-  const checks: Checks = useMemo(() => checksOf(studio, dims), [studio, dims]);
+  const order = ORDERS[round];
+  const dims: Dims = useMemo(() => dimsOf(studio, order), [studio, order]);
+  const grams: number = useMemo(() => weightOf(studio), [studio]);
+  const checks: Checks = useMemo(
+    () => checksOf(studio, order, dims, grams),
+    [studio, order, dims, grams],
+  );
 
-  /* A solid ring that's been "combined" can't really make a hole — show a note. */
+  const isFinalOrder = round === ORDERS.length - 1;
+
+  /* A solid ring that's been "combined" can't really make a hole. */
   const solidBlobNote = studio.ringPlaced && studio.ringMode === "solid";
 
-  /* WIN: export is only enabled when all four checks pass. Pressing it fires
-     onComplete exactly once. */
-  const handleExport = useCallback(() => {
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    };
+  }, []);
+
+  /* SHIP this order. Only enabled when every spec line passes. Advances to the
+     next order, or fires onComplete once on the final order. */
+  const handleShip = useCallback(() => {
     if (wonRef.current) return;
     if (!checks.all) {
       onComplete({
         passed: false,
-        detail: "Almost! Tick every checklist item green, then export.",
+        detail: "Not ready to print — make every spec line on the order card go green.",
       });
       return;
     }
+
+    /* Per-order star band: under budget with margin to spare = full credit. */
+    const margin = order.budget - grams;
+    const band = margin >= order.comfyMargin ? 3 : margin >= 0 ? 2 : 0;
+    const runningTotal = starTotal + band;
+
+    if (!isFinalOrder) {
+      setStarTotal(runningTotal);
+      setFlash(true);
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => {
+        setFlash(false);
+        setRound((r) => r + 1);
+        setStudio(freshStudio());
+      }, 900);
+      return;
+    }
+
+    /* Final order shipped → grade the whole shop run. */
     wonRef.current = true;
+    setStarTotal(runningTotal);
     setDone(true);
+    const maxStars = ORDERS.length * 3;
+    // Map total band points (0..9) → 1..3 stars; a comfortable run = 3.
+    const stars: 1 | 2 | 3 =
+      runningTotal >= maxStars - 1 ? 3 : runningTotal >= ORDERS.length * 2 ? 2 : 1;
     onComplete({
       passed: true,
-      stars: 3,
-      detail: "keychain.stl ready to print — name, symbol, real ring hole, fits the box!",
+      stars,
+      detail: `All ${ORDERS.length} orders shipped — every print fit its box and stayed under budget.`,
     });
-  }, [checks.all, onComplete]);
+  }, [checks.all, grams, order, starTotal, isFinalOrder, onComplete]);
 
-  /* A kind, debounced nudge once the learner pauses on a not-yet-valid design. */
+  /* Kind, debounced nudge when the learner pauses on an invalid design. */
   useEffect(() => {
-    if (done) return;
+    if (done || flash) return;
     if (checks.all) return;
     if (!nudgeReadyRef.current) {
-      nudgeReadyRef.current = true; // skip the very first render (load)
+      nudgeReadyRef.current = true;
       return;
     }
     const t = window.setTimeout(() => {
       if (wonRef.current) return;
-      let detail = "Keep building — get all four checks green.";
-      if (!checks.hasName) detail = "Place your NAME block on the plate first.";
-      else if (!checks.hasSymbol) detail = "Add exactly one symbol — star, heart or shield.";
-      else if (!checks.realHole) {
-        if (!studio.ringPlaced) detail = "Add a ring near the top of the plate.";
+      let detail = "Keep building — make every spec line green.";
+      if (!checks.hasName) detail = "This order needs the NAME block on the tag.";
+      else if (!checks.hasSymbols) {
+        const need = order.minSymbols;
+        detail =
+          need > 1
+            ? `Add at least ${need} symbols for this order.`
+            : "Add at least one symbol — star, heart or shield.";
+      } else if (!checks.realHole) {
+        if (!studio.ringPlaced) detail = "Add a ring near the top of the tag.";
         else if (studio.ringMode === "solid")
           detail = "A solid blob has no hole — switch the ring to HOLE.";
-        else detail = "Press COMBINE to punch the ring hole through the plate.";
-      } else if (!checks.inBox) detail = "Too big — shrink it until the size box turns green.";
+        else detail = "Press COMBINE to punch the keyring hole through the tag.";
+      } else if (!checks.inBox) {
+        detail = `Too big for this order's box — shrink it until the size box turns green.`;
+      } else if (!checks.underBudget) {
+        detail = `${grams} g is over the ${order.budget} g budget — punch the ring HOLE to save weight, or shrink the tag.`;
+      }
       onComplete({ passed: false, detail });
-    }, 800);
+    }, 900);
     return () => window.clearTimeout(t);
-  }, [studio, checks, done, onComplete]);
+  }, [studio, checks, done, flash, grams, order, onComplete]);
 
-  /* ---- mutators (all blocked once won) ---- */
+  /* ---- mutators (blocked once the run is won) ---- */
   const placeName = useCallback(() => {
     if (wonRef.current) return;
     setStudio((p) => ({ ...p, namePlaced: !p.namePlaced }));
   }, []);
 
-  const placeSymbol = useCallback((id: SymbolId) => {
+  const toggleSymbol = useCallback((id: SymbolId) => {
     if (wonRef.current) return;
-    setStudio((p) => ({ ...p, symbol: p.symbol === id ? null : id }));
+    setStudio((p) => {
+      const has = p.symbols.includes(id);
+      return {
+        ...p,
+        symbols: has ? p.symbols.filter((x) => x !== id) : [...p.symbols, id],
+      };
+    });
   }, []);
 
   const placeRing = useCallback(() => {
@@ -183,7 +359,6 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
 
   const setRingMode = useCallback((mode: RingMode) => {
     if (wonRef.current) return;
-    // Changing the mode un-does a previous combine — you must re-combine.
     setStudio((p) => ({ ...p, ringMode: mode, combined: false }));
   }, []);
 
@@ -198,10 +373,14 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
     setStudio((p) => ({ ...p, scale: v }));
   }, []);
 
-  const reset = useCallback(() => {
+  const restart = useCallback(() => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
     wonRef.current = false;
     nudgeReadyRef.current = false;
-    setStudio({ ...START });
+    setRound(0);
+    setStarTotal(0);
+    setFlash(false);
+    setStudio(freshStudio());
     setDone(false);
   }, []);
 
@@ -213,14 +392,19 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
   const cy = VIEW_H / 2 + 6;
   const left = cx - plateW / 2;
   const top = cy - plateH / 2;
-  /* faux-3D extrusion depth */
   const depth = 14 * studio.scale;
-  /* ring sits near the top edge of the plate */
   const ringCx = cx;
   const ringCy = top + 12;
   const ringR = 11 * studio.scale;
-  /* a real hole = punched-through (combined while HOLE); else a dark drawn blob */
-  const realHole = checks.realHole;
+  const realHole = studio.ringPlaced && studio.ringMode === "hole" && studio.combined;
+  const overBudget = grams > order.budget + 1e-6;
+
+  /* Where the first/second placed symbols sit on the tag. */
+  const symbolSlots: { x: number; y: number }[] = [
+    { x: left + plateW - 18 * studio.scale, y: top + 22 * studio.scale },
+    { x: left + 18 * studio.scale, y: top + 22 * studio.scale },
+    { x: left + plateW - 18 * studio.scale, y: top + plateH - 12 * studio.scale },
+  ];
 
   return (
     <div className="flex w-full flex-col gap-3 text-ink" style={{ maxWidth: 440 }}>
@@ -253,6 +437,41 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
         }
       `}</style>
 
+      {/* ---------------- ORDER CARD ---------------- */}
+      <div
+        className="rounded-xl border p-2.5"
+        style={{
+          borderColor: "var(--color-line, #27314f)",
+          background: "rgba(11,16,32,0.45)",
+        }}
+        role="group"
+        aria-label={`Order ${round + 1} of ${ORDERS.length}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">
+            📦 Order {round + 1} / {ORDERS.length}
+          </p>
+          <div className="flex items-center gap-1" aria-label={`${round} orders shipped`}>
+            {ORDERS.map((_, i) => (
+              <span
+                key={i}
+                aria-hidden
+                className="text-xs"
+                style={{ opacity: i < round || (done && i <= round) ? 1 : 0.25 }}
+              >
+                {i < round || (done && i <= round) ? "✅" : "⬜"}
+              </span>
+            ))}
+          </div>
+        </div>
+        <p className="mt-1 text-sm font-bold" style={{ color: ACCENT }}>
+          {order.client}
+        </p>
+        <p className="mt-0.5 text-[11px] text-ink-dim">
+          Read the spec, then build it with the CAD tools below.
+        </p>
+      </div>
+
       {/* ---------------- WORKPLANE STAGE ---------------- */}
       <div
         className="panel relative overflow-hidden rounded-xl border p-2"
@@ -266,12 +485,11 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="block h-auto w-full"
           role="img"
-          aria-label="3D workplane showing a keychain plate with the name, symbol and ring loop, tilted in orthographic view."
+          aria-label={`3D workplane: a keychain tag for ${order.client}, ${dims.w.toFixed(1)} by ${dims.h.toFixed(1)} centimetres, weight ${grams} grams.`}
           style={{ maxHeight: 320, touchAction: "none" }}
         >
           <defs>
             <clipPath id="g4kc-ringhole">
-              {/* the punched ring loop — used to subtract from the plate */}
               <path
                 d={`M 0 0 H ${VIEW_W} V ${VIEW_H} H 0 Z
                     M ${ringCx} ${ringCy} m ${-ringR} 0
@@ -282,7 +500,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             </clipPath>
           </defs>
 
-          {/* faint workplane grid (with a subtle 3D tilt) */}
+          {/* faint workplane grid with a subtle 3D tilt */}
           <g transform={`translate(${cx} ${cy}) skewX(-10) translate(${-cx} ${-cy})`}>
             {Array.from({ length: 13 }, (_, i) => (
               <line
@@ -308,12 +526,12 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             ))}
           </g>
 
-          {/* the printable build-box outline (turns green when the design fits) */}
+          {/* this order's printable build-box outline (green when the design fits) */}
           <rect
-            x={cx - (MAX_W * PX_PER_CM) / 2}
-            y={cy - (MAX_H * PX_PER_CM) / 2}
-            width={MAX_W * PX_PER_CM}
-            height={MAX_H * PX_PER_CM}
+            x={cx - (order.boxW * PX_PER_CM) / 2}
+            y={cy - (order.boxH * PX_PER_CM) / 2}
+            width={order.boxW * PX_PER_CM}
+            height={order.boxH * PX_PER_CM}
             rx={4}
             fill="none"
             stroke={dims.fits ? GREEN : RED}
@@ -332,10 +550,8 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             opacity={0.4}
           />
 
-          {/* THE PLATE — extruded slab. When the ring is a real hole, the whole
-             plate is clipped so you can see straight through the loop. */}
+          {/* THE TAG — extruded slab; clipped through the loop when it's a real hole */}
           <g clipPath={realHole ? "url(#g4kc-ringhole)" : undefined}>
-            {/* extrusion side wall */}
             <path
               d={`M ${left} ${top + plateH}
                   L ${left} ${top + plateH + depth}
@@ -345,7 +561,6 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
               stroke="#0a0e18"
               strokeWidth={1}
             />
-            {/* top face */}
             <rect
               x={left}
               y={top}
@@ -378,22 +593,25 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             </g>
           )}
 
-          {/* SYMBOL (a solid) — sits to the right of the name */}
-          {studio.symbol && (
-            <text
-              x={left + plateW - 18 * studio.scale}
-              y={top + 22 * studio.scale}
-              fontSize={18 * studio.scale}
-              textAnchor="middle"
-              style={{ animation: "g4keychain3d-drop .35s ease-out both" }}
-            >
-              {SYMBOLS.find((sy) => sy.id === studio.symbol)?.glyph}
-            </text>
-          )}
+          {/* SYMBOLS (solids) — each placed symbol sits in its own slot */}
+          {studio.symbols.map((id, i) => {
+            const slot = symbolSlots[i] ?? symbolSlots[symbolSlots.length - 1];
+            return (
+              <text
+                key={id}
+                x={slot.x}
+                y={slot.y}
+                fontSize={18 * studio.scale}
+                textAnchor="middle"
+                style={{ animation: "g4keychain3d-drop .35s ease-out both" }}
+              >
+                {SYMBOLS.find((sy) => sy.id === id)?.glyph}
+              </text>
+            );
+          })}
 
           {/* THE RING near the top edge */}
           {studio.ringPlaced && !realHole && (
-            // a solid ring (or a not-yet-combined hole) drawn as a dark blob ring
             <g key={`ring-${studio.ringMode}-${studio.combined}`}>
               <ellipse
                 cx={ringCx}
@@ -414,7 +632,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
               />
             </g>
           )}
-          {/* the REAL punched loop — rim drawn around the clipped-through hole */}
+          {/* the REAL punched loop */}
           {realHole && (
             <ellipse
               key="real-ring"
@@ -433,8 +651,8 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             />
           )}
 
-          {/* slicing-style print-layer preview on the plate when valid & ringed */}
-          {checks.realHole && checks.inBox && !done &&
+          {/* slicing-style print-layer preview when the design is fully valid */}
+          {checks.all && !done && !flash &&
             Array.from({ length: 4 }, (_, i) => (
               <line
                 key={`slice${i}`}
@@ -449,7 +667,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
               />
             ))}
 
-          {/* dimension callout */}
+          {/* dimension + weight callout */}
           <text
             x={cx}
             y={top + plateH + depth + 22}
@@ -461,8 +679,52 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
           >
             {dims.w.toFixed(1)} × {dims.h.toFixed(1)} × {dims.t.toFixed(1)} cm
           </text>
+          <text
+            x={cx}
+            y={top + plateH + depth + 36}
+            fontSize={11}
+            fontWeight={700}
+            textAnchor="middle"
+            fill={overBudget ? RED : GREEN}
+            className="font-mono"
+          >
+            {grams} g / {order.budget} g
+          </text>
 
-          {/* Ready-to-print stamp on win */}
+          {/* per-order "shipped!" flash between rounds */}
+          {flash && !done && (
+            <g
+              style={{
+                transformBox: "view-box",
+                transformOrigin: "center",
+                animation: "g4keychain3d-stamp .5s ease-out both",
+              }}
+            >
+              <rect
+                x={VIEW_W / 2 - 96}
+                y={30}
+                width={192}
+                height={46}
+                rx={8}
+                fill="rgba(7,11,20,0.9)"
+                stroke={GREEN}
+                strokeWidth={3}
+              />
+              <text
+                x={VIEW_W / 2}
+                y={59}
+                fontSize={15}
+                fontWeight={800}
+                textAnchor="middle"
+                fill={GREEN}
+                letterSpacing={1}
+              >
+                ORDER SHIPPED ✅
+              </text>
+            </g>
+          )}
+
+          {/* Ready-to-print stamp on the final win */}
           {done && (
             <g
               style={{
@@ -490,7 +752,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
                 fill={ACCENT}
                 letterSpacing={1.5}
               >
-                READY TO PRINT
+                ALL ORDERS SHIPPED
               </text>
               <text
                 x={VIEW_W / 2}
@@ -500,7 +762,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
                 fill={ACCENT}
                 opacity={0.9}
               >
-                ⬇ keychain.stl ✨
+                ⬇ {ORDERS.length} keychains printed ✨
               </text>
             </g>
           )}
@@ -536,38 +798,58 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
           )}
         </svg>
 
-        {/* "can't thread a solid blob" warning overlay */}
-        {solidBlobNote && !done && (
+        {/* "can't thread a solid blob" / "over budget" warning overlay */}
+        {!done && !flash && solidBlobNote && (
           <div
             className="absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-[11px] font-medium"
             style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}
             role="note"
           >
-            You can&apos;t thread a keyring through a solid blob! Set the ring to HOLE.
+            You can&apos;t thread a keyring through a solid blob — and it adds weight. Set
+            the ring to HOLE.
+          </div>
+        )}
+        {!done && !flash && !solidBlobNote && overBudget && (
+          <div
+            className="absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-[11px] font-medium"
+            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}
+            role="note"
+          >
+            Over budget by {Math.round((grams - order.budget) * 10) / 10} g — cut the ring
+            hole to lighten it, or shrink the tag.
           </div>
         )}
       </div>
 
-      {/* ---------------- MISSION CHECKLIST ---------------- */}
+      {/* ---------------- SPEC CHECKLIST ---------------- */}
       <div
         className="flex flex-col gap-1.5 rounded-xl border border-line bg-panel/40 p-2"
         role="group"
-        aria-label="Mission checklist"
+        aria-label="Order spec"
       >
         <p className="px-1 font-mono text-[11px] uppercase tracking-wide text-ink-faint">
-          📋 Mission — all four must pass
+          📋 Spec — every line must pass to ship
         </p>
-        <CheckRow ok={checks.hasName} label="Name text on the plate" want="placed" />
-        <CheckRow ok={checks.hasSymbol} label="Exactly one symbol" want="1 chosen" />
+        {order.needName && (
+          <CheckRow ok={checks.hasName} label="Name on the tag" want="placed" />
+        )}
         <CheckRow
-          ok={checks.realHole}
-          label="Ring set to HOLE + combined"
-          want="real cutout"
+          ok={checks.hasSymbols}
+          label={order.minSymbols > 1 ? `At least ${order.minSymbols} symbols` : "At least 1 symbol"}
+          want={`${studio.symbols.length}/${order.minSymbols}`}
         />
+        {order.needHole && (
+          <CheckRow ok={checks.realHole} label="Real keyring hole" want="cut through" />
+        )}
         <CheckRow
           ok={checks.inBox}
-          label={`Fits the ${MAX_W}×${MAX_H}×${MAX_T} cm box`}
+          label={`Fits the ${order.boxW}×${order.boxH} cm box`}
           want={dims.fits ? "in range" : "shrink it"}
+        />
+        <CheckRow
+          ok={checks.underBudget}
+          label={`Weight ≤ ${order.budget} g`}
+          want={`${grams} g`}
         />
       </div>
 
@@ -582,63 +864,68 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
           fontWeight: done ? 700 : 400,
         }}
       >
-        {done ? "✨🎉 ⭐⭐⭐ " : ""}
         {done
-          ? "Exported keychain.stl — name, symbol, real hole, fits the box!"
-          : !checks.hasName
-            ? "Place your NAME block on the plate."
-            : !checks.hasSymbol
-              ? "Add one symbol — star, heart or shield."
-              : !checks.realHole
-                ? !studio.ringPlaced
-                  ? "Add a ring near the top."
-                  : studio.ringMode === "solid"
-                    ? "Switch the ring to HOLE — a solid blob can't thread."
-                    : "Press COMBINE to punch the hole through the plate."
-                : !checks.inBox
-                  ? "Too big — shrink it until the box turns green."
-                  : "All set — press EXPORT! ✨"}
+          ? "✨🎉 Whole shop run complete — every order shipped on spec!"
+          : flash
+            ? "✅ Shipped! Loading the next order…"
+            : !checks.hasName
+              ? "This order needs the NAME block."
+              : !checks.hasSymbols
+                ? `Add ${order.minSymbols > studio.symbols.length ? order.minSymbols - studio.symbols.length : order.minSymbols} more symbol${order.minSymbols - studio.symbols.length === 1 ? "" : "s"}.`
+                : !checks.realHole
+                  ? !studio.ringPlaced
+                    ? "Add a ring near the top."
+                    : studio.ringMode === "solid"
+                      ? "Switch the ring to HOLE — a solid blob can't thread."
+                      : "Press COMBINE to punch the hole through the tag."
+                  : !checks.inBox
+                    ? "Too big — shrink it until the box turns green."
+                    : !checks.underBudget
+                      ? `Over budget — cut the hole or shrink to get under ${order.budget} g.`
+                      : "On spec — press SHIP! ✨"}
       </div>
 
-      {/* ---------------- PALETTE / BUILD TOOLS ---------------- */}
+      {/* ---------------- CAD BUILD TOOLS ---------------- */}
       <div className="panel flex flex-col gap-3 rounded-xl p-3">
-        {/* NAME + SYMBOL row */}
         <div className="flex flex-col gap-2">
           <p className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">
-            Add solid parts
+            Add solid parts · each adds weight
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <PaletteButton
               active={studio.namePlaced}
-              disabled={done}
+              disabled={done || flash}
               onClick={placeName}
-              ariaLabel={studio.namePlaced ? "Remove the name block" : "Add the name block"}
+              ariaLabel={studio.namePlaced ? `Remove the name block, saves ${NAME_G} grams` : `Add the name block, adds ${NAME_G} grams`}
             >
-              🔤 Name
+              🔤 Name <Tag>+{NAME_G}g</Tag>
             </PaletteButton>
-            {SYMBOLS.map((sy) => (
-              <PaletteButton
-                key={sy.id}
-                active={studio.symbol === sy.id}
-                disabled={done}
-                onClick={() => placeSymbol(sy.id)}
-                ariaLabel={`${studio.symbol === sy.id ? "Remove" : "Add"} the ${sy.word} symbol`}
-              >
-                {sy.glyph} {sy.word}
-              </PaletteButton>
-            ))}
+            {SYMBOLS.map((sy) => {
+              const on = studio.symbols.includes(sy.id);
+              return (
+                <PaletteButton
+                  key={sy.id}
+                  active={on}
+                  disabled={done || flash}
+                  onClick={() => toggleSymbol(sy.id)}
+                  ariaLabel={`${on ? "Remove" : "Add"} the ${sy.word} symbol, ${sy.grams} grams`}
+                >
+                  {sy.glyph} {sy.word} <Tag>+{sy.grams}g</Tag>
+                </PaletteButton>
+              );
+            })}
           </div>
         </div>
 
         {/* RING build — place, set SOLID/HOLE, combine */}
         <div className="flex flex-col gap-2">
           <p className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">
-            Ring loop — solid adds, hole subtracts
+            Ring loop — solid adds {RING_SOLID_G}g · a cut hole saves {RING_HOLE_SAVING_G}g
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <PaletteButton
               active={studio.ringPlaced}
-              disabled={done}
+              disabled={done || flash}
               onClick={placeRing}
               ariaLabel={studio.ringPlaced ? "Remove the ring" : "Add a ring near the top"}
             >
@@ -657,7 +944,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
                     key={mode}
                     type="button"
                     onClick={() => setRingMode(mode)}
-                    disabled={done || !studio.ringPlaced}
+                    disabled={done || flash || !studio.ringPlaced}
                     aria-pressed={on}
                     aria-label={`Set ring to ${mode}`}
                     className="px-3 py-1.5 text-xs font-medium transition disabled:opacity-40"
@@ -676,7 +963,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             <button
               type="button"
               onClick={combine}
-              disabled={done || !studio.ringPlaced || studio.combined}
+              disabled={done || flash || !studio.ringPlaced || studio.combined}
               aria-label="Combine the shapes to punch the ring hole"
               className="rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40"
               style={{ background: "#2c3a5a", color: "#e8eefc", border: `1px solid ${ACCENT}` }}
@@ -690,7 +977,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
         <label className="flex flex-col gap-1 text-xs">
           <span className="flex items-center justify-between">
             <span className="text-ink-dim">
-              Scale <span className="text-ink-faint">· shrink to fit the box</span>
+              Scale <span className="text-ink-faint">· smaller = fits + lighter</span>
             </span>
             <span
               className="font-display tabular-nums"
@@ -706,28 +993,28 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
             step={SCALE_RANGE.step}
             value={studio.scale}
             onChange={onScale}
-            disabled={done}
+            disabled={done || flash}
             aria-label={`Scale, ${Math.round(studio.scale * 100)} percent`}
             className="h-2 w-full cursor-pointer appearance-none rounded-full bg-panel-2 disabled:opacity-60"
             style={{ accentColor: dims.fits ? GREEN : ACCENT, touchAction: "none" }}
           />
         </label>
 
-        {/* EXPORT + RESET */}
+        {/* SHIP + RESTART */}
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={reset}
+            onClick={restart}
             className="shrink-0 rounded-lg border border-line bg-panel/60 px-3 py-1.5 text-xs font-medium text-ink-dim"
-            aria-label="Reset the keychain studio"
+            aria-label="Restart from the first order"
           >
-            Reset
+            Restart
           </button>
           <button
             type="button"
-            onClick={handleExport}
-            disabled={done}
-            aria-label="Export keychain.stl"
+            onClick={handleShip}
+            disabled={done || flash}
+            aria-label={isFinalOrder ? "Ship the final order" : "Ship this order"}
             className="rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-60"
             style={{
               background: checks.all ? ACCENT : "rgba(245,158,11,0.25)",
@@ -736,7 +1023,7 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
               transition: "background .2s ease, box-shadow .2s ease",
             }}
           >
-            {done ? "Exported ✓" : "Export STL ⬇"}
+            {done ? "Done ✓" : isFinalOrder ? "Ship final order 🚚" : "Ship order 🚚"}
           </button>
         </div>
       </div>
@@ -745,6 +1032,18 @@ export default function KeychainStudio({ onComplete }: ActivityProps) {
 }
 
 /* ---------------- small presentational helpers ---------------- */
+
+function Tag({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="ml-1 rounded px-1 font-mono text-[10px]"
+      style={{ background: "rgba(0,0,0,0.18)" }}
+    >
+      {children}
+    </span>
+  );
+}
 
 function CheckRow({
   ok,

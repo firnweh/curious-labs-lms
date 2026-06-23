@@ -111,7 +111,22 @@ interface SimResult {
   cleanCycle: boolean;
   /** Lid did flip one or more times inside the noisy 22cm pause. */
   chatteredAtPause: boolean;
+  /** Stars earned (only meaningful when cleanCycle): 3 = engineered, 2 = sloppy. */
+  stars: 1 | 2 | 3;
+  /** Why fewer than 3 stars — coaching for the optimize goal. "" when 3★. */
+  optimizeHint: string;
 }
+
+/* ── Optimization goal (the "3★ engineered" check) ─────────────────────────────
+   ANY clean cycle wins (always winnable, ≥2★). But full marks reward a properly
+   ENGINEERED dead-band: one that BRACKETS the noisy hover point — OPEN below the
+   lowest jittery reading (≤20) and CLOSE above the highest (≥24) — so the lid is
+   robust no matter WHERE the hand pauses, AND is not wastefully padded.
+   A sloppy clean win (band parked entirely to one side of the noise, or a giant
+   over-wide gap) still passes at 2★ with a nudge to tighten it.            */
+const NOISE_LO = 20; // lowest reading the hand produces at the jittery pause
+const NOISE_HI = 24; // highest reading at the pause
+const MAX_TIGHT_GAP = 12; // wider than this is "wastefully padded" → 2★
 
 /**
  * Apply one threshold rule to a single reading given the current lid state.
@@ -153,7 +168,30 @@ function simulate(openAt: number, closeAt: number): SimResult {
   const flickers = pauseFlips + Math.max(0, transitions - pauseFlips - 2);
   const cleanCycle =
     openedOnApproach && closedOnRetreat && pauseFlips === 0 && transitions === 2;
-  return { flickers, cleanCycle, chatteredAtPause: pauseFlips > 0 };
+
+  // Grade the optimization goal on top of a clean win.
+  let stars: 1 | 2 | 3 = 1;
+  let optimizeHint = "";
+  if (cleanCycle) {
+    const brackets = openAt <= NOISE_LO && closeAt >= NOISE_HI;
+    const gap = closeAt - openAt;
+    if (brackets && gap <= MAX_TIGHT_GAP) {
+      stars = 3;
+    } else {
+      stars = 2;
+      optimizeHint = brackets
+        ? "Smooth — but the gap is wider than it needs to be. Tighten it: a snug dead-band around the wobble earns all 3 stars."
+        : "Smooth — but your gap sits to one side of the wobble. For full stars, straddle it: OPEN below the jitter, CLOSE above it.";
+    }
+  }
+
+  return {
+    flickers,
+    cleanCycle,
+    chatteredAtPause: pauseFlips > 0,
+    stars,
+    optimizeHint,
+  };
 }
 
 export default function ContactlessBinLid({ onComplete }: ActivityProps) {
@@ -166,6 +204,10 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
   const [frameIdx, setFrameIdx] = useState<number>(0);
   const [lid, setLid] = useState<Lid>("closed");
   const [flickers, setFlickers] = useState<number>(0);
+
+  // Stars from the most recent clean win, plus the optimize-for-3★ nudge.
+  const [wonStars, setWonStars] = useState<1 | 2 | 3>(3);
+  const [optimizeMsg, setOptimizeMsg] = useState<string>("");
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -261,12 +303,17 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
         const res = simulate(openAt, closeAt);
         if (res.cleanCycle) {
           setPhase("won");
+          setWonStars(res.stars);
+          setOptimizeMsg(res.optimizeHint);
           if (!reportedRef.current) {
             reportedRef.current = true;
             onComplete({
               passed: true,
-              stars: 3,
-              detail: "Smooth lid! The gap between thresholds is hysteresis. ✨",
+              stars: res.stars,
+              detail:
+                res.stars === 3
+                  ? "Engineered! Your dead-band brackets the wobble snugly — that's hysteresis. ✨"
+                  : "Smooth lid! It passes — tighten the gap around the wobble for all 3 stars.",
             });
           }
         } else {
@@ -291,6 +338,7 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
     setLid("closed");
     setFlickers(0);
     setPreviewD(D_FAR);
+    setOptimizeMsg("");
   }, [clearTimers]);
 
   // Changing a threshold while showing a result returns to idle for a re-test.
@@ -322,7 +370,10 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
 
   // Status text for the live region.
   const statusLabel = useMemo<string>(() => {
-    if (won) return "Smooth! The lid opened once and closed once — zero flicker.";
+    if (won)
+      return wonStars === 3
+        ? "Engineered! The lid opened once, closed once, zero flicker — and your dead-band brackets the wobble snugly. Three stars."
+        : "Smooth! The lid opened once and closed once with zero flicker — two stars. Tighten the gap around the 22cm wobble for the third star.";
     if (testing)
       return `Testing… reading ${reading.toFixed(1)} centimetres, lid ${lid}, flickers ${flickers}.`;
     if (retry)
@@ -330,7 +381,7 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
         ? `The lid flickered ${flickers} times. Widen the gap between the thresholds.`
         : "The lid did not complete a clean open-then-close cycle. Adjust the rules.";
     return `Set the rules, then press Test. Hand at ${reading.toFixed(0)} centimetres.`;
-  }, [won, testing, retry, reading, lid, flickers]);
+  }, [won, testing, retry, reading, lid, flickers, wonStars]);
 
   const flickerBad = flickers > 0;
   const goodGap = gap >= 8; // a coaching hint threshold, NOT the win check
@@ -352,7 +403,7 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
         <span aria-hidden="true">🗑️</span>
         {won ? (
           <span aria-hidden="true" className="text-xl">
-            ⭐⭐⭐
+            {wonStars === 3 ? "⭐⭐⭐" : "⭐⭐"}
           </span>
         ) : (
           <span aria-hidden="true" className="text-base">
@@ -656,15 +707,24 @@ export default function ContactlessBinLid({ onComplete }: ActivityProps) {
         <p
           className="text-[11px] leading-tight"
           aria-hidden="true"
-          style={{ color: retry && flickerBad ? DANGER : "var(--color-ink-faint, #7c8aa0)" }}
+          style={{
+            color:
+              retry && flickerBad
+                ? DANGER
+                : won && optimizeMsg !== ""
+                  ? "#67e8f9"
+                  : "var(--color-ink-faint, #7c8aa0)",
+          }}
         >
           {retry && flickerBad
             ? "Make the CLOSE distance bigger than the OPEN distance — leave a gap."
             : won
-              ? "Smooth! That gap is called hysteresis."
+              ? optimizeMsg !== ""
+                ? optimizeMsg
+                : "Engineered! That snug gap around the wobble is called hysteresis."
               : closeAt <= openAt
                 ? "Tip: CLOSE should be FARTHER than OPEN, or the lid can chatter."
-                : "Press Test: the hand glides in, wobbles at 22cm, then leaves."}
+                : "Goal: open once, stay calm at the 22cm wobble, close once. Snug gap = 3 stars."}
         </p>
 
         {/* ── Controls: TEST · Reset ── */}

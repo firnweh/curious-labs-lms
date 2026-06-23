@@ -3,19 +3,29 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  Weather Station Dashboard — multi-sensor reading + calibration     */
-/*  GOAL: each sensor measures ONE quantity; reading them together     */
-/*  describes the weather, and a sensor that disagrees with a trusted  */
-/*  reference must be calibrated back into agreement.                  */
+/*  Weather Station Dashboard — diagnose & calibrate (Class 4-6)        */
+/*                                                                     */
+/*  A real weather station has 4 sensors. Each scene has a TRUSTED set  */
+/*  of reference values. One (or more) sensors are LYING — reading off  */
+/*  by some offset. The player must:                                    */
+/*    1) READ all four live gauges and compare each to its reference,   */
+/*    2) DIAGNOSE which sensor is faulty (it is NOT named by a clue —   */
+/*       it changes every round, so you can't pattern-match), and       */
+/*    3) CALIBRATE it back into agreement with a slider.                 */
+/*                                                                     */
+/*  Three escalating rounds. Round 3 twist: TWO sensors are faulty, and  */
+/*  one drifts the opposite way — so "always slide left" fails.          */
+/*                                                                     */
+/*  Optimization → stars: diagnose with no wrong accusations and        */
+/*  calibrate tightly for 3 stars; sloppy work earns fewer.             */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#a855f7";
 const GOOD = "#34d399";
 const BAD = "#f87171";
+const WARN = "#fbbf24";
 
 type SensorId = "temp" | "pressure" | "uv" | "light";
-type SceneId = "sunny" | "cloudy" | "night" | "storm";
-type ChipId = "bright" | "highuv" | "lowpress" | "dark";
 
 interface SensorDef {
   id: SensorId;
@@ -25,52 +35,67 @@ interface SensorDef {
   glyph: string;
   min: number;
   max: number;
+  /** How close (in sensor units) counts as "calibrated". */
+  tol: number;
+  /** Slider range for the calibration offset. */
+  offMin: number;
+  offMax: number;
+  offStep: number;
 }
 
 const SENSORS: readonly SensorDef[] = [
-  { id: "temp", name: "Temperature", device: "DHT22", unit: "°C", glyph: "🌡️", min: -5, max: 45 },
-  { id: "pressure", name: "Pressure", device: "BMP280", unit: "hPa", glyph: "🔵", min: 970, max: 1040 },
-  { id: "uv", name: "UV Index", device: "UV", unit: "", glyph: "🟣", min: 0, max: 11 },
-  { id: "light", name: "Light", device: "lux", unit: "lx", glyph: "💡", min: 0, max: 1000 },
+  { id: "temp", name: "Temperature", device: "DHT22", unit: "°C", glyph: "🌡️", min: -5, max: 45, tol: 1, offMin: -14, offMax: 14, offStep: 0.5 },
+  { id: "pressure", name: "Pressure", device: "BMP280", unit: "hPa", glyph: "🔵", min: 970, max: 1040, tol: 2, offMin: -30, offMax: 30, offStep: 1 },
+  { id: "uv", name: "UV Index", device: "UV", unit: "", glyph: "🟣", min: 0, max: 11, tol: 0.5, offMin: -6, offMax: 6, offStep: 0.5 },
+  { id: "light", name: "Light", device: "lux", unit: "lx", glyph: "💡", min: 0, max: 1000, tol: 30, offMin: -400, offMax: 400, offStep: 10 },
 ] as const;
 
-interface SceneDef {
-  id: SceneId;
-  name: string;
+function sensorDef(id: SensorId): SensorDef {
+  return SENSORS.find((s) => s.id === id) ?? SENSORS[0];
+}
+
+interface RoundDef {
+  scene: string;
   emoji: string;
-  /** Base reading for each sensor under this scene. */
-  base: Record<SensorId, number>;
+  /** Trusted reference value for every sensor. */
+  ref: Record<SensorId, number>;
+  /** Which sensors are lying, and by how much (added to the true reading). */
+  faults: Partial<Record<SensorId, number>>;
+  blurb: string;
 }
 
-const SCENES: readonly SceneDef[] = [
-  { id: "sunny", name: "Sunny Noon", emoji: "☀️", base: { temp: 31, pressure: 1022, uv: 9, light: 900 } },
-  { id: "cloudy", name: "Cloudy", emoji: "☁️", base: { temp: 23, pressure: 1008, uv: 3, light: 380 } },
-  { id: "night", name: "Night", emoji: "🌙", base: { temp: 16, pressure: 1015, uv: 0, light: 12 } },
-  { id: "storm", name: "Storm Coming", emoji: "⛈️", base: { temp: 20, pressure: 984, uv: 2, light: 150 } },
+/* Deterministic, hand-tuned rounds. The faulty sensor changes each round so
+   pattern-matching fails. Round 3 has TWO faults pulling opposite directions. */
+const ROUNDS: readonly RoundDef[] = [
+  {
+    scene: "Sunny Noon",
+    emoji: "☀️",
+    ref: { temp: 31, pressure: 1022, uv: 9, light: 900 },
+    faults: { temp: 8 }, // thermometer reads 8° too HOT
+    blurb: "One sensor is lying. Read every gauge, compare to its trusted reference, and find the odd one out.",
+  },
+  {
+    scene: "Cloudy",
+    emoji: "☁️",
+    ref: { temp: 23, pressure: 1008, uv: 3, light: 380 },
+    faults: { light: 320 }, // light sensor reads way too bright
+    blurb: "Different scene, different liar. Don't guess — the faulty sensor is whichever one disagrees with its reference.",
+  },
+  {
+    scene: "Storm Coming",
+    emoji: "⛈️",
+    ref: { temp: 20, pressure: 984, uv: 2, light: 150 },
+    faults: { pressure: 22, uv: -2.5 }, // TWIST: two faults, opposite signs
+    blurb: "Storm twist: TWO sensors are off — and they drift opposite ways. Fix both to match the reference.",
+  },
 ] as const;
 
-interface ChipDef {
-  id: ChipId;
-  label: string;
-  /** The single sensor this description belongs to. */
-  target: SensorId;
-}
-
-const CHIPS: readonly ChipDef[] = [
-  { id: "bright", label: "bright", target: "light" },
-  { id: "highuv", label: "high UV", target: "uv" },
-  { id: "lowpress", label: "low pressure → rain coming", target: "pressure" },
-  { id: "dark", label: "dark = night", target: "light" },
-] as const;
-
-/** The miscalibrated sensor (DHT22 reads 8° hot) and the trusted reference. */
-const FAULTY: SensorId = "temp";
-const FAULT_OFFSET = 8;
+const N_ROUNDS = ROUNDS.length;
 
 /** Per-sensor deterministic drift so gauges feel "live" without randomness. */
 function drift(id: SensorId, tick: number): number {
   const phase = id === "temp" ? 0 : id === "pressure" ? 1.6 : id === "uv" ? 3.1 : 4.4;
-  const amp = id === "temp" ? 0.6 : id === "pressure" ? 1.5 : id === "uv" ? 0.3 : 14;
+  const amp = id === "temp" ? 0.4 : id === "pressure" ? 1.2 : id === "uv" ? 0.2 : 10;
   return Math.sin(tick / 7 + phase) * amp;
 }
 
@@ -81,40 +106,56 @@ function clamp(v: number, lo: number, hi: number): number {
 /** Gauge needle path for a value in [min,max] across a 240° arc. */
 function needleAngle(v: number, min: number, max: number): number {
   const t = clamp((v - min) / (max - min), 0, 1);
-  return -120 + t * 240; // degrees, 0 = straight up
+  return -120 + t * 240;
 }
 
-interface DragState {
-  chip: ChipId;
-  x: number;
-  y: number;
+function fmt(id: SensorId, v: number): string {
+  if (id === "uv") return v.toFixed(1);
+  if (id === "pressure") return v.toFixed(0);
+  if (id === "light") return v.toFixed(0);
+  return v.toFixed(1);
 }
+
+type Phase = "diagnose" | "calibrate" | "roundWon" | "done";
 
 export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
-  const [scene, setScene] = useState<SceneId>("sunny");
+  const [round, setRound] = useState<number>(0);
   const [tick, setTick] = useState<number>(0);
-  const [placed, setPlaced] = useState<Record<ChipId, boolean>>({
-    bright: false,
-    highuv: false,
-    lowpress: false,
-    dark: false,
-  });
-  const [glow, setGlow] = useState<SensorId | null>(null);
-  const [bounce, setBounce] = useState<ChipId | null>(null);
-  const [hint, setHint] = useState<string>("");
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [selected, setSelected] = useState<SensorId | null>(null);
-  const [offset, setOffset] = useState<number>(0);
-  const [tries, setTries] = useState<number>(0);
-  const [won, setWon] = useState<boolean>(false);
+  const [phase, setPhase] = useState<Phase>("diagnose");
 
-  const wonRef = useRef<boolean>(false);
-  const tileRefs = useRef<Record<SensorId, HTMLDivElement | null>>({
-    temp: null,
-    pressure: null,
-    uv: null,
-    light: null,
+  // The set of sensors the player still has to fix this round (the real faults).
+  const [openSuspects, setOpenSuspects] = useState<SensorId[]>([]);
+  // Player-applied calibration offsets per sensor (cancel the fault).
+  const [offsets, setOffsets] = useState<Record<SensorId, number>>({
+    temp: 0,
+    pressure: 0,
+    uv: 0,
+    light: 0,
   });
+  // Which sensor's calibration panel is open.
+  const [active, setActive] = useState<SensorId | null>(null);
+  // Wrong accusations this round (tapping a healthy sensor) — costs stars.
+  const [misAccuse, setMisAccuse] = useState<number>(0);
+  // Total wrong accusations across the whole game (for final stars).
+  const [totalMis, setTotalMis] = useState<number>(0);
+
+  const [glow, setGlow] = useState<SensorId | null>(null);
+  const [shake, setShake] = useState<SensorId | null>(null);
+  const [hint, setHint] = useState<string>("");
+
+  const reportedRef = useRef<boolean>(false);
+  const timersRef = useRef<number[]>([]);
+
+  const pushTimer = useCallback((id: number) => {
+    timersRef.current.push(id);
+  }, []);
+  useEffect(
+    () => () => {
+      timersRef.current.forEach((id) => window.clearTimeout(id));
+      timersRef.current = [];
+    },
+    [],
+  );
 
   // Gentle "live" ticking. Pure counter → drift() is deterministic.
   useEffect(() => {
@@ -122,147 +163,160 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
     return () => window.clearInterval(t);
   }, []);
 
-  const sceneDef = useMemo(
-    () => SCENES.find((s) => s.id === scene) ?? SCENES[0],
-    [scene],
+  const roundDef = ROUNDS[round];
+
+  /** The list of sensors that are genuinely faulty this round. */
+  const faultyIds = useMemo<SensorId[]>(
+    () => (Object.keys(roundDef.faults) as SensorId[]).filter((k) => roundDef.faults[k] !== undefined),
+    [roundDef],
   );
 
-  /** Live reading for a sensor: scene base + drift, plus fault & user offset on temp. */
+  // When the round changes, reset the per-round state. (Not on every render.)
+  useEffect(() => {
+    setPhase("diagnose");
+    setOpenSuspects([]);
+    setOffsets({ temp: 0, pressure: 0, uv: 0, light: 0 });
+    setActive(null);
+    setMisAccuse(0);
+    setGlow(null);
+    setShake(null);
+    setHint("");
+  }, [round]);
+
+  /** Live reading shown on a gauge: reference + scene drift + fault − player calibration. */
   const reading = useCallback(
     (id: SensorId): number => {
-      const def = SENSORS.find((s) => s.id === id) ?? SENSORS[0];
-      let v = sceneDef.base[id] + drift(id, tick);
-      if (id === FAULTY) v += FAULT_OFFSET + offset;
+      const def = sensorDef(id);
+      const fault = roundDef.faults[id] ?? 0;
+      const v = roundDef.ref[id] + drift(id, tick) + fault + offsets[id];
       return clamp(v, def.min, def.max);
     },
-    [sceneDef, tick, offset],
+    [roundDef, tick, offsets],
   );
 
-  /** The trusted reference thermometer (no fault, no drift wobble baked in). */
-  const reference = sceneDef.base[FAULTY];
-  const calibrated = Math.abs(reference - reading(FAULTY)) <= 1;
-  const allChips = CHIPS.every((c) => placed[c.id]);
+  const refOf = useCallback((id: SensorId): number => roundDef.ref[id], [roundDef]);
 
-  // WIN: all four chips on the right gauge AND the faulty sensor calibrated.
-  useEffect(() => {
-    if (allChips && calibrated && !wonRef.current) {
-      wonRef.current = true;
-      setWon(true);
+  /** Is this sensor currently reading within tolerance of its reference? */
+  const inTol = useCallback(
+    (id: SensorId): boolean => Math.abs(reading(id) - refOf(id)) <= sensorDef(id).tol,
+    [reading, refOf],
+  );
+
+  /** Every faulty sensor has been found (opened) AND calibrated into tolerance. */
+  const allFound = faultyIds.every((id) => openSuspects.includes(id));
+  const allCalibrated = faultyIds.every((id) => inTol(id));
+
+  // ---- Diagnose: tap a gauge to accuse it of being faulty ----
+  const accuse = useCallback(
+    (id: SensorId) => {
+      if (phase !== "diagnose" && phase !== "calibrate") return;
+      if (openSuspects.includes(id)) {
+        // Re-open its calibration panel.
+        setActive(id);
+        return;
+      }
+      if (faultyIds.includes(id)) {
+        // Correct! Reveal its calibration tool.
+        setOpenSuspects((prev) => [...prev, id]);
+        setActive(id);
+        setPhase("calibrate");
+        setGlow(id);
+        setHint("");
+        const t = window.setTimeout(() => setGlow(null), 700);
+        pushTimer(t);
+      } else {
+        // Wrong accusation — this sensor already agrees with its reference.
+        setMisAccuse((m) => m + 1);
+        setTotalMis((m) => m + 1);
+        setShake(id);
+        const def = sensorDef(id);
+        setHint(
+          `${def.name} (${def.device}) reads ${fmt(id, reading(id))}${def.unit} and the reference says ${fmt(id, refOf(id))}${def.unit} — that's a match, not the liar.`,
+        );
+        const t = window.setTimeout(() => setShake(null), 450);
+        pushTimer(t);
+      }
+    },
+    [phase, openSuspects, faultyIds, reading, refOf, pushTimer],
+  );
+
+  const setOffset = useCallback((id: SensorId, value: number) => {
+    setOffsets((prev) => ({ ...prev, [id]: value }));
+  }, []);
+
+  // ---- Advance the round once everything is found AND calibrated ----
+  const lastRound = round === N_ROUNDS - 1;
+
+  const finishRound = useCallback(() => {
+    if (lastRound) {
+      if (reportedRef.current) return;
+      reportedRef.current = true;
+      // Stars: start at 3, lose one for ≥1 wrong accusation, lose another for ≥4.
+      const mis = totalMis;
+      const stars: 1 | 2 | 3 = mis === 0 ? 3 : mis <= 3 ? 2 : 1;
+      setPhase("done");
       onComplete({
         passed: true,
-        stars: 3,
-        detail: "All sensors mapped and the DHT22 calibrated to the reference!",
+        stars,
+        detail:
+          mis === 0
+            ? "Flawless diagnosis — every faulty sensor found on the first try and calibrated to the reference!"
+            : `Station fixed across all ${N_ROUNDS} rounds. (${mis} wrong accusation${mis === 1 ? "" : "s"} along the way.)`,
       });
+    } else {
+      setPhase("roundWon");
+      const t = window.setTimeout(() => setRound((r) => r + 1), 1100);
+      pushTimer(t);
     }
-  }, [allChips, calibrated, onComplete]);
+  }, [lastRound, totalMis, onComplete, pushTimer]);
 
-  const handleScene = useCallback((id: SceneId) => {
-    setScene(id);
-  }, []);
-
-  // ---- Chip dragging (pointer-based, touch friendly) ----
-  const startDrag = useCallback(
-    (chip: ChipId) => (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (placed[chip] || wonRef.current) return;
-      e.preventDefault();
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      setDrag({ chip, x: e.clientX, y: e.clientY });
-      setHint("");
-    },
-    [placed],
-  );
-
-  const moveDrag = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!drag) return;
-      setDrag({ chip: drag.chip, x: e.clientX, y: e.clientY });
-    },
-    [drag],
-  );
-
-  const endDrag = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!drag) return;
-      const current = drag;
-      setDrag(null);
-      setTries((t) => t + 1);
-
-      // Which tile did we drop over?
-      let hitId: SensorId | null = null;
-      for (const s of SENSORS) {
-        const el = tileRefs.current[s.id];
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        if (
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom
-        ) {
-          hitId = s.id;
-          break;
-        }
-      }
-
-      const def = CHIPS.find((c) => c.id === current.chip);
-      if (!def) return;
-
-      if (hitId === def.target) {
-        setPlaced((prev) => ({ ...prev, [current.chip]: true }));
-        setGlow(hitId);
-        window.setTimeout(() => setGlow(null), 700);
-        setHint("");
-      } else if (hitId) {
-        setBounce(current.chip);
-        window.setTimeout(() => setBounce(null), 450);
-        const wrong = SENSORS.find((s) => s.id === hitId);
-        setHint(
-          `${def.label} isn't measured by the ${wrong?.name ?? ""} (${wrong?.device ?? ""}) sensor.`,
-        );
-        if (!wonRef.current) {
-          onComplete({ passed: false, detail: "Not that sensor — try the gauge that measures it." });
-        }
-      }
-    },
-    [drag, onComplete],
-  );
+  // Watch for round completion. We require the player to have OPENED every fault
+  // (so they can't win by luck) and calibrated each into tolerance.
+  useEffect(() => {
+    if (phase !== "calibrate") return;
+    if (allFound && allCalibrated) {
+      finishRound();
+    }
+  }, [phase, allFound, allCalibrated, finishRound]);
 
   const reset = useCallback(() => {
-    wonRef.current = false;
-    setWon(false);
-    setPlaced({ bright: false, highuv: false, lowpress: false, dark: false });
-    setOffset(0);
-    setSelected(null);
+    reportedRef.current = false;
+    setTotalMis(0);
+    setRound(0);
+    // The round-effect resets everything else when round becomes 0; if we are
+    // already on round 0, force the per-round reset explicitly.
+    setPhase("diagnose");
+    setOpenSuspects([]);
+    setOffsets({ temp: 0, pressure: 0, uv: 0, light: 0 });
+    setActive(null);
+    setMisAccuse(0);
     setGlow(null);
-    setBounce(null);
+    setShake(null);
     setHint("");
-    setDrag(null);
-    setScene("sunny");
   }, []);
 
-  const remaining = CHIPS.filter((c) => !placed[c.id]);
-  const placedCount = CHIPS.length - remaining.length;
+  const won = phase === "done";
+  const foundCount = faultyIds.filter((id) => openSuspects.includes(id)).length;
+  const calCount = faultyIds.filter((id) => openSuspects.includes(id) && inTol(id)).length;
 
   const status = won
-    ? "Now your station agrees with the reference — sensors must be calibrated!"
-    : !allChips
-      ? `Match the clues: ${placedCount} / ${CHIPS.length} sensors described.`
-      : !calibrated
-        ? "All clues placed! One sensor disagrees with the reference — calibrate it."
-        : "Calibrated!";
+    ? "Weather station fully repaired — every sensor agrees with the reference!"
+    : phase === "roundWon"
+      ? "Round clear! Next station warming up…"
+      : phase === "diagnose"
+        ? `Round ${round + 1}/${N_ROUNDS} · ${roundDef.blurb}`
+        : `Found ${foundCount}/${faultyIds.length} · Calibrated ${calCount}/${faultyIds.length} — slide each fixed sensor onto its reference.`;
+
+  const activeDef = active ? sensorDef(active) : null;
 
   return (
-    <div
-      className="flex w-full max-w-[440px] flex-col gap-3 font-mono text-ink"
-      onPointerMove={moveDrag}
-      onPointerUp={endDrag}
-      style={{ touchAction: drag ? "none" : undefined }}
-    >
+    <div className="flex w-full max-w-[440px] flex-col gap-3 font-mono text-ink">
       <style>{`
-        @keyframes g6weatherdashboard-bounce {
-          0% { transform: scale(1); }
-          40% { transform: scale(1.12) rotate(-4deg); }
-          100% { transform: scale(1); }
+        @keyframes g6weatherdashboard-shake {
+          0% { transform: translateX(0); }
+          25% { transform: translateX(-4px) rotate(-1.5deg); }
+          75% { transform: translateX(4px) rotate(1.5deg); }
+          100% { transform: translateX(0); }
         }
         @keyframes g6weatherdashboard-pop {
           0% { transform: scale(0.6); opacity: 0; }
@@ -277,75 +331,70 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
           0%,100% { opacity: 0.5; }
           50% { opacity: 1; }
         }
+        @media (prefers-reduced-motion: reduce) {
+          .g6wd-anim { animation: none !important; }
+        }
       `}</style>
 
-      {/* ---------------- SCENE SELECTOR ---------------- */}
-      <div className="flex flex-col gap-1.5">
+      {/* ---------------- SCENE / ROUND HEADER ---------------- */}
+      <div className="flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-tech text-ink-faint">
-          {sceneDef.emoji} Conditions — scroll &amp; pick
+          {roundDef.emoji} {roundDef.scene} — diagnostic
         </span>
-        <div
-          className="flex gap-2 overflow-x-auto pb-1"
-          role="radiogroup"
-          aria-label="Weather scene"
-        >
-          {SCENES.map((s) => {
-            const active = s.id === scene;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                aria-label={s.name}
-                onClick={() => handleScene(s.id)}
-                className="shrink-0 rounded-lg border px-3 py-1.5 text-xs transition"
-                style={{
-                  borderColor: active ? ACCENT : "var(--color-line, #2a2f3a)",
-                  background: active ? ACCENT : "transparent",
-                  color: active ? "#0b0810" : "var(--color-ink-dim, #9aa6b2)",
-                  fontWeight: active ? 600 : 400,
-                }}
-              >
-                {s.emoji} {s.name}
-              </button>
-            );
-          })}
+        <div className="flex gap-1" aria-label={`Round ${round + 1} of ${N_ROUNDS}`}>
+          {ROUNDS.map((_, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className="h-2 w-2 rounded-full"
+              style={{
+                background: i < round || won ? GOOD : i === round ? ACCENT : "var(--color-line, #2a2f3a)",
+              }}
+            />
+          ))}
         </div>
       </div>
 
       {/* ---------------- 2x2 GAUGE DASHBOARD ---------------- */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Sensor gauges — tap the one you think is lying">
         {SENSORS.map((s) => {
           const v = reading(s.id);
-          const isFaulty = s.id === FAULTY;
+          const ref = refOf(s.id);
+          const opened = openSuspects.includes(s.id);
+          const calibratedNow = inTol(s.id);
+          const isActive = active === s.id;
           const tileGlow = glow === s.id;
-          const placedHere = CHIPS.filter((c) => c.target === s.id && placed[c.id]);
-          const isSelected = selected === s.id;
-          const showCalRing = isFaulty && (isSelected || won);
+          const tileShake = shake === s.id;
+
           const ringColor = won
             ? GOOD
-            : isFaulty && isSelected && !calibrated
-              ? BAD
-              : tileGlow
+            : opened
+              ? calibratedNow
+                ? GOOD
+                : WARN
+              : isActive
                 ? ACCENT
                 : "var(--color-line, #2a2f3a)";
+
+          // The gap badge: shown only AFTER a sensor is opened (so diagnosing
+          // stays a real reading task, not "read the number off the screen").
+          const gap = v - ref;
+          const showGap = opened || won;
+
           return (
             <div
               key={s.id}
-              ref={(el) => {
-                tileRefs.current[s.id] = el;
-              }}
               role="button"
               tabIndex={0}
-              aria-label={`${s.name} sensor (${s.device}) reading ${v.toFixed(1)} ${s.unit}`}
-              onClick={() => {
-                if (isFaulty && !won) setSelected((cur) => (cur === s.id ? null : s.id));
-              }}
+              aria-label={`${s.name} sensor (${s.device}) reading ${fmt(s.id, v)} ${s.unit}, reference ${fmt(s.id, ref)} ${s.unit}. ${
+                opened ? (calibratedNow ? "Calibrated." : "Faulty — open for calibration.") : "Tap if you think it is faulty."
+              }`}
+              aria-pressed={isActive}
+              onClick={() => accuse(s.id)}
               onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && isFaulty && !won) {
+                if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelected((cur) => (cur === s.id ? null : s.id));
+                  accuse(s.id);
                 }
               }}
               className="relative flex flex-col items-center gap-1 rounded-xl border p-2"
@@ -353,8 +402,12 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
                 borderColor: ringColor,
                 background: "var(--color-panel, #12151c)",
                 boxShadow: tileGlow ? `0 0 16px -4px ${ACCENT}` : undefined,
-                cursor: isFaulty && !won ? "pointer" : "default",
-                animation: tileGlow ? "g6weatherdashboard-glow .7s ease" : undefined,
+                cursor: won ? "default" : "pointer",
+                animation: tileGlow
+                  ? "g6weatherdashboard-glow .7s ease"
+                  : tileShake
+                    ? "g6weatherdashboard-shake .45s ease"
+                    : undefined,
                 transition: "border-color .25s ease, box-shadow .25s ease",
               }}
             >
@@ -366,7 +419,6 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
 
               {/* SVG gauge */}
               <svg viewBox="0 0 100 70" className="w-full" role="img" aria-hidden>
-                {/* arc track */}
                 <path
                   d={describeArc(50, 55, 34, -120, 120)}
                   fill="none"
@@ -374,16 +426,32 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
                   strokeWidth={6}
                   strokeLinecap="round"
                 />
-                {/* value arc */}
+                {/* reference tick — the trusted target the needle should land on */}
+                {showGap &&
+                  (() => {
+                    const a = needleAngle(ref, s.min, s.max);
+                    const o = polar(50, 55, 38, a);
+                    const i = polar(50, 55, 30, a);
+                    return (
+                      <line
+                        x1={i.x}
+                        y1={i.y}
+                        x2={o.x}
+                        y2={o.y}
+                        stroke={GOOD}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                      />
+                    );
+                  })()}
                 <path
                   d={describeArc(50, 55, 34, -120, needleAngle(v, s.min, s.max))}
                   fill="none"
-                  stroke={showCalRing && !calibrated ? BAD : ACCENT}
+                  stroke={opened && !calibratedNow ? WARN : ACCENT}
                   strokeWidth={6}
                   strokeLinecap="round"
                   style={{ transition: "all .35s ease" }}
                 />
-                {/* needle */}
                 <g
                   transform={`rotate(${needleAngle(v, s.min, s.max)} 50 55)`}
                   style={{ transition: "transform .35s ease" }}
@@ -392,45 +460,35 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
                 </g>
                 <circle cx={50} cy={55} r={3} fill="#e5e7eb" />
                 <text x={50} y={50} textAnchor="middle" fontSize={11} fill={ACCENT} className="tabular-nums">
-                  {s.id === "uv" ? v.toFixed(0) : v.toFixed(s.id === "pressure" ? 0 : 1)}
+                  {fmt(s.id, v)}
                 </text>
               </svg>
 
-              {/* reference thermometer beside the faulty sensor */}
-              {isFaulty && (
-                <span className="text-[10px] text-ink-faint">
-                  ref 🌡️{" "}
-                  <span style={{ color: calibrated ? GOOD : BAD }}>
-                    {reference.toFixed(1)}°C
-                  </span>
+              {/* reference read-out under EVERY gauge — this is the data you reason over */}
+              <span className="text-[10px] text-ink-faint">
+                ref{" "}
+                <span style={{ color: showGap ? (calibratedNow ? GOOD : WARN) : "var(--color-ink-dim, #9aa6b2)" }}>
+                  {fmt(s.id, ref)}
+                  {s.unit}
                 </span>
-              )}
+                {showGap && (
+                  <span style={{ color: calibratedNow ? GOOD : WARN }}>
+                    {" "}· gap {gap > 0 ? "+" : ""}
+                    {fmt(s.id, gap)}
+                  </span>
+                )}
+              </span>
 
-              {/* placed chips badges */}
-              {placedHere.length > 0 && (
-                <div className="flex flex-wrap justify-center gap-1">
-                  {placedHere.map((c) => (
-                    <span
-                      key={c.id}
-                      className="rounded-full px-1.5 py-0.5 text-[9px]"
-                      style={{
-                        background: `${ACCENT}22`,
-                        color: ACCENT,
-                        animation: "g6weatherdashboard-pop .4s ease",
-                      }}
-                    >
-                      ✓ {c.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {showCalRing && (
+              {/* status badge once opened */}
+              {(opened || won) && (
                 <span
-                  className="absolute right-1 top-1 text-[9px]"
-                  style={{ color: calibrated ? GOOD : BAD }}
+                  className="absolute right-1 top-1 text-[9px] g6wd-anim"
+                  style={{
+                    color: calibratedNow ? GOOD : WARN,
+                    animation: "g6weatherdashboard-pop .4s ease",
+                  }}
                 >
-                  {calibrated ? "✓ cal" : "⚠ off"}
+                  {calibratedNow ? "✓ cal" : "⚠ off"}
                 </span>
               )}
             </div>
@@ -438,82 +496,67 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
         })}
       </div>
 
-      {/* ---------------- PART 1: CHIP TRAY ---------------- */}
-      {!allChips && (
-        <div className="flex flex-col gap-1.5 rounded-xl border border-line bg-panel/60 p-2">
-          <span className="text-[11px] uppercase tracking-tech text-ink-faint">
-            Drag each clue onto the gauge that measures it
+      {/* ---------------- DIAGNOSE HINT ---------------- */}
+      {phase === "diagnose" && openSuspects.length === 0 && (
+        <div className="rounded-xl border border-line bg-panel/60 p-2">
+          <span
+            className="text-[11px] text-ink-dim g6wd-anim"
+            style={{ animation: "g6weatherdashboard-pulse 1.6s ease infinite" }}
+          >
+            Every gauge shows its <b>reference</b> value underneath. The faulty sensor is the one
+            whose needle does <b>not</b> match its reference. Tap it to start fixing it.
           </span>
-          <div className="flex flex-wrap gap-2">
-            {remaining.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onPointerDown={startDrag(c.id)}
-                aria-label={`Clue: ${c.label}. Drag onto its sensor.`}
-                className="select-none rounded-lg border px-2.5 py-1.5 text-xs"
-                style={{
-                  borderColor: ACCENT,
-                  background: `${ACCENT}1a`,
-                  color: "#e9d5ff",
-                  touchAction: "none",
-                  visibility: drag?.chip === c.id ? "hidden" : "visible",
-                  animation: bounce === c.id ? "g6weatherdashboard-bounce .45s ease" : undefined,
-                }}
-              >
-                ⤴ {c.label}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
-      {/* ---------------- PART 2: CALIBRATION ---------------- */}
-      {allChips && !won && (
+      {/* ---------------- CALIBRATION PANEL ---------------- */}
+      {active && activeDef && !won && (openSuspects.includes(active)) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel/60 p-3">
-          {selected === FAULTY ? (
-            <>
-              <span className="text-[11px] text-ink-dim">
-                Slide the calibration offset until the gauge matches the reference thermometer.
+          <span className="text-[11px] text-ink-dim">
+            Calibrate <b>{activeDef.name}</b> ({activeDef.device}): slide the offset until the gauge
+            lands on the green reference tick.
+          </span>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="flex items-center justify-between">
+              <span className="text-ink-dim">offset</span>
+              <span className="tabular-nums" style={{ color: inTol(active) ? GOOD : ACCENT }}>
+                {offsets[active] > 0 ? "+" : ""}
+                {offsets[active]}
+                {activeDef.unit}
               </span>
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="flex items-center justify-between">
-                  <span className="text-ink-dim">offset</span>
-                  <span className="tabular-nums" style={{ color: calibrated ? GOOD : ACCENT }}>
-                    {offset > 0 ? "+" : ""}
-                    {offset.toFixed(1)}°C
-                  </span>
-                </span>
-                <input
-                  type="range"
-                  min={-12}
-                  max={4}
-                  step={0.5}
-                  value={offset}
-                  onChange={(e) => setOffset(Number(e.target.value))}
-                  aria-label={`Temperature calibration offset, ${offset.toFixed(1)} degrees`}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-panel-2"
-                  style={{ accentColor: ACCENT, touchAction: "none" }}
-                />
-              </label>
-              <span className="text-[11px]" style={{ color: calibrated ? GOOD : BAD }}>
-                gauge {reading(FAULTY).toFixed(1)}°C vs reference {reference.toFixed(1)}°C ·
-                gap {Math.abs(reading(FAULTY) - reference).toFixed(1)}°
-              </span>
-            </>
-          ) : (
-            <span
-              className="text-[11px] text-ink-dim"
-              style={{ animation: "g6weatherdashboard-pulse 1.6s ease infinite" }}
-            >
-              One sensor reads warmer than the trusted reference beside it. Tap the gauge you
-              suspect to open its calibration.
+            </span>
+            <input
+              type="range"
+              min={activeDef.offMin}
+              max={activeDef.offMax}
+              step={activeDef.offStep}
+              value={offsets[active]}
+              onChange={(e) => setOffset(active, Number(e.target.value))}
+              aria-label={`${activeDef.name} calibration offset, ${offsets[active]} ${activeDef.unit}`}
+              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-panel-2"
+              style={{ accentColor: ACCENT, touchAction: "none" }}
+            />
+          </label>
+          <span className="text-[11px]" style={{ color: inTol(active) ? GOOD : WARN }}>
+            gauge {fmt(active, reading(active))}
+            {activeDef.unit} vs reference {fmt(active, refOf(active))}
+            {activeDef.unit} · gap {fmt(active, Math.abs(reading(active) - refOf(active)))}
+            {inTol(active) ? " ✓ matched" : ""}
+          </span>
+          {/* If more than one fault remains, nudge back to diagnosing the rest. */}
+          {faultyIds.length > 1 && (
+            <span className="text-[10px] text-ink-faint">
+              {foundCount < faultyIds.length
+                ? "Another sensor is still lying — tap it on the dashboard too."
+                : calCount < faultyIds.length
+                  ? "Both found — make sure each one is matched."
+                  : ""}
             </span>
           )}
         </div>
       )}
 
-      {/* ---------------- STATUS + CONTROLS ---------------- */}
+      {/* ---------------- STATUS ---------------- */}
       <div
         role="status"
         aria-live="polite"
@@ -524,7 +567,7 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
           border: won ? `1px solid ${GOOD}` : "1px solid var(--color-line, #2a2f3a)",
         }}
       >
-        {won ? "✨🎉 ⭐⭐⭐ " : ""}
+        {won ? "✨🎉 " : ""}
         {status}
       </div>
 
@@ -535,7 +578,10 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-ink-faint">Drops: {tries}</span>
+        <span className="text-[11px] text-ink-faint">
+          Wrong accusations: {misAccuse}
+          {totalMis !== misAccuse ? ` (game ${totalMis})` : ""}
+        </span>
         <button
           type="button"
           onClick={reset}
@@ -545,24 +591,6 @@ export default function WeatherStationDashboard({ onComplete }: ActivityProps) {
           Reset
         </button>
       </div>
-
-      {/* ---------------- DRAG GHOST ---------------- */}
-      {drag && (
-        <div
-          className="pointer-events-none fixed z-50 rounded-lg border px-2.5 py-1.5 text-xs"
-          style={{
-            left: drag.x,
-            top: drag.y,
-            transform: "translate(-50%, -50%)",
-            borderColor: ACCENT,
-            background: ACCENT,
-            color: "#0b0810",
-            fontWeight: 600,
-          }}
-        >
-          ⤴ {CHIPS.find((c) => c.id === drag.chip)?.label}
-        </div>
-      )}
     </div>
   );
 }

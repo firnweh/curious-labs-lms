@@ -1,494 +1,644 @@
 "use client";
 import type { ActivityProps } from "@/lib/activities/types";
-import { useCallback, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  Community Problem Solver — design thinking.                         */
-/*  ONE learning goal: match a real person's PROBLEM to the right        */
-/*  technology, CONFIGURE its key setting, then DEMO that it actually    */
-/*  solves that exact problem. Empathy → match → tune → prove.          */
+/*  Community Problem Solver — design thinking, leveled UP.            */
+/*                                                                     */
+/*  CLASS 4-6 (explorer, age ~9-11). The learner is the neighbourhood */
+/*  inventor. Each neighbour's problem is now a LIST of real           */
+/*  requirements (✓ must-haves). The tray holds modules, each with a   */
+/*  COST in credits and the capabilities it provides. You must DESIGN  */
+/*  a build — a COMBINATION of modules — that covers EVERY requirement */
+/*  while staying inside the budget, then run a Test to prove it.      */
+/*                                                                     */
+/*  Why it is a real problem, not a keyword match:                     */
+/*   • Several modules each cover SOME requirements — you must plan a   */
+/*     combination, not pick "the one obvious tool".                   */
+/*   • A tempting all-in-one module covers everything but blows the    */
+/*     budget (or wastes credits) — a cheaper 2-module combo wins.     */
+/*   • Decoy modules match a requirement's KEYWORD but miss a hidden   */
+/*     second need, so brute pattern-matching fails the Test.          */
+/*   • OPTIMIZE: spend at-or-under the smart target → full stars for   */
+/*     that round. Over target but covered → it still passes, fewer    */
+/*     stars. A clean 3-star win is always reachable by reasoning.     */
+/*   • THREE escalating rounds (2 → 3 → 3 reqs, tighter budgets).      */
+/*                                                                     */
+/*  Deterministic grading, gentle retry (never scolds, never spams     */
+/*  onComplete on a miss), onComplete fired EXACTLY once on the final  */
+/*  win, guarded by reportedRef. Preserves the cyan look, the          */
+/*  certificate, animations, aria and reduced-motion support.          */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#22d3ee"; // cyan — win / accent
-const GOOD = "#34d399"; // solved green
-const WARN = "#f59e0b"; // configure-me amber
+const GOOD = "#34d399"; // covered / solved green
+const WARN = "#f59e0b"; // over-budget / missing amber
+const BAD = "#f87171"; // hard fail red
 
-type CharId = "librarian" | "gardener" | "guard";
-type ToolId = "rfid" | "waterer" | "alarm" | "chatbot" | "arm";
+/** The capabilities a module can provide / a requirement can demand. */
+type Cap =
+  | "identify" // tell things/people apart by a unique id
+  | "log" // record events to a list
+  | "sense" // read the physical world (soil, motion, heat)
+  | "act" // do a physical action (water, move)
+  | "alert" // send a warning / notification
+  | "schedule" // only act during chosen hours
+  | "answer"; // reply to questions in words
 
-interface ToolDef {
-  id: ToolId;
+const CAP_LABEL: Record<Cap, string> = {
+  identify: "tell apart by ID",
+  log: "keep a record",
+  sense: "sense the world",
+  act: "do an action",
+  alert: "send an alert",
+  schedule: "work on a schedule",
+  answer: "answer in words",
+};
+
+interface ModuleDef {
+  id: string;
   emoji: string;
   name: string;
+  cost: number;
+  caps: readonly Cap[];
 }
 
-const TOOLS: readonly ToolDef[] = [
-  { id: "rfid", emoji: "📡", name: "RFID logger" },
-  { id: "waterer", emoji: "💧", name: "Soil-sensor waterer" },
-  { id: "alarm", emoji: "🚨", name: "Motion alarm" },
-  { id: "chatbot", emoji: "💬", name: "Chatbot helpdesk" },
-  { id: "arm", emoji: "🦾", name: "Robotic arm" },
+/** The shared toolbox. Costs + capabilities are tuned so that for every
+ *  round a CHEAPER combination beats the tempting all-in-one. */
+const MODULES: readonly ModuleDef[] = [
+  { id: "tagreader", emoji: "📡", name: "Tag reader", cost: 2, caps: ["identify"] },
+  { id: "logbook", emoji: "📒", name: "Cloud logbook", cost: 1, caps: ["log"] },
+  { id: "soil", emoji: "🌱", name: "Soil sensor", cost: 2, caps: ["sense"] },
+  { id: "pump", emoji: "💧", name: "Water pump", cost: 2, caps: ["act"] },
+  { id: "motion", emoji: "👁️", name: "Motion sensor", cost: 2, caps: ["sense"] },
+  { id: "siren", emoji: "🚨", name: "Alert siren", cost: 2, caps: ["alert"] },
+  { id: "timer", emoji: "⏰", name: "Night timer", cost: 1, caps: ["schedule"] },
+  { id: "chatbot", emoji: "💬", name: "Chatbot", cost: 3, caps: ["answer"] },
+  // The shiny "all-in-one" temptation: covers a lot, but costs a fortune.
+  { id: "megabox", emoji: "🧰", name: "Mega-box (all-in-one)", cost: 7, caps: ["sense", "act", "schedule", "alert"] },
 ] as const;
 
-const TOOL_BY_ID: Record<ToolId, ToolDef> = TOOLS.reduce(
-  (acc, t) => {
-    acc[t.id] = t;
+const MOD_BY_ID: Record<string, ModuleDef> = MODULES.reduce(
+  (acc, m) => {
+    acc[m.id] = m;
     return acc;
   },
-  {} as Record<ToolId, ToolDef>,
+  {} as Record<string, ModuleDef>,
 );
 
-/** Each setting option carries a value and whether it is the correct one. */
-interface SettingOption {
-  value: string;
-  label: string;
-  correct: boolean;
+interface Requirement {
+  cap: Cap;
+  /** Human-readable phrasing of this specific need. */
+  text: string;
 }
 
-interface CharDef {
-  id: CharId;
+interface RoundDef {
+  id: string;
   face: string;
   name: string;
   problem: string;
-  /** The single tool that truly fits. */
-  needs: ToolId;
-  /** Hint shown when the WRONG tool is dropped. */
-  mismatch: string;
-  /** Label for the one key setting the learner configures. */
-  settingLabel: string;
-  options: readonly SettingOption[];
+  reqs: readonly Requirement[];
+  budget: number;
+  /** Smallest total cost of any module set that covers all reqs (precomputed
+   *  + verified at module load). Spend ≤ this ⇒ full stars for the round. */
+  target: number;
   thanks: string;
 }
 
 /**
- * Three community members. Exactly ONE tool fits each, and exactly ONE
- * setting value makes the demo succeed — so the lab is always winnable
- * by reasoning, and every check below is deterministic.
+ * Three neighbours, escalating. Each requirement names a capability that the
+ * chosen build must provide. Multiple builds can work; the TARGET is the
+ * cheapest covering build (we assert this below so design stays honest).
  */
-const CHARS: readonly CharDef[] = [
+const ROUNDS: readonly RoundDef[] = [
   {
     id: "librarian",
     face: "👩‍🏫",
     name: "Mara the Librarian",
-    problem: "I can't tell who borrowed which book!",
-    needs: "rfid",
-    mismatch: "She needs to TAG and log each book — not water or guard it.",
-    settingLabel: "What should the reader scan?",
-    options: [
-      { value: "tag", label: "the book's RFID tag", correct: true },
-      { value: "cover", label: "the book's cover photo", correct: false },
-      { value: "weight", label: "the book's weight", correct: false },
+    problem: "When books go missing I can't tell which book, or who had it last.",
+    reqs: [
+      { cap: "identify", text: "Tell each book apart by its own ID" },
+      { cap: "log", text: "Keep a record of who borrowed it" },
     ],
-    thanks: "Now every book logs itself. Thank you!",
+    budget: 4,
+    target: 3, // tagreader(2) + logbook(1)
+    thanks: "Now every book IDs itself and the borrow is logged. Thank you!",
   },
   {
     id: "gardener",
     face: "👨‍🌾",
     name: "Theo the Gardener",
-    problem: "My plants dry out every weekend!",
-    needs: "waterer",
-    mismatch: "He needs a sensor that WATERS when soil is dry — not a logger or alarm.",
-    settingLabel: "Water the plant when the soil is…",
-    options: [
-      { value: "dry", label: "below the dry-threshold", correct: true },
-      { value: "wet", label: "already soaking wet", correct: false },
-      { value: "always", label: "every single minute", correct: false },
+    problem: "My plants dry out on weekends — I need it watered ONLY when the soil is actually dry.",
+    reqs: [
+      { cap: "sense", text: "Sense when the soil has gone dry" },
+      { cap: "act", text: "Turn the water on by itself" },
     ],
-    thanks: "My garden stays green all weekend. Thank you!",
+    budget: 6,
+    target: 4, // soil(2) + pump(2) beats megabox(7)
+    thanks: "It senses dry soil and waters on its own — green all weekend. Thank you!",
   },
   {
     id: "guard",
     face: "💂",
     name: "Ravi the Night Guard",
-    problem: "I need to know who enters at night!",
-    needs: "alarm",
-    mismatch: "He needs motion DETECTION at night — not watering or book logging.",
-    settingLabel: "Set the alarm's active hours to…",
-    options: [
-      { value: "night", label: "night only (8pm–6am)", correct: true },
-      { value: "day", label: "daytime only", correct: false },
-      { value: "off", label: "never active", correct: false },
+    problem: "I must be warned if someone enters — but ONLY at night, so daytime visitors don't set it off.",
+    reqs: [
+      { cap: "sense", text: "Sense movement at the gate" },
+      { cap: "alert", text: "Send a warning to the guard" },
+      { cap: "schedule", text: "Stay active at night only" },
     ],
-    thanks: "Now I'm alerted the moment someone enters. Thank you!",
+    budget: 6,
+    target: 5, // motion(2)+siren(2)+timer(1)=5 beats megabox(7)
+    thanks: "It senses night movement and alerts me — daytime is ignored. Thank you!",
   },
 ] as const;
 
-type Stage = "empty" | "matched" | "solved";
-
-interface CharState {
-  /** Tool dropped on this character (null = none yet). */
-  tool: ToolId | null;
-  /** Chosen setting value (null = not configured). */
-  setting: string | null;
-  stage: Stage;
+/* ── Build-time sanity: verify every round's TARGET is the true minimum, and
+ *    that the budget can hold it. Pure, deterministic — runs once on import,
+ *    keeps the puzzle honest if anyone tweaks numbers later. ───────────────── */
+function minCoveringCost(reqs: readonly Requirement[], budget: number): number {
+  const need = new Set<Cap>(reqs.map((r) => r.cap));
+  let best = Infinity;
+  const n = MODULES.length;
+  // Enumerate all module subsets (9 modules ⇒ 512 combos — trivial, deterministic).
+  for (let mask = 0; mask < 1 << n; mask++) {
+    let cost = 0;
+    const have = new Set<Cap>();
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) {
+        cost += MODULES[i].cost;
+        for (const c of MODULES[i].caps) have.add(c);
+      }
+    }
+    if (cost > budget) continue;
+    let covered = true;
+    for (const c of need) if (!have.has(c)) covered = false;
+    if (covered && cost < best) best = cost;
+  }
+  return best;
+}
+// Assert in dev; never throws in production builds.
+if (process.env.NODE_ENV !== "production") {
+  for (const r of ROUNDS) {
+    const m = minCoveringCost(r.reqs, r.budget);
+    if (m !== r.target) {
+      // eslint-disable-next-line no-console
+      console.warn(`[community-fix-it] round ${r.id}: target ${r.target} but true min is ${m}`);
+    }
+  }
 }
 
-function freshState(): Record<CharId, CharState> {
+type Phase = "build" | "testing" | "solved";
+
+interface RoundState {
+  selected: readonly string[]; // module ids chosen for THIS round's build
+  phase: Phase;
+  starsEarned: 0 | 1 | 2 | 3; // banked once solved
+}
+
+function freshRounds(): RoundState[] {
+  return ROUNDS.map(() => ({ selected: [], phase: "build", starsEarned: 0 }));
+}
+
+/* Evaluate a build against a round — pure + deterministic. */
+interface Evaluation {
+  cost: number;
+  overBudget: boolean;
+  covered: Set<Cap>;
+  missing: Cap[];
+  allCovered: boolean;
+}
+function evaluate(round: RoundDef, selected: readonly string[]): Evaluation {
+  let cost = 0;
+  const covered = new Set<Cap>();
+  for (const id of selected) {
+    const mod = MOD_BY_ID[id];
+    if (!mod) continue;
+    cost += mod.cost;
+    for (const c of mod.caps) covered.add(c);
+  }
+  const missing = round.reqs.map((r) => r.cap).filter((c) => !covered.has(c));
   return {
-    librarian: { tool: null, setting: null, stage: "empty" },
-    gardener: { tool: null, setting: null, stage: "empty" },
-    guard: { tool: null, setting: null, stage: "empty" },
+    cost,
+    overBudget: cost > round.budget,
+    covered,
+    missing,
+    allCovered: missing.length === 0,
   };
 }
 
-const CHAR_BY_ID: Record<CharId, CharDef> = CHARS.reduce(
-  (acc, c) => {
-    acc[c.id] = c;
-    return acc;
-  },
-  {} as Record<CharId, CharDef>,
-);
+/* Decorative confetti for the final win (transform/opacity only). */
+interface Confetti {
+  emoji: string;
+  dx: number;
+  dy: number;
+  spin: number;
+  delay: number;
+  dur: number;
+}
+const CONFETTI: readonly Confetti[] = Array.from({ length: 14 }, (_, i) => {
+  const angle = (i / 14) * Math.PI * 2;
+  const reach = 70 + (i % 4) * 18;
+  return {
+    emoji: ["✨", "🎉", "⭐", "💫", "🟡", "🩵"][i % 6],
+    dx: Math.round(Math.cos(angle) * reach),
+    dy: Math.round(Math.sin(angle) * reach * 0.7) + 30,
+    spin: (i % 2 === 0 ? 1 : -1) * (180 + (i % 5) * 90),
+    delay: (i % 7) * 0.05,
+    dur: 1.1 + (i % 4) * 0.18,
+  };
+});
 
 export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
-  const [states, setStates] = useState<Record<CharId, CharState>>(freshState);
-  const [active, setActive] = useState<CharId>("librarian");
-  const [picked, setPicked] = useState<ToolId | null>(null); // tool armed from tray
+  const [rounds, setRounds] = useState<RoundState[]>(freshRounds);
+  const [active, setActive] = useState<number>(0);
   const [nudge, setNudge] = useState<string>("");
-  const [demoFor, setDemoFor] = useState<CharId | null>(null); // who is mid-demo
-  const firedOnce = useRef<boolean>(false);
-  const demoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [testFlash, setTestFlash] = useState<"none" | "pass" | "fail">("none");
+
+  const reportedRef = useRef<boolean>(false);
+  const testTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (testTimer.current) clearTimeout(testTimer.current);
+    },
+    [],
+  );
+
+  const def = ROUNDS[active];
+  const st = rounds[active];
+  const evalNow = useMemo(() => evaluate(def, st.selected), [def, st.selected]);
 
   const solvedCount = useMemo(
-    () => (Object.keys(states) as CharId[]).filter((id) => states[id].stage === "solved").length,
-    [states],
+    () => rounds.filter((r) => r.phase === "solved").length,
+    [rounds],
   );
-  const allSolved = solvedCount === CHARS.length;
-  const activeDef = CHAR_BY_ID[active];
-  const activeState = states[active];
+  const allSolved = solvedCount === ROUNDS.length;
 
-  /* ---------- drop a tool onto the active character ---------- */
-  const dropTool = useCallback(
-    (toolId: ToolId) => {
-      if (allSolved || demoFor) return;
-      const def = CHAR_BY_ID[active];
-      if (def.needs === toolId) {
-        setStates((prev) => ({
-          ...prev,
-          [active]: { tool: toolId, setting: null, stage: "matched" },
-        }));
-        setNudge("");
-      } else {
-        // wrong tool — confused character, recoverable hint, never scold
-        setStates((prev) => ({
-          ...prev,
-          [active]: { ...prev[active], tool: null, setting: null, stage: "empty" },
-        }));
-        setNudge(`${def.name.split(" ")[0]} looks confused. ${def.mismatch}`);
-        onComplete({
-          passed: false,
-          detail: `${TOOL_BY_ID[toolId].name} doesn't fit that problem yet — try again.`,
-        });
-      }
-      setPicked(null);
-    },
-    [active, allSolved, demoFor, onComplete],
+  const totalStars = useMemo(
+    () => rounds.reduce((sum, r) => sum + r.starsEarned, 0),
+    [rounds],
   );
 
-  /* ---------- tray tap: arm a tool, or drop if a char is selected ---------- */
-  const onTrayPick = useCallback(
-    (toolId: ToolId) => {
-      if (allSolved || demoFor) return;
-      // tap-to-place: arm then drop straight onto the active character
-      setPicked((p) => (p === toolId ? null : toolId));
+  /* Toggle a module in/out of the active round's build. */
+  const toggleModule = useCallback(
+    (modId: string) => {
+      if (st.phase !== "build") return;
       setNudge("");
+      setTestFlash("none");
+      setRounds((prev) => {
+        const next = prev.slice();
+        const cur = next[active];
+        const has = cur.selected.includes(modId);
+        next[active] = {
+          ...cur,
+          selected: has
+            ? cur.selected.filter((m) => m !== modId)
+            : [...cur.selected, modId],
+        };
+        return next;
+      });
     },
-    [allSolved, demoFor],
+    [active, st.phase],
   );
 
-  const onCharTap = useCallback(
-    (id: CharId) => {
-      if (allSolved || demoFor) return;
-      setActive(id);
-      if (picked) {
-        // place the armed tool here
-        const armed = picked;
-        setActive(id);
-        // dropTool reads `active`; place synchronously via a local apply
-        const def = CHAR_BY_ID[id];
-        if (def.needs === armed) {
-          setStates((prev) => ({
-            ...prev,
-            [id]: { tool: armed, setting: null, stage: "matched" },
-          }));
-          setNudge("");
-        } else {
-          setStates((prev) => ({
-            ...prev,
-            [id]: { ...prev[id], tool: null, setting: null, stage: "empty" },
-          }));
-          setNudge(`${def.name.split(" ")[0]} looks confused. ${def.mismatch}`);
-          onComplete({
-            passed: false,
-            detail: `${TOOL_BY_ID[armed].name} doesn't fit that problem yet — try again.`,
-          });
-        }
-        setPicked(null);
-      }
-    },
-    [allSolved, demoFor, picked, onComplete],
-  );
+  /* Run the deterministic Test on the active build. */
+  const runTest = useCallback(() => {
+    if (st.phase !== "build") return;
+    const ev = evaluate(def, st.selected);
 
-  /* ---------- choose the key setting ---------- */
-  const chooseSetting = useCallback(
-    (id: CharId, value: string) => {
-      if (demoFor) return;
-      setStates((prev) => ({ ...prev, [id]: { ...prev[id], setting: value } }));
-      setNudge("");
-    },
-    [demoFor],
-  );
+    // Empty build: gentle nudge, no penalty.
+    if (st.selected.length === 0) {
+      setNudge("Add at least one module, then Test it.");
+      return;
+    }
 
-  /* ---------- run the short deterministic demo ---------- */
-  const runDemo = useCallback(
-    (id: CharId) => {
-      if (demoFor) return;
-      const def = CHAR_BY_ID[id];
-      const st = states[id];
-      if (st.tool !== def.needs || st.setting === null) return;
-      const opt = def.options.find((o) => o.value === st.setting);
-      const willPass = !!opt?.correct;
-
-      setDemoFor(id);
-      setNudge("");
-      if (demoTimer.current) clearTimeout(demoTimer.current);
-      demoTimer.current = setTimeout(() => {
-        setDemoFor(null);
-        if (willPass) {
-          setStates((prev) => {
-            const next: Record<CharId, CharState> = {
-              ...prev,
-              [id]: { ...prev[id], stage: "solved" },
-            };
-            const done = (Object.keys(next) as CharId[]).every(
-              (k) => next[k].stage === "solved",
-            );
-            if (done && !firedOnce.current) {
-              firedOnce.current = true;
-              onComplete({
-                passed: true,
-                stars: 3,
-                detail:
-                  "Young Innovator! Every neighbour's problem matched, tuned and proven.",
-              });
-            }
-            return next;
-          });
-        } else {
-          // wrong setting — preview shows it failed; gentle, recoverable
-          setNudge(
-            `The demo didn't solve ${def.name.split(" ")[0]}'s problem yet — re-check the setting.`,
-          );
-          onComplete({
-            passed: false,
-            detail: "Almost — that setting didn't prove it works. Pick the one that fits.",
-          });
-        }
-      }, 1100);
-    },
-    [demoFor, states, onComplete],
-  );
-
-  const reset = useCallback(() => {
-    if (demoTimer.current) clearTimeout(demoTimer.current);
-    setStates(freshState());
-    setActive("librarian");
-    setPicked(null);
+    if (testTimer.current) clearTimeout(testTimer.current);
+    setRounds((prev) => {
+      const next = prev.slice();
+      next[active] = { ...next[active], phase: "testing" };
+      return next;
+    });
     setNudge("");
-    setDemoFor(null);
+
+    const willPass = ev.allCovered && !ev.overBudget;
+    setTestFlash(willPass ? "pass" : "fail");
+
+    testTimer.current = setTimeout(() => {
+      if (willPass) {
+        // Star score for THIS round: under-or-at target ⇒ 3, else 2.
+        const stars: 1 | 2 | 3 = ev.cost <= def.target ? 3 : 2;
+        setRounds((prev) => {
+          const next = prev.slice();
+          next[active] = { ...next[active], phase: "solved", starsEarned: stars };
+          const everyDone = next.every((r) => r.phase === "solved");
+          if (everyDone && !reportedRef.current) {
+            reportedRef.current = true;
+            const total = next.reduce((s, r) => s + r.starsEarned, 0); // 3..9
+            // Map 3 rounds × (2|3) stars → overall 1|2|3.
+            const overall: 1 | 2 | 3 = total >= 9 ? 3 : total >= 7 ? 2 : 1;
+            onComplete({
+              passed: true,
+              stars: overall,
+              detail:
+                overall === 3
+                  ? "Young Innovator! Every build covers the need AND uses the fewest credits. 🏅"
+                  : "Young Innovator! Every neighbour's problem is solved — try fewer credits next time for a perfect score.",
+            });
+          }
+          return next;
+        });
+        setTestFlash("none");
+      } else {
+        // Recoverable: explain WHY, keep the build so they can fix it.
+        setRounds((prev) => {
+          const next = prev.slice();
+          next[active] = { ...next[active], phase: "build" };
+          return next;
+        });
+        if (ev.overBudget) {
+          setNudge(
+            `Over budget — ${ev.cost} credits used, only ${def.budget} allowed. Find a cheaper combo.`,
+          );
+        } else {
+          const miss = ev.missing.map((c) => CAP_LABEL[c]).join(" + ");
+          setNudge(`Test failed — still missing: ${miss}. Add a module that covers it.`);
+        }
+        setTestFlash("none");
+      }
+      testTimer.current = null;
+    }, 950);
+  }, [active, def, st.phase, st.selected, onComplete]);
+
+  const clearBuild = useCallback(() => {
+    if (st.phase !== "build") return;
+    setNudge("");
+    setTestFlash("none");
+    setRounds((prev) => {
+      const next = prev.slice();
+      next[active] = { ...next[active], selected: [] };
+      return next;
+    });
+  }, [active, st.phase]);
+
+  const resetAll = useCallback(() => {
+    if (testTimer.current) clearTimeout(testTimer.current);
+    reportedRef.current = false;
+    setRounds(freshRounds());
+    setActive(0);
+    setNudge("");
+    setTestFlash("none");
   }, []);
 
-  /* ---------- live preview text before the demo ---------- */
-  const previewText = useMemo<string>(() => {
-    const st = activeState;
-    const def = activeDef;
-    if (st.stage === "solved") return "Solved ✓ — demo proved it works.";
-    if (st.tool !== def.needs) return "Drag the best-matching tool onto the person.";
-    if (st.setting === null) return "Now configure the one key setting below.";
-    const opt = def.options.find((o) => o.value === st.setting);
-    const okPreview = !!opt?.correct;
-    if (def.id === "librarian")
-      return okPreview
-        ? "Preview: a borrowed book scans its tag → logged to the borrower."
-        : "Preview: the reader can't identify the book this way…";
-    if (def.id === "gardener")
-      return okPreview
-        ? "Preview: weekend soil goes dry → the waterer turns on."
-        : "Preview: this never waters the dry weekend plant…";
-    return okPreview
-      ? "Preview: a night intruder moves → the alarm triggers."
-      : "Preview: at this hour the alarm stays silent for the intruder…";
-  }, [activeState, activeDef]);
-
-  const canDemo =
-    activeState.tool === activeDef.needs &&
-    activeState.setting !== null &&
-    activeState.stage !== "solved" &&
-    !demoFor;
-
-  /* ---------- demo animation glyph for the active char ---------- */
-  const demoGlyph: string | null = useMemo(() => {
-    if (demoFor !== active) return null;
-    if (active === "librarian") return "📡📖";
-    if (active === "gardener") return "💧🌱";
-    return "🚨🌙";
-  }, [demoFor, active]);
+  const testing = st.phase === "testing";
+  const solved = st.phase === "solved";
 
   return (
-    <div className="mx-auto flex w-full max-w-[440px] flex-col gap-3 text-ink">
+    <div className="mx-auto flex w-full max-w-[460px] flex-col gap-3 text-ink">
       <style>{`
-        @keyframes g5communityfixit-pop {
+        @keyframes g5cfx-pop {
           0% { transform: scale(.5); opacity: 0; }
           60% { transform: scale(1.15); }
           100% { transform: scale(1); opacity: 1; }
         }
-        @keyframes g5communityfixit-bob {
+        @keyframes g5cfx-bob {
           0%,100% { transform: translateY(0); }
           50% { transform: translateY(-3px); }
         }
-        @keyframes g5communityfixit-zip {
-          0% { transform: translateX(-14px); opacity: 0; }
-          50% { opacity: 1; }
-          100% { transform: translateX(14px); opacity: 0; }
-        }
-        @keyframes g5communityfixit-ring {
+        @keyframes g5cfx-ring {
           0% { transform: scale(.6); opacity: .9; }
           100% { transform: scale(2); opacity: 0; }
         }
-        @keyframes g5communityfixit-glow {
-          0%,100% { opacity: .35; }
+        @keyframes g5cfx-glow {
+          0%,100% { opacity: .4; }
           50% { opacity: 1; }
+        }
+        @keyframes g5cfx-shake {
+          0%,100% { transform: translateX(0); }
+          25% { transform: translateX(-4px); }
+          75% { transform: translateX(4px); }
+        }
+        @keyframes g5cfx-star-pop {
+          0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+          60% { transform: scale(1.4) rotate(8deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        @keyframes g5cfx-confetti {
+          0% { transform: translate(0,0) rotate(0deg) scale(.4); opacity: 0; }
+          12% { opacity: 1; }
+          100% { transform: translate(var(--cfx-dx), var(--cfx-dy)) rotate(var(--cfx-spin)) scale(1); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-cfx-anim] { animation: none !important; }
         }
       `}</style>
 
       {/* ---------------- HEADLINE ---------------- */}
       <div className="flex items-center justify-between">
         <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
-          Innovation Lab · match → tune → demo
+          Innovation Lab · design → build → test
         </p>
         <span className="font-mono text-[11px]" style={{ color: allSolved ? GOOD : ACCENT }}>
-          {solvedCount}/{CHARS.length} solved
+          {solvedCount}/{ROUNDS.length} solved
         </span>
       </div>
 
-      {/* ---------------- CHARACTERS ROW ---------------- */}
-      <div className="grid grid-cols-3 gap-2" role="list" aria-label="Community members and their problems">
-        {CHARS.map((c) => {
-          const st = states[c.id];
-          const isActive = c.id === active;
-          const solved = st.stage === "solved";
-          const demoing = demoFor === c.id;
-          const border = solved ? GOOD : isActive ? ACCENT : "#1b2433";
+      {/* ---------------- NEIGHBOUR TABS ---------------- */}
+      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Community members">
+        {ROUNDS.map((r, i) => {
+          const rs = rounds[i];
+          const isActive = i === active;
+          const isSolved = rs.phase === "solved";
+          const border = isSolved ? GOOD : isActive ? ACCENT : "#1b2433";
           return (
             <button
-              key={c.id}
+              key={r.id}
               type="button"
-              role="listitem"
+              role="tab"
+              aria-selected={isActive}
+              aria-label={`${r.name}. ${
+                isSolved ? `Solved with ${rs.starsEarned} stars.` : "Open to design a solution."
+              }`}
               onPointerDown={(e) => {
                 e.preventDefault();
-                onCharTap(c.id);
+                if (!testing) {
+                  setActive(i);
+                  setNudge("");
+                  setTestFlash("none");
+                }
               }}
-              aria-label={`${c.name}. Problem: ${c.problem} ${
-                solved ? "Solved." : st.tool ? "Tool matched, configure it." : "Needs a solution."
-              }${picked ? ` Tap to place ${TOOL_BY_ID[picked].name}.` : ""}`}
-              aria-pressed={isActive}
               className="relative flex flex-col items-center gap-1 rounded-xl border bg-panel/60 p-2 text-center transition"
               style={{
                 borderColor: border,
                 touchAction: "manipulation",
-                boxShadow: solved
+                boxShadow: isSolved
                   ? `0 0 0 1px ${GOOD}, 0 0 16px -6px ${GOOD}`
                   : isActive
                     ? `0 0 0 1px ${ACCENT}55`
                     : undefined,
               }}
             >
-              {/* speech bubble */}
-              <span
-                className="min-h-[34px] w-full rounded-md px-1 py-1 font-mono text-[9px] leading-tight"
-                style={{
-                  background: solved ? "rgba(52,211,153,.14)" : "rgba(56,189,248,.07)",
-                  color: solved ? GOOD : "var(--color-ink-dim, #9aa6b2)",
-                }}
-              >
-                {solved ? `“${c.thanks}”` : `“${c.problem}”`}
+              <span className="text-2xl" aria-hidden>
+                {r.face}
               </span>
-              {/* face */}
+              <span className="font-mono text-[9px] leading-tight text-ink-dim">
+                {r.name.split(" ")[0]}
+              </span>
               <span
-                className="text-2xl"
+                className="flex h-4 items-center rounded-full px-1.5 font-mono text-[8px]"
+                style={{
+                  background: isSolved ? GOOD : "transparent",
+                  border: `1px solid ${isSolved ? GOOD : "#1b2433"}`,
+                  color: isSolved ? "#05070d" : "#475569",
+                }}
                 aria-hidden
-                style={{ animation: demoing ? "g5communityfixit-bob .5s ease infinite" : undefined }}
               >
-                {c.face}
+                {isSolved ? `${"★".repeat(rs.starsEarned)} solved` : `${r.reqs.length} needs`}
               </span>
-              {/* attached tool / status chip */}
-              <span
-                className="flex h-5 items-center gap-1 rounded-full px-2 font-mono text-[8px]"
-                style={{
-                  background: solved
-                    ? GOOD
-                    : st.tool
-                      ? "#0b1220"
-                      : "transparent",
-                  border: `1px solid ${solved ? GOOD : st.tool ? WARN : "#1b2433"}`,
-                  color: solved ? "#05070d" : st.tool ? WARN : "#475569",
-                }}
-              >
-                {solved ? (
-                  <span aria-hidden>✓ solved</span>
-                ) : st.tool ? (
-                  <span aria-hidden>{TOOL_BY_ID[st.tool].emoji} tune</span>
-                ) : (
-                  <span aria-hidden>drop here</span>
-                )}
-              </span>
-
-              {/* demo zip overlay */}
-              {demoing && (
-                <span
-                  className="pointer-events-none absolute inset-x-0 top-1/2 text-center text-lg"
-                  aria-hidden
-                  style={{ animation: "g5communityfixit-zip 1s ease-in-out" }}
-                >
-                  {c.id === "librarian" ? "📡" : c.id === "gardener" ? "💧" : "🚨"}
-                </span>
-              )}
             </button>
           );
         })}
       </div>
 
-      {/* ---------------- TOOL TRAY ---------------- */}
-      <div className="flex flex-col gap-1.5">
-        <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
-          1 · Tap a tool, then tap the person it fits
+      {/* ---------------- ACTIVE PROBLEM CARD ---------------- */}
+      <div
+        className="rounded-xl border p-3"
+        style={{
+          borderColor: solved ? GOOD : "#1b2433",
+          background: "rgba(56,189,248,.04)",
+        }}
+      >
+        {/* speech bubble */}
+        <div className="mb-2 flex items-start gap-2">
+          <span aria-hidden className="text-2xl" data-cfx-anim style={{ animation: testing ? "g5cfx-bob .5s ease infinite" : undefined }}>
+            {def.face}
+          </span>
+          <span
+            className="flex-1 rounded-md px-2 py-1.5 font-mono text-[11px] leading-snug"
+            style={{
+              background: solved ? "rgba(52,211,153,.12)" : "rgba(56,189,248,.07)",
+              color: solved ? GOOD : "var(--color-ink-dim, #9aa6b2)",
+            }}
+          >
+            “{solved ? def.thanks : def.problem}”
+          </span>
+        </div>
+
+        {/* requirement checklist — live coverage feedback */}
+        <p className="font-mono text-[10px] uppercase tracking-tech text-ink-faint">
+          Must-haves · your build has to cover all
         </p>
-        <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Solution toolbox">
-          {TOOLS.map((t) => {
-            const armed = picked === t.id;
+        <ul className="mt-1 flex flex-col gap-1" aria-label="Requirements for this build">
+          {def.reqs.map((req) => {
+            const met = evalNow.covered.has(req.cap);
             return (
-              <button
-                key={t.id}
-                type="button"
-                disabled={allSolved || !!demoFor}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  onTrayPick(t.id);
-                }}
-                aria-label={`${t.name}${armed ? " — armed, now tap a person" : ""}`}
-                aria-pressed={armed}
-                title={t.name}
-                className="flex flex-col items-center gap-0.5 rounded-lg border bg-panel/60 px-1 py-1.5 transition disabled:opacity-40"
+              <li
+                key={req.cap}
+                className="flex items-center gap-2 rounded-lg px-2 py-1 font-mono text-[11px]"
                 style={{
-                  borderColor: armed ? ACCENT : "#1b2433",
-                  touchAction: "manipulation",
-                  boxShadow: armed ? `0 0 0 1px ${ACCENT}, 0 0 12px -4px ${ACCENT}` : undefined,
+                  background: met ? "rgba(52,211,153,.1)" : "rgba(255,255,255,.03)",
+                  color: met ? GOOD : "var(--color-ink-dim, #9aa6b2)",
                 }}
               >
-                <span className="text-lg" aria-hidden>
-                  {t.emoji}
+                <span
+                  aria-hidden
+                  className="grid h-4 w-4 place-items-center rounded-full text-[9px]"
+                  style={{
+                    background: met ? GOOD : "transparent",
+                    border: `1px solid ${met ? GOOD : "#334155"}`,
+                    color: "#05070d",
+                  }}
+                >
+                  {met ? "✓" : ""}
                 </span>
-                <span className="font-mono text-[7px] leading-tight text-ink-faint">
-                  {t.name.split(" ")[0]}
+                <span className="flex-1">{req.text}</span>
+                <span aria-label={met ? "covered" : "not covered yet"} className="text-[9px] opacity-70">
+                  {met ? "covered" : CAP_LABEL[req.cap]}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* budget meter */}
+        <div className="mt-2 flex items-center justify-between font-mono text-[11px]">
+          <span className="text-ink-faint">Budget</span>
+          <span
+            style={{
+              color: evalNow.overBudget ? BAD : evalNow.cost <= def.target ? GOOD : WARN,
+            }}
+          >
+            {evalNow.cost} / {def.budget} credits
+            {!solved && evalNow.cost > 0 && (
+              <span className="ml-1 opacity-70">
+                {evalNow.cost <= def.target ? "· efficient ✦" : "· can be cheaper"}
+              </span>
+            )}
+          </span>
+        </div>
+        <div
+          className="mt-1 h-2 w-full overflow-hidden rounded-full"
+          style={{ background: "rgba(255,255,255,.06)" }}
+          aria-hidden
+        >
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${Math.min(100, (evalNow.cost / def.budget) * 100)}%`,
+              background: evalNow.overBudget ? BAD : evalNow.cost <= def.target ? GOOD : WARN,
+            }}
+          />
+          {/* target tick */}
+        </div>
+        <p className="mt-1 text-right font-mono text-[9px] text-ink-faint">
+          Cover all needs using <span style={{ color: ACCENT }}>{def.target} credits or fewer</span> for full stars
+        </p>
+      </div>
+
+      {/* ---------------- MODULE TRAY ---------------- */}
+      <div className="flex flex-col gap-1.5">
+        <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
+          Toolbox · tap modules to add them to your build
+        </p>
+        <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Module toolbox">
+          {MODULES.map((m) => {
+            const inBuild = st.selected.includes(m.id);
+            return (
+              <button
+                key={m.id}
+                type="button"
+                disabled={st.phase !== "build"}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  toggleModule(m.id);
+                }}
+                aria-pressed={inBuild}
+                aria-label={`${m.name}, costs ${m.cost} credits, provides ${m.caps
+                  .map((c) => CAP_LABEL[c])
+                  .join(" and ")}.${inBuild ? " In your build." : ""}`}
+                className="flex flex-col items-start gap-0.5 rounded-lg border bg-panel/60 px-2 py-1.5 text-left transition disabled:opacity-50"
+                style={{
+                  borderColor: inBuild ? ACCENT : "#1b2433",
+                  background: inBuild ? "rgba(34,211,238,.08)" : undefined,
+                  touchAction: "manipulation",
+                  boxShadow: inBuild ? `0 0 0 1px ${ACCENT}, 0 0 10px -4px ${ACCENT}` : undefined,
+                }}
+              >
+                <span className="flex w-full items-center justify-between">
+                  <span className="text-base" aria-hidden>
+                    {m.emoji}
+                  </span>
+                  <span
+                    className="font-mono text-[8px]"
+                    style={{ color: inBuild ? ACCENT : "#64748b" }}
+                  >
+                    {m.cost}c
+                  </span>
+                </span>
+                <span className="font-mono text-[8px] leading-tight text-ink-dim">{m.name}</span>
+                <span className="font-mono text-[7px] leading-tight" style={{ color: "#5b6b7d" }}>
+                  {m.caps.map((c) => CAP_LABEL[c]).join(", ")}
                 </span>
               </button>
             );
@@ -496,92 +646,65 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
         </div>
       </div>
 
-      {/* ---------------- CONFIG PANEL (active char) ---------------- */}
+      {/* ---------------- BUILD + TEST CONTROLS ---------------- */}
       <div
-        className="rounded-xl border p-3"
+        className="rounded-xl border px-3 py-2"
         style={{
-          borderColor: activeState.stage === "solved" ? GOOD : "#1b2433",
+          borderColor:
+            testFlash === "pass" ? GOOD : testFlash === "fail" ? BAD : "#1b2433",
           background: "rgba(56,189,248,.04)",
         }}
+        data-cfx-anim
       >
-        <div className="mb-2 flex items-center justify-between">
-          <span className="flex items-center gap-1.5 font-mono text-xs text-ink">
-            <span aria-hidden className="text-base">
-              {activeDef.face}
-            </span>
-            {activeDef.name.split(" ")[0]}
+        <div className="mb-2 flex min-h-[26px] flex-wrap items-center gap-1.5">
+          <span className="font-mono text-[10px] uppercase tracking-tech text-ink-faint">
+            Your build:
           </span>
-          <span className="font-mono text-[10px]" style={{ color: activeState.tool ? WARN : "#475569" }}>
-            {activeState.tool ? `${TOOL_BY_ID[activeState.tool].name}` : "no tool yet"}
-          </span>
-        </div>
-
-        <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
-          2 · {activeDef.settingLabel}
-        </p>
-
-        {activeState.tool === activeDef.needs ? (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            {activeDef.options.map((o) => {
-              const sel = activeState.setting === o.value;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  disabled={activeState.stage === "solved" || !!demoFor}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    chooseSetting(active, o.value);
-                  }}
-                  aria-pressed={sel}
-                  aria-label={`Setting: ${o.label}`}
-                  className="flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left font-mono text-xs transition disabled:opacity-60"
-                  style={{
-                    borderColor: sel ? ACCENT : "#1b2433",
-                    background: sel ? "rgba(34,211,238,.1)" : "transparent",
-                    color: sel ? ACCENT : "var(--color-ink-dim, #9aa6b2)",
-                    touchAction: "manipulation",
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ background: sel ? ACCENT : "#334155" }}
-                  />
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="mt-1.5 font-mono text-[11px] text-ink-faint">
-            Match the right tool to {activeDef.name.split(" ")[0]} first, then this panel unlocks.
-          </p>
-        )}
-
-        {/* live preview + demo glyph */}
-        <div className="mt-2 flex items-center gap-2 rounded-lg bg-panel/60 px-2.5 py-2">
-          {demoGlyph && (
-            <span aria-hidden className="text-base" style={{ animation: "g5communityfixit-bob .5s ease infinite" }}>
-              {demoGlyph}
+          {st.selected.length === 0 ? (
+            <span className="font-mono text-[10px] text-ink-faint opacity-70">
+              empty — pick modules above
             </span>
+          ) : (
+            st.selected.map((id) => (
+              <span
+                key={id}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px]"
+                style={{ background: "#0b1220", border: `1px solid ${ACCENT}66`, color: ACCENT }}
+              >
+                <span aria-hidden>{MOD_BY_ID[id].emoji}</span>
+                {MOD_BY_ID[id].name}
+              </span>
+            ))
           )}
-          <span className="font-mono text-[10px] leading-tight text-ink-dim">{previewText}</span>
         </div>
 
-        <button
-          type="button"
-          disabled={!canDemo}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            if (canDemo) runDemo(active);
-          }}
-          aria-label={`Run the demo for ${activeDef.name}`}
-          className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-40"
-          style={{ background: ACCENT, color: "#05070d" }}
-        >
-          {demoFor === active ? "Demoing…" : activeState.stage === "solved" ? "Solved ✓" : "Demo ▶"}
-        </button>
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            disabled={st.phase !== "build" || st.selected.length === 0}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              clearBuild();
+            }}
+            aria-label="Clear the current build"
+            className="rounded-lg border border-line bg-panel/60 px-3 py-2 font-mono text-[11px] text-ink-dim transition disabled:opacity-30"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            disabled={st.phase !== "build"}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              runTest();
+            }}
+            aria-label={`Test the build for ${def.name}`}
+            className="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-40"
+            style={{ background: solved ? GOOD : ACCENT, color: "#05070d" }}
+          >
+            {testing ? "Testing…" : solved ? "Solved ✓" : "Test ▶"}
+          </button>
+        </div>
       </div>
 
       {/* ---------------- NUDGE ---------------- */}
@@ -591,6 +714,7 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
           aria-live="polite"
           className="rounded-lg px-3 py-2 text-center font-mono text-[11px]"
           style={{ background: "rgba(245,158,11,.1)", color: WARN, border: `1px solid ${WARN}55` }}
+          data-cfx-anim
         >
           {nudge}
         </p>
@@ -603,8 +727,8 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
         aria-live="polite"
         aria-label={
           allSolved
-            ? "Young Innovator certificate complete"
-            : `Young Innovator certificate, ${solvedCount} of ${CHARS.length} stamps filled`
+            ? `Young Innovator certificate complete, ${totalStars} of 9 design points`
+            : `Young Innovator certificate, ${solvedCount} of ${ROUNDS.length} stamps filled`
         }
         style={{
           borderColor: allSolved ? GOOD : "#1b2433",
@@ -627,24 +751,31 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
           <text x={160} y={26} textAnchor="middle" fontSize={13} className="font-mono" fill={allSolved ? GOOD : "#64748b"}>
             🏅 YOUNG INNOVATOR
           </text>
-          {CHARS.map((c, i) => {
-            const solved = states[c.id].stage === "solved";
-            const cx = 80 + i * 80;
+          {ROUNDS.map((r, i) => {
+            const rs = rounds[i];
+            const isSolved = rs.phase === "solved";
+            const cxp = 80 + i * 80;
             return (
-              <g key={c.id} transform={`translate(${cx} 56)`}>
+              <g key={r.id} transform={`translate(${cxp} 56)`}>
                 <circle
                   cx={0}
                   cy={0}
                   r={15}
-                  fill={solved ? "rgba(52,211,153,.18)" : "#0b1220"}
-                  stroke={solved ? GOOD : "#334155"}
+                  fill={isSolved ? "rgba(52,211,153,.18)" : "#0b1220"}
+                  stroke={isSolved ? GOOD : "#334155"}
                   strokeWidth={1.5}
-                  style={{ animation: solved ? "g5communityfixit-pop .4s ease both" : undefined }}
+                  data-cfx-anim
+                  style={{ animation: isSolved ? "g5cfx-pop .4s ease both" : undefined }}
                 />
                 <text x={0} y={5} textAnchor="middle" fontSize={15}>
-                  {solved ? "✓" : c.face}
+                  {isSolved ? "✓" : r.face}
                 </text>
-                {solved && (
+                {isSolved && (
+                  <text x={0} y={-20} textAnchor="middle" fontSize={9} fill={GOOD}>
+                    {"★".repeat(rs.starsEarned)}
+                  </text>
+                )}
+                {isSolved && (
                   <circle
                     cx={0}
                     cy={0}
@@ -652,7 +783,8 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
                     fill="none"
                     stroke={GOOD}
                     strokeWidth={1.5}
-                    style={{ animation: "g5communityfixit-ring .7s ease-out" }}
+                    data-cfx-anim
+                    style={{ animation: "g5cfx-ring .7s ease-out" }}
                   />
                 )}
               </g>
@@ -661,8 +793,36 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
         </svg>
         {allSolved && (
           <p className="mt-1 font-mono text-xs font-bold" style={{ color: GOOD }}>
-            ⭐⭐⭐ 🎉✨ Young Innovator — all three problems solved!
+            {totalStars >= 9
+              ? "⭐⭐⭐ Perfect — every build covers the need with the fewest credits!"
+              : "✨ All solved! Re-design any round with fewer credits for a perfect score."}
           </p>
+        )}
+
+        {/* confetti on full completion */}
+        {allSolved && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0" aria-hidden>
+            {CONFETTI.map((p, i) => (
+              <span
+                key={`cf-${i}`}
+                className="absolute text-base"
+                data-cfx-anim
+                style={
+                  {
+                    left: 0,
+                    top: 0,
+                    "--cfx-dx": `${p.dx}px`,
+                    "--cfx-dy": `${p.dy}px`,
+                    "--cfx-spin": `${p.spin}deg`,
+                    animation: `g5cfx-confetti ${p.dur}s cubic-bezier(.2,.6,.3,1) ${p.delay}s infinite`,
+                    willChange: "transform, opacity",
+                  } as CSSProperties
+                }
+              >
+                {p.emoji}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
@@ -670,7 +830,7 @@ export default function CommunityProblemSolver({ onComplete }: ActivityProps) {
       <div className="flex items-center justify-end">
         <button
           type="button"
-          onClick={reset}
+          onClick={resetAll}
           className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim"
           aria-label="Reset the innovation lab"
         >

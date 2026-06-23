@@ -4,21 +4,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ── If This, Do That ❓ ──────────────────────────────────────────────────────
    JUNIORS (Class 1-3, age ~6-8). Concept: a simple IF/THEN rule lets a character
-   DECIDE what to do — conditionals. A robot 🤖 walks a track of colored lights:
-   🟢 green = safe, 🔴 red = danger. The child sets ONE big rule:
-   "IF 🔴 THEN [ ✋ STOP or ⤴️ JUMP ]" — tap to drop 🔴 in the IF slot, then tap
-   to pick an action for the THEN slot. Press GO ▶ and the robot walks; at each
-   light it FOLLOWS the rule (jumps the red lights, strolls past green) to reach
-   the flag 🏁. The winning rule is "IF 🔴 THEN ⤴️ JUMP". A wrong/empty rule →
-   the robot gently bumps a red light (🙈) and hops home — no scolding, retry.
-   Deterministic, always winnable. NO READING REQUIRED — all emoji + color. */
+   DECIDE what to do — conditionals — but now as a real PROBLEM across THREE rounds,
+   not a one-tap toy. A robot 🤖 walks a track of tiles toward a flag 🏁. Some tiles
+   are SAFE to stroll over, one kind is a HAZARD that trips the robot. The child
+   builds ONE rule: "IF [hazard] THEN ⤴️ JUMP" — but to build it they must first
+   FIGURE OUT which tile is the hazard, choosing from several look-alike candidates,
+   then press GO ▶ to run the plan and watch the robot follow the rule.
+
+   The escalation defeats guessing / "do what worked last time":
+     • Round 1 — tiles are 🟢 safe and 🔴 danger. Pick 🔴 → JUMP. (Learn the idea.)
+     • Round 2 — a 🕳️ hole appears. NOW 🔴 is a harmless decoy and 🕳️ is the real
+       hazard. Repeating round 1's answer (IF 🔴) trips the robot — you must look.
+     • Round 3 — TWO scary-looking tiles (🔴 and ⚡) but only ⚡ actually zaps the
+       robot; 🔴 is safe here. Two decoys, one true hazard → you must reason, not
+       pattern-match. Jump the wrong tile and you waste the jump and trip on the ⚡.
+
+   Land safely at the flag → that round is won and the next, harder one slides in.
+   A wrong/empty rule → the robot gently trips (🙈) and hops home — never scolds,
+   always retry, always winnable. Win all three → ⭐⭐⭐, onComplete ONCE.
+   Deterministic, touch-first. NO READING REQUIRED — all emoji + color. */
 
 const ACCENT = "#22d3ee";
 const STEP_MS = 720;
-
-/** The fixed track of lights the robot walks past, left → right, then the flag. */
-const TRACK: readonly ("green" | "red")[] = ["green", "red", "green", "red", "green"];
-const LIGHT_GLYPH = { green: "🟢", red: "🔴" } as const;
 
 /** The two actions the child can drop into the THEN slot. */
 type Action = "stop" | "jump";
@@ -26,7 +33,50 @@ const ACTIONS: readonly Action[] = ["stop", "jump"];
 const ACTION_GLYPH: Record<Action, string> = { stop: "✋", jump: "⤴️" };
 const ACTION_WORD: Record<Action, string> = { stop: "stop", jump: "jump" };
 
-type Phase = "idle" | "running" | "won" | "bump";
+/** Every tile kind that can appear on a track, with its emoji + a spoken label. */
+type Tile = "green" | "red" | "hole" | "zap";
+const TILE_GLYPH: Record<Tile, string> = { green: "🟢", red: "🔴", hole: "🕳️", zap: "⚡" };
+const TILE_WORD: Record<Tile, string> = {
+  green: "green light",
+  red: "red light",
+  hole: "hole",
+  zap: "lightning",
+};
+
+/** One hand-authored round: the track, the candidate tiles the child chooses the IF
+ *  condition from, and which tile is the TRUE hazard (the one that trips the robot).
+ *  The winning rule is always "IF <hazard> THEN ⤴️ JUMP". Decoy candidates look
+ *  dangerous but are safe this round, so brute-force / repeating fails. */
+interface Round {
+  track: readonly Tile[];
+  /** Tiles offered as IF candidates, in display order. */
+  candidates: readonly Tile[];
+  /** The tile the robot will actually trip on unless the rule jumps it. */
+  hazard: Tile;
+}
+
+const ROUNDS: readonly Round[] = [
+  // R1 — learn it: red is the only danger.
+  {
+    track: ["green", "red", "green", "red", "green"],
+    candidates: ["green", "red"],
+    hazard: "red",
+  },
+  // R2 — twist: a hole appears; red is now a harmless DECOY, the hole is the danger.
+  {
+    track: ["red", "green", "hole", "red", "hole"],
+    candidates: ["red", "hole"],
+    hazard: "hole",
+  },
+  // R3 — two scary decoys (red + zap) but only the zap zaps; red is safe here.
+  {
+    track: ["zap", "red", "green", "zap", "red"],
+    candidates: ["red", "zap"],
+    hazard: "zap",
+  },
+];
+
+type Phase = "idle" | "running" | "won" | "bump" | "done";
 
 /** Pre-computed confetti particles for the win burst (transform-only, GPU-cheap). */
 const CONFETTI = ["🎉", "✨", "⭐", "🎊", "💫", "🌟", "🎉", "✨", "⭐", "🎊", "💫", "🌟"] as const;
@@ -91,15 +141,19 @@ function useSound(): { blip: () => void; chime: () => void } {
 }
 
 export default function IfThisDoThat({ onComplete }: ActivityProps) {
-  /** IF slot is filled with 🔴 once the child taps it (the only choice). */
-  const [ifFilled, setIfFilled] = useState<boolean>(false);
+  const [level, setLevel] = useState<number>(0);
+  /** The tile the child has dropped into the IF slot, or null until chosen. */
+  const [ifTile, setIfTile] = useState<Tile | null>(null);
   /** THEN slot action, or null until the child picks one. */
   const [then, setThen] = useState<Action | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  /** Index of the light the robot is currently AT (-1 = start, TRACK.length = flag). */
+  /** Index of the tile the robot is currently AT (-1 = start, track.length = flag). */
   const [at, setAt] = useState<number>(-1);
-  /** True while the robot is mid-jump at its current light. */
+  /** True while the robot is mid-jump at its current tile. */
   const [jumping, setJumping] = useState<boolean>(false);
+
+  const round = ROUNDS[level];
+  const track = round.track;
 
   const reportedRef = useRef<boolean>(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,18 +167,33 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
   }, []);
   useEffect(() => () => clearTimer(), [clearTimer]);
 
+  // Fresh round: clear the plan, park the robot at the start.
+  useEffect(() => {
+    clearTimer();
+    setIfTile(null);
+    setThen(null);
+    setPhase("idle");
+    setAt(-1);
+    setJumping(false);
+  }, [level, clearTimer]);
+
   const running = phase === "running";
   const won = phase === "won";
   const bump = phase === "bump";
-  const locked = running || won;
+  const done = phase === "done";
+  const celebrating = won || done;
+  const locked = running || won || done;
 
-  const fillIf = useCallback((): void => {
-    if (locked) return;
-    blip();
-    setIfFilled(true);
-    setPhase("idle");
-    setAt(-1);
-  }, [locked, blip]);
+  const pickIf = useCallback(
+    (t: Tile): void => {
+      if (locked) return;
+      blip();
+      setIfTile(t);
+      setPhase("idle");
+      setAt(-1);
+    },
+    [locked, blip],
+  );
 
   const pickThen = useCallback(
     (a: Action): void => {
@@ -140,16 +209,17 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
   const reset = useCallback((): void => {
     clearTimer();
     reportedRef.current = false;
-    setIfFilled(false);
+    setLevel(0);
+    setIfTile(null);
     setThen(null);
     setPhase("idle");
     setAt(-1);
     setJumping(false);
   }, [clearTimer]);
 
-  /** The rule is correct only when it says: IF 🔴 THEN ⤴️ JUMP. */
-  const ruleOk = ifFilled && then === "jump";
-  const ruleReady = ifFilled && then !== null;
+  /** The rule solves THIS round only when it jumps the TRUE hazard. */
+  const ruleOk = ifTile === round.hazard && then === "jump";
+  const ruleReady = ifTile !== null && then !== null;
 
   const go = useCallback((): void => {
     if (locked) return;
@@ -166,74 +236,88 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
     setPhase("running");
 
     const walk = (i: number): void => {
-      // Reached the flag past the last light → WIN.
-      if (i >= TRACK.length) {
-        setAt(TRACK.length);
-        setPhase("won");
+      // Reached the flag past the last tile → this round is solved.
+      if (i >= track.length) {
+        setAt(track.length);
+        const last = level >= ROUNDS.length - 1;
         chime();
-        if (!reportedRef.current) {
-          reportedRef.current = true;
-          onComplete({
-            passed: true,
-            stars: 3,
-            detail: "The robot followed the rule and reached the flag! 🏁",
-          });
+        if (last) {
+          setPhase("done");
+          if (!reportedRef.current) {
+            reportedRef.current = true;
+            onComplete({
+              passed: true,
+              stars: 3,
+              detail: "Three smart rules — the robot dodged every danger and reached the flag! 🏁",
+            });
+          }
+        } else {
+          // Win this round, then slide the next (harder) puzzle in.
+          setPhase("won");
+          timerRef.current = setTimeout(() => setLevel((l) => l + 1), 1200);
         }
         return;
       }
       setAt(i);
-      const light = TRACK[i];
-      if (light === "red" && then !== "jump") {
-        // Wrong rule for a red light → gentle bump, then hop home and retry.
+      const tile = track[i];
+      const isHazard = tile === round.hazard;
+      // The rule only jumps the tile the child put in the IF slot.
+      const ruleJumpsThis = ifTile === tile && then === "jump";
+
+      if (isHazard && !ruleJumpsThis) {
+        // The robot hit the real danger without jumping it → gentle trip, hop home.
         setJumping(false);
         setPhase("bump");
-        onComplete({ passed: false, detail: "Bonk! The red light stopped the robot — try a new rule. 🙈" });
         timerRef.current = setTimeout(() => {
           setAt(-1);
           setPhase("idle");
-        }, 760);
+        }, 820);
         return;
       }
-      // Red + JUMP rule → hop over it; green → just stroll on.
-      if (light === "red") {
+
+      if (ruleJumpsThis) {
+        // The rule says jump this tile → hop over it (whether hazard or a wasted jump).
         setJumping(true);
         timerRef.current = setTimeout(() => {
           setJumping(false);
           timerRef.current = setTimeout(() => walk(i + 1), STEP_MS * 0.45);
         }, STEP_MS * 0.55);
       } else {
+        // Safe tile, no jump → just stroll on.
         setJumping(false);
         timerRef.current = setTimeout(() => walk(i + 1), STEP_MS);
       }
     };
 
     timerRef.current = setTimeout(() => walk(0), STEP_MS * 0.5);
-  }, [locked, blip, ruleReady, clearTimer, then, chime, onComplete]);
+  }, [locked, blip, ruleReady, clearTimer, track, level, round.hazard, ifTile, then, chime, onComplete]);
 
-  const robotEmoji = won ? "🎉" : bump ? "🙈" : running ? "🤖" : "🤖";
+  const robotEmoji = celebrating ? "🎉" : bump ? "🙈" : "🤖";
 
   return (
     <div className="flex w-full flex-col items-center gap-3 font-mono text-ink">
       <style>{KEYFRAMES}</style>
 
-      {/* ── Tiny visual status (emoji, not sentences) ── */}
+      {/* ── Tiny visual status + round dots (emoji, not sentences) ── */}
       <div
-        className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
+        className="flex items-center gap-3 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "The robot reached the flag!"
-            : running
-              ? "The robot is walking"
-              : bump
-                ? "Oops, try a new rule"
-                : "Build the rule, then press Go"
+          done
+            ? "You solved all three rounds!"
+            : won
+              ? "Round solved! Next one coming up"
+              : running
+                ? "The robot is walking"
+                : bump
+                  ? "Oops, look again and try a new rule"
+                  : `Round ${level + 1} of 3 — find the danger tile, build the rule, then press Go`
         }
         style={{
-          background: won ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span
@@ -242,7 +326,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
           style={{
             animation: bump
               ? "jcrule-wobble 0.5s ease"
-              : won
+              : celebrating
                 ? "jcrule-cheer 0.9s ease-in-out 2"
                 : running
                   ? undefined
@@ -251,7 +335,30 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
         >
           {robotEmoji}
         </span>
-        {won ? (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {ROUNDS.map((_, i) => {
+            const solved = i < level || done;
+            const current = i === level && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 14,
+                  width: 14,
+                  background: solved ? ACCENT : current ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jcrule-nudge 1.5s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done ? (
           <span aria-hidden="true" className="inline-flex text-2xl">
             {(["a", "b", "c"] as const).map((k, i) => (
               <span
@@ -268,7 +375,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             🤖→🏁
           </span>
         )}
-        {won && (
+        {done && (
           <span aria-hidden="true" className="text-2xl">
             ✨
           </span>
@@ -277,10 +384,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
 
       {/* ── The track the robot walks ── */}
       <div className="panel relative w-full max-w-[430px] overflow-hidden rounded-2xl border border-line p-3">
-        <div
-          className="relative flex items-end justify-between"
-          style={{ height: 96, touchAction: "none" }}
-        >
+        <div className="relative flex items-end justify-between" style={{ height: 96, touchAction: "none" }}>
           {/* ground line */}
           <div
             aria-hidden="true"
@@ -288,25 +392,25 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             style={{ bottom: 8, height: 4, background: "rgba(120,140,170,0.30)" }}
           />
 
-          {/* the lights, evenly spaced */}
-          {TRACK.map((light, i) => {
+          {/* the tiles, evenly spaced */}
+          {track.map((tile, i) => {
             const here = at === i;
+            const dangerHere = here && tile === round.hazard;
             return (
               <div key={i} className="relative z-10 flex flex-col items-center" style={{ width: 40 }}>
                 <span
-                  aria-label={light === "red" ? "red light" : "green light"}
+                  aria-label={TILE_WORD[tile]}
                   className="inline-block text-2xl"
                   style={{
-                    filter:
-                      here && light === "red"
-                        ? "drop-shadow(0 0 10px #f87171)"
-                        : here
-                          ? `drop-shadow(0 0 10px ${ACCENT})`
-                          : undefined,
+                    filter: dangerHere
+                      ? "drop-shadow(0 0 10px #f87171)"
+                      : here
+                        ? `drop-shadow(0 0 10px ${ACCENT})`
+                        : undefined,
                     animation: here ? "jcrule-pulse 0.6s ease-in-out infinite" : undefined,
                   }}
                 >
-                  <span aria-hidden="true">{LIGHT_GLYPH[light]}</span>
+                  <span aria-hidden="true">{TILE_GLYPH[tile]}</span>
                 </span>
               </div>
             );
@@ -317,19 +421,19 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             <span
               aria-label="finish flag"
               className="text-2xl"
-              style={{ animation: won ? "jcrule-pop 0.7s ease-out" : undefined }}
+              style={{ animation: celebrating ? "jcrule-pop 0.7s ease-out" : undefined }}
             >
               <span aria-hidden="true">🏁</span>
             </span>
           </div>
 
-          {/* the robot — positioned along the row by percent of cells (lights + flag) */}
+          {/* the robot — positioned along the row by percent of cells (tiles + flag) */}
           <div
             aria-hidden="true"
             className="absolute z-20"
             style={{
               bottom: 10,
-              left: `${(Math.max(at, -1) + 1) * (100 / (TRACK.length + 1))}%`,
+              left: `${(Math.max(at, -1) + 1) * (100 / (track.length + 1))}%`,
               transform: "translateX(-50%)",
               transition: running ? `left ${STEP_MS}ms ease-in-out` : "left 160ms ease-out",
             }}
@@ -339,24 +443,20 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
               style={{
                 animation: jumping
                   ? "jcrule-jump 0.55s cubic-bezier(.34,1.56,.64,1)"
-                  : won
+                  : celebrating
                     ? "jcrule-cheer 0.9s ease-in-out 3"
                     : running
                       ? "jcrule-walk 0.4s ease-in-out infinite"
                       : "jcrule-breathe 2.6s ease-in-out infinite",
               }}
             >
-              {won ? "🎉" : "🤖"}
+              {celebrating ? "🎉" : "🤖"}
             </span>
           </div>
 
-          {/* BIG win: confetti burst flying outward from the finish */}
-          {won && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute z-30"
-              style={{ right: "10%", bottom: 24 }}
-            >
+          {/* BIG win: confetti burst flying outward from the finish (final round only) */}
+          {done && (
+            <div aria-hidden="true" className="pointer-events-none absolute z-30" style={{ right: "10%", bottom: 24 }}>
               {CONFETTI_PIECES.map((p, i) => (
                 <span
                   key={i}
@@ -380,7 +480,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
         </div>
       </div>
 
-      {/* ── The ONE rule: IF [🔴] THEN [ ? ] ── */}
+      {/* ── The ONE rule: IF [ ? ] THEN [ ? ] ── */}
       <div
         className="flex w-full max-w-[430px] items-center justify-center gap-2 rounded-2xl px-3 py-3"
         style={{ background: "rgba(255,255,255,0.04)", border: "2px dashed var(--color-line, #33405c)" }}
@@ -389,33 +489,25 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
         <span aria-hidden="true" className="text-lg font-extrabold" style={{ color: ACCENT }}>
           IF
         </span>
-        {/* IF slot — tap to drop the 🔴 */}
-        <button
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            fillIf();
-          }}
-          disabled={locked}
-          aria-label={ifFilled ? "If a red light" : "Tap to put a red light in the IF box"}
-          className="grid h-[60px] w-[60px] place-items-center rounded-2xl text-3xl transition active:scale-90 disabled:opacity-60"
+        {/* IF slot — shows the chosen danger tile */}
+        <div
+          aria-label={ifTile ? `if ${TILE_WORD[ifTile]}` : "if, pick a danger tile below"}
+          className="grid h-[60px] w-[60px] place-items-center rounded-2xl text-3xl"
           style={{
-            touchAction: "none",
-            transitionTimingFunction: "cubic-bezier(.34,1.56,.64,1)",
-            background: ifFilled ? "rgba(248,113,113,0.16)" : "rgba(255,255,255,0.05)",
-            border: `2px ${ifFilled ? "solid #f87171" : "dashed var(--color-line, #33405c)"}`,
-            animation: ifFilled ? undefined : "jcrule-glow 1.5s ease-in-out infinite",
+            background: ifTile ? "rgba(248,113,113,0.16)" : "rgba(255,255,255,0.05)",
+            border: `2px ${ifTile ? "solid #f87171" : "dashed var(--color-line, #33405c)"}`,
+            animation: !ifTile ? "jcrule-glow 1.5s ease-in-out infinite" : undefined,
           }}
         >
           <span
-            key={ifFilled ? "if-on" : "if-off"}
+            key={ifTile ?? "if-empty"}
             aria-hidden="true"
             className="inline-block"
-            style={{ animation: ifFilled ? "jcrule-snap 0.5s cubic-bezier(.34,1.56,.64,1) both" : undefined }}
+            style={{ animation: ifTile ? "jcrule-snap 0.5s cubic-bezier(.34,1.56,.64,1) both" : undefined }}
           >
-            {ifFilled ? "🔴" : "➕"}
+            {ifTile ? TILE_GLYPH[ifTile] : "❓"}
           </span>
-        </button>
+        </div>
 
         <span aria-hidden="true" className="text-lg font-extrabold" style={{ color: ACCENT }}>
           ▶
@@ -428,7 +520,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
           style={{
             background: then ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.05)",
             border: `2px ${then ? "solid " + ACCENT : "dashed var(--color-line, #33405c)"}`,
-            animation: ifFilled && !then ? "jcrule-glow 1.5s ease-in-out infinite" : undefined,
+            animation: ifTile && !then ? "jcrule-glow 1.5s ease-in-out infinite" : undefined,
           }}
         >
           <span
@@ -440,6 +532,45 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             {then ? ACTION_GLYPH[then] : "❓"}
           </span>
         </div>
+      </div>
+
+      {/* ── IF candidates: tap a tile to drop it in the IF slot ── */}
+      <div
+        className="grid w-full max-w-[320px] gap-3"
+        style={{ gridTemplateColumns: `repeat(${round.candidates.length}, minmax(0, 1fr))` }}
+        aria-label="Danger tile choices"
+      >
+        {round.candidates.map((t) => {
+          const chosen = ifTile === t;
+          return (
+            <button
+              key={t}
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                pickIf(t);
+              }}
+              disabled={locked}
+              aria-label={`Put ${TILE_WORD[t]} in the IF box`}
+              className="grid h-[68px] place-items-center rounded-2xl text-3xl transition active:scale-90 disabled:opacity-50"
+              style={{
+                touchAction: "none",
+                transitionTimingFunction: "cubic-bezier(.34,1.56,.64,1)",
+                background: chosen ? "rgba(248,113,113,0.18)" : "rgba(255,255,255,0.05)",
+                border: `2px solid ${chosen ? "#f87171" : "var(--color-line, #33405c)"}`,
+                boxShadow: chosen ? "0 0 14px rgba(248,113,113,0.5)" : undefined,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="inline-block"
+                style={{ animation: chosen ? "jcrule-pop 0.45s cubic-bezier(.34,1.56,.64,1)" : undefined }}
+              >
+                {TILE_GLYPH[t]}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Action choices for the THEN slot ── */}
@@ -456,7 +587,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
               }}
               disabled={locked}
               aria-label={`Choose ${ACTION_WORD[a]}`}
-              className="grid h-[76px] place-items-center rounded-2xl text-4xl transition active:scale-90 disabled:opacity-50"
+              className="grid h-[68px] place-items-center rounded-2xl text-4xl transition active:scale-90 disabled:opacity-50"
               style={{
                 touchAction: "none",
                 transitionTimingFunction: "cubic-bezier(.34,1.56,.64,1)",
@@ -494,7 +625,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             background: ACCENT,
             color: "#060810",
             boxShadow: "0 6px 0 0 #0e8aa0",
-            animation: ruleOk && !locked ? "jcrule-nudge 1.4s ease-in-out infinite" : undefined,
+            animation: ruleReady && !locked ? "jcrule-nudge 1.4s ease-in-out infinite" : undefined,
           }}
         >
           <span
@@ -516,7 +647,7 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
             reset();
           }}
           disabled={running}
-          aria-label="Start over"
+          aria-label="Start over from round one"
           className="grid h-[72px] w-[72px] place-items-center rounded-2xl text-2xl transition active:scale-90 active:-rotate-180 disabled:opacity-40"
           style={{
             touchAction: "none",
@@ -529,22 +660,16 @@ export default function IfThisDoThat({ onComplete }: ActivityProps) {
         </button>
       </div>
 
-      {/* celebratory floaters when solved */}
-      {won && (
+      {/* celebratory floaters when all rounds solved */}
+      {done && (
         <div className="pointer-events-none flex justify-center gap-2 text-2xl">
           <span style={{ animation: "jcrule-float 1.6s ease-in-out infinite" }} aria-hidden="true">
             ✨
           </span>
-          <span
-            style={{ animation: "jcrule-float 1.6s ease-in-out infinite", animationDelay: "0.2s" }}
-            aria-hidden="true"
-          >
+          <span style={{ animation: "jcrule-float 1.6s ease-in-out infinite", animationDelay: "0.2s" }} aria-hidden="true">
             🎉
           </span>
-          <span
-            style={{ animation: "jcrule-float 1.6s ease-in-out infinite", animationDelay: "0.4s" }}
-            aria-hidden="true"
-          >
+          <span style={{ animation: "jcrule-float 1.6s ease-in-out infinite", animationDelay: "0.4s" }} aria-hidden="true">
             ✨
           </span>
         </div>
@@ -609,7 +734,7 @@ const KEYFRAMES = `
   75% { transform: translateY(0) scale(0.94) rotate(-1deg); }
   100% { transform: translateY(0) scale(1) rotate(0deg); }
 }
-/* The active light pulses + glows as the robot stands on it. */
+/* The active tile pulses + glows as the robot stands on it. */
 @keyframes jcrule-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.28); }

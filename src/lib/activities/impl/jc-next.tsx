@@ -4,15 +4,22 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ── What Comes Next? 🔁 ──────────────────────────────────────────────────────
-   CLASS 1-3 lab (juniors, age ~6-8). ONE learning goal: patterns REPEAT — look
-   at a row, find the rule, and predict + continue what comes next (the thinking
-   behind LOOPS). A row shows a repeating pattern with the LAST tile empty
-   (e.g. 🍎🍌🍎🍌🍎❓). Below sit 2-3 big choice tiles; the child taps the one
-   that keeps the pattern going. Correct → it pops into the empty slot with a
-   sparkle and we move on. Wrong → the tile gives a gentle wobble + 🙈, easy
-   retry, never a hard fail. Three growing rounds: ABAB, AABB, ABC ABC. All three
-   solved → onComplete({passed:true, stars:3}) ONCE. NO READING NEEDED — all
-   emoji, colour and big shapes. Reset (🔄) restarts at Round 1. Accent #22d3ee. */
+   CLASS 1-3 lab (juniors, age ~6-8). ONE learning goal: patterns REPEAT — find
+   the rule, then PLAN and continue it (the thinking behind LOOPS). But this is
+   now a real PROBLEM, not a one-tap lucky guess: each row has MORE THAN ONE empty
+   slot, and the child must fill them IN ORDER from a shared tray of choice tiles
+   (which always holds a wrong "decoy" tile too). To win a round you must read the
+   rule and place every slot correctly in sequence — random tapping almost never
+   works. Three growing rounds:
+     • R1  🟥🟦🟥🟦 ❓❓        → 🟥 🟦   (ABAB, fill the next two)
+     • R2  🍎🍎🍌🍌 ❓❓❓       → 🍎 🍎 🍌  (AABB, fill the next three)
+     • R3  ⭐❤️🌙 ⭐ ❓ 🌙 ❓      → ❤️ … ⭐  (ABC ABC, but the GAPS are in the
+                                          MIDDLE — "copy the last tile" fails,
+                                          you must reason about cycle position)
+   Each correct tile pops into its slot with a sparkle; a wrong tap gives a gentle
+   wobble + 🙈 and an easy retry, never a hard fail. All three solved →
+   onComplete({passed:true, stars:3}) ONCE. NO READING NEEDED — all emoji, colour
+   and big shapes. Reset (🔄) restarts at Round 1. Accent #22d3ee. */
 
 const ACCENT = "#22d3ee";
 
@@ -30,27 +37,72 @@ const BLUE: Item = { id: "blue", glyph: "🟦", word: "blue square" };
 const STAR: Item = { id: "star", glyph: "⭐", word: "star" };
 const HEART: Item = { id: "heart", glyph: "❤️", word: "heart" };
 const MOON: Item = { id: "moon", glyph: "🌙", word: "moon" };
+const GRAPE: Item = { id: "grape", glyph: "🍇", word: "grapes" };
+
+/** A cell in the pattern row: either a tile that is already shown, or a blank
+ *  slot the child must fill. Blanks are filled IN ORDER (left to right). */
+type Cell = { kind: "shown"; item: Item } | { kind: "blank"; want: Item };
 
 interface Round {
-  /** The tiles already shown — the start of the repeating pattern. */
-  shown: Item[];
-  /** The single tile that correctly continues the pattern. */
-  answer: Item;
-  /** The 2-3 big choice tiles to tap (always includes the answer). */
-  choices: Item[];
+  /** The whole row, left to right — fixed tiles and the blanks to fill. */
+  row: Cell[];
+  /** The shared tray of choice tiles (always includes every needed tile
+   *  PLUS one wrong decoy, so it is never a 1-of-2 coin-flip). */
+  tray: Item[];
 }
 
-/** Three short rounds of growing patterns: ABAB → AABB → ABC ABC. */
+/** Helper builders keep the round table short and readable. */
+const show = (item: Item): Cell => ({ kind: "shown", item });
+const blank = (want: Item): Cell => ({ kind: "blank", want });
+
+/** Three growing rounds. Each needs the child to PLAN the continuation, then
+ *  place several tiles in the right order — luck can't carry it.
+ *  Round 3's twist: the blanks sit in the MIDDLE of the row, so "copy the tile
+ *  just before / the last tile" fails and the child must reason about where in
+ *  the ⭐❤️🌙 cycle each gap falls. */
 const ROUNDS: Round[] = [
-  // 🟥🟦🟥🟦🟥 ❓ → 🟦   (ABAB)
-  { shown: [RED, BLUE, RED, BLUE, RED], answer: BLUE, choices: [BLUE, RED] },
-  // 🍎🍎🍌🍌🍎🍎 ❓ → 🍌   (AABB)
-  { shown: [APPLE, APPLE, BANANA, BANANA, APPLE, APPLE], answer: BANANA, choices: [BANANA, APPLE] },
-  // ⭐❤️🌙⭐❤️ ❓ → 🌙   (ABC ABC)
-  { shown: [STAR, HEART, MOON, STAR, HEART], answer: MOON, choices: [MOON, STAR, HEART] },
+  // R1 — ABAB, fill the next TWO: 🟥🟦🟥🟦 [🟥][🟦]
+  {
+    row: [show(RED), show(BLUE), show(RED), show(BLUE), blank(RED), blank(BLUE)],
+    tray: [RED, BLUE, GRAPE],
+  },
+  // R2 — AABB, fill the next THREE: 🍎🍎🍌🍌 [🍎][🍎][🍌]
+  {
+    row: [
+      show(APPLE),
+      show(APPLE),
+      show(BANANA),
+      show(BANANA),
+      blank(APPLE),
+      blank(APPLE),
+      blank(BANANA),
+    ],
+    tray: [APPLE, BANANA, GRAPE],
+  },
+  // R3 — ABC ABC, but the GAPS are in the MIDDLE: ⭐ [❤️] 🌙 ⭐ [❤️] 🌙
+  {
+    row: [
+      show(STAR),
+      blank(HEART),
+      show(MOON),
+      show(STAR),
+      blank(HEART),
+      show(MOON),
+    ],
+    tray: [STAR, HEART, MOON],
+  },
 ];
 
 const TOTAL = ROUNDS.length;
+
+/** Indices of the blank cells in a row, left to right. */
+function blankIndices(row: Cell[]): number[] {
+  const out: number[] = [];
+  row.forEach((c, i) => {
+    if (c.kind === "blank") out.push(i);
+  });
+  return out;
+}
 
 /** Soft blip (tap) / happy chime (win) — created on the gesture, never throws. */
 function playTone(win: boolean): void {
@@ -81,11 +133,38 @@ function playTone(win: boolean): void {
   }
 }
 
+/** A short, friendly tap blip for a CORRECT placement that is not the last one. */
+function playStep(step: number): void {
+  try {
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    // rising ladder as the child fills more slots → a sense of building progress
+    osc.frequency.value = 523.25 + step * 90;
+    const t = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
+    window.setTimeout(() => void ctx.close().catch(() => undefined), 500);
+  } catch {
+    /* sound is a nice-to-have; never let it block or throw */
+  }
+}
+
 export default function WhatComesNext({ onComplete }: ActivityProps) {
   const [round, setRound] = useState<number>(0);
-  /** The answer once placed into the empty slot this round (else null). */
-  const [filled, setFilled] = useState<Item | null>(null);
-  /** Choice id currently wobbling from a wrong tap. */
+  /** How many of this round's blanks are already filled (left to right). */
+  const [progress, setProgress] = useState<number>(0);
+  /** Tray choice id currently wobbling from a wrong tap. */
   const [wobble, setWobble] = useState<string | null>(null);
   /** True between rounds, while the quick cheer shows. */
   const [cheer, setCheer] = useState<boolean>(false);
@@ -97,7 +176,16 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
   const advanceTimer = useRef<number | null>(null);
 
   const current = ROUNDS[round];
+  const blanks = blankIndices(current.row);
+  const totalBlanks = blanks.length;
   const solvedRounds = done ? TOTAL : round;
+
+  /** The next blank the child must fill (cell index), or -1 when the row is full. */
+  const nextBlankIndex = progress < totalBlanks ? blanks[progress] : -1;
+  const nextWantId =
+    nextBlankIndex >= 0 && current.row[nextBlankIndex].kind === "blank"
+      ? (current.row[nextBlankIndex] as { kind: "blank"; want: Item }).want.id
+      : null;
 
   const clearTimers = useCallback(() => {
     if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
@@ -108,39 +196,53 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
 
   const tap = useCallback(
     (choice: Item) => {
-      if (done || cheer || filled) return;
-      if (choice.id !== current.answer.id) {
-        // Wrong tile → gentle wobble, no penalty, easy retry.
+      if (done || cheer) return;
+      if (progress >= totalBlanks) return; // row already complete
+
+      if (choice.id !== nextWantId) {
+        // Wrong tile → gentle wobble, no penalty, easy retry. No onComplete spam.
         setWobble(choice.id);
         if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
         wobbleTimer.current = window.setTimeout(() => setWobble(null), 480);
         playTone(false);
-        onComplete({ passed: false, detail: "So close! Try the one that matches. 🤔" });
         return;
       }
-      // Correct → snap it into the empty slot, quick cheer, then advance.
-      setFilled(choice);
+
+      // Correct → snap it into the next slot.
+      const nextProgress = progress + 1;
+      const roundComplete = nextProgress >= totalBlanks;
+      const lastRound = round + 1 >= TOTAL;
+
+      if (!roundComplete) {
+        // Mid-row: rising blip, keep going.
+        setProgress(nextProgress);
+        playStep(nextProgress);
+        return;
+      }
+
+      // Final slot of this round filled → cheer, then advance / finish.
+      setProgress(nextProgress);
       setCheer(true);
-      playTone(round + 1 >= TOTAL);
+      playTone(true);
       if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
       advanceTimer.current = window.setTimeout(() => {
-        if (round + 1 >= TOTAL) {
+        if (lastRound) {
           setDone(true);
         } else {
           setRound((r) => r + 1);
-          setFilled(null);
+          setProgress(0);
           setCheer(false);
         }
-      }, 1000);
+      }, 1050);
     },
-    [done, cheer, filled, current.answer.id, round, onComplete],
+    [done, cheer, progress, totalBlanks, nextWantId, round],
   );
 
   const reset = useCallback(() => {
     clearTimers();
     reportedRef.current = false;
     setRound(0);
-    setFilled(null);
+    setProgress(0);
     setWobble(null);
     setCheer(false);
     setDone(false);
@@ -161,12 +263,12 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
       <style>{KEYFRAMES}</style>
 
       {/* ── Tiny visual status (emoji + progress dots, no sentences) ── */}
-      <div className="flex w-full max-w-[430px] items-center justify-between px-1">
+      <div className="flex w-full max-w-[460px] items-center justify-between px-1">
         <div
           className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
           role="status"
           aria-live="polite"
-          aria-label={done ? "You did it!" : cheer ? "Great!" : "Tap the tile that comes next"}
+          aria-label={done ? "You did it!" : cheer ? "Great!" : "Fill the empty squares in order"}
           style={{
             background: done ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
             border: `2px solid ${done ? ACCENT : "var(--color-line, #33405c)"}`,
@@ -199,6 +301,29 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
           )}
         </div>
 
+        {/* per-round step dots: one pip per blank, filled as the child places tiles */}
+        {!done && !cheer && (
+          <div
+            className="flex items-center gap-1.5"
+            aria-hidden="true"
+            aria-label={`${progress} of ${totalBlanks} filled`}
+          >
+            {blanks.map((_, i) => (
+              <span
+                key={i}
+                className="block h-2.5 w-2.5 rounded-full transition-all"
+                style={{
+                  background: i < progress ? ACCENT : "transparent",
+                  border: `2px solid ${i < progress ? ACCENT : "var(--color-line, #2a3340)"}`,
+                  boxShadow: i < progress ? `0 0 6px ${ACCENT}` : "none",
+                  animation: i === progress ? "jcnext-glow 1.4s ease-in-out infinite" : undefined,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* round-progress dots (which of the 3 rounds are solved) */}
         <div className="flex items-center gap-1.5" aria-label={`Round ${Math.min(solvedRounds + 1, TOTAL)} of ${TOTAL}`}>
           {ROUNDS.map((_, i) => (
             <span
@@ -214,26 +339,51 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
         </div>
       </div>
 
-      {/* ── The pattern row: shown tiles + the empty slot (filled on success) ── */}
-      <div className="panel relative w-full max-w-[430px] overflow-hidden rounded-2xl border border-line p-3">
+      {/* ── The pattern row: shown tiles + the empty slots (filled in order) ── */}
+      <div className="panel relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-line p-3">
         <div className="grid min-h-[110px] place-items-center">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            {current.shown.map((s, i) => (
-              <PatternTile key={`shown-${round}-${i}`} glyph={s.glyph} label={s.word} kind="shown" />
-            ))}
-            {filled ? (
-              <PatternTile glyph={filled.glyph} label={filled.word} kind="filled" />
-            ) : (
-              <PatternTile glyph="❓" label="empty slot — what comes next?" kind="empty" />
-            )}
+            {current.row.map((cell, i) => {
+              if (cell.kind === "shown") {
+                return (
+                  <PatternTile
+                    key={`shown-${round}-${i}`}
+                    glyph={cell.item.glyph}
+                    label={cell.item.word}
+                    kind="shown"
+                  />
+                );
+              }
+              // blank cell — its order among blanks tells us if it's filled / active
+              const order = blanks.indexOf(i);
+              if (order < progress) {
+                return (
+                  <PatternTile
+                    key={`fill-${round}-${i}`}
+                    glyph={cell.want.glyph}
+                    label={cell.want.word}
+                    kind="filled"
+                  />
+                );
+              }
+              const active = order === progress && !cheer && !done;
+              return (
+                <PatternTile
+                  key={`empty-${round}-${i}`}
+                  glyph={active ? "❓" : "▫️"}
+                  label={active ? "this empty square is next" : "empty square"}
+                  kind={active ? "empty" : "waiting"}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* ── Big choice tiles OR the big celebration ── */}
+      {/* ── Big choice tiles (shared tray with a decoy) OR the big celebration ── */}
       {done ? (
         <div
-          className="relative grid w-full max-w-[430px] place-items-center gap-2 py-4 text-center"
+          className="relative grid w-full max-w-[460px] place-items-center gap-2 py-4 text-center"
           style={{ animation: "jcnext-pop 0.5s ease both" }}
         >
           <Confetti />
@@ -278,18 +428,18 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
         </div>
       ) : (
         <div
-          className="grid w-full max-w-[430px] gap-3"
-          style={{ gridTemplateColumns: `repeat(${current.choices.length}, minmax(0, 1fr))` }}
-          aria-label="Choices — tap the one that comes next"
+          className="grid w-full max-w-[460px] gap-3"
+          style={{ gridTemplateColumns: `repeat(${current.tray.length}, minmax(0, 1fr))` }}
+          aria-label="Choices — tap the tile that fills the next empty square"
         >
-          {current.choices.map((c, ci) => {
+          {current.tray.map((c, ci) => {
             const isWobbling = wobble === c.id;
             return (
               <button
                 key={c.id}
                 type="button"
                 aria-label={`Pick ${c.word}`}
-                disabled={cheer || filled !== null}
+                disabled={cheer || progress >= totalBlanks}
                 onPointerDown={(e) => {
                   e.preventDefault();
                   tap(c);
@@ -343,21 +493,27 @@ export default function WhatComesNext({ onComplete }: ActivityProps) {
   );
 }
 
-type TileKind = "shown" | "filled" | "empty";
+type TileKind = "shown" | "filled" | "empty" | "waiting";
 
-/** One big square in the pattern row. */
+/** One big square in the pattern row.
+ *  - shown   : a fixed pattern tile
+ *  - filled  : a blank the child correctly filled (snaps in, glowing)
+ *  - empty   : the blank that is NEXT to fill (active ❓, glowing dashed)
+ *  - waiting : a later blank, not yet active (dim dashed placeholder) */
 function PatternTile({ glyph, label, kind }: { glyph: string; label: string; kind: TileKind }) {
   const filled = kind === "filled";
   const empty = kind === "empty";
+  const waiting = kind === "waiting";
   return (
     <div
       aria-label={label}
       className="grid h-[54px] w-[54px] place-items-center rounded-xl border-2 text-3xl sm:h-[60px] sm:w-[60px] sm:text-4xl"
       style={{
-        borderColor: empty || filled ? ACCENT : "var(--color-line, #2a3340)",
-        borderStyle: empty ? "dashed" : "solid",
+        borderColor: empty || filled ? ACCENT : waiting ? "rgba(120,140,170,0.35)" : "var(--color-line, #2a3340)",
+        borderStyle: empty || waiting ? "dashed" : "solid",
         background: filled ? "rgba(34,211,238,0.14)" : "var(--color-panel-2, #11161f)",
         boxShadow: filled ? `0 0 16px ${ACCENT}` : "none",
+        opacity: waiting ? 0.45 : 1,
         animation: empty
           ? "jcnext-glow 1.4s ease-in-out infinite"
           : filled

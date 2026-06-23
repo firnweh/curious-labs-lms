@@ -4,28 +4,40 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ── Make It Go! 🟢 ────────────────────────────────────────────────────────────
-   CLASS 1-3 (junior, age ~6-8) CODING lab. ONE goal: you give steps, then press
-   GO to RUN them — and the NUMBER of steps matters (events / running a program).
-   A turtle 🐢 sits at the far LEFT of a short track; an apple 🍎 waits a few cells
-   right. Tap the big ➡️ STEP card to drop footprints into a row of step-slots,
-   then tap the huge green GO ▶ to run them — the turtle walks that many cells.
-   Land EXACTLY on the apple → big win (confetti, ⭐⭐⭐, onComplete once). Too few
-   or too many → the turtle stops with a gentle 🙈 wobble and the steps clear so
-   the child tries again. Always winnable, never scolds. NO READING REQUIRED —
-   communicates with emoji, colour and shape. Touch-first, deterministic. */
+   CLASS 1-3 (junior, age ~6-8) CODING lab. Teaches "plan a program, then run it"
+   — but now as a real PROBLEM to solve, not a one-tap toy. Across THREE rounds the
+   apple 🍎 sits a different distance away, so the child must look, COUNT the gap,
+   plan exactly that many 👣 step-cards, then press GO ▶ to run them. The twist in
+   round 3: the turtle 🐢 does NOT start at the beginning, so the answer isn't "the
+   apple's number" — you have to count the distance between turtle and apple. Land
+   EXACTLY on the apple → that round is won and the next, harder one slides in.
+   Win all three → big celebration, ⭐⭐⭐, onComplete once. Too few/too many → a
+   gentle 🙈 wobble, the footprints clear, try again. Always winnable, never scolds,
+   NO READING REQUIRED (emoji, colour, shape, dots). Touch-first, deterministic. */
 
 const ACCENT = "#22d3ee";
-const CELLS = 5; // track cells, 0 .. 4
-const APPLE = 3; // turtle starts at 0; 3 steps lands on the apple
-const MAX_STEPS = 5; // never more footprints than the track is long
+const CELLS = 8; // track cells, 0 .. 7 (a spare cell past the apple lets an overshoot read clearly)
+const MAX_STEPS = 6; // never more footprints than any puzzle needs
 const STEP_MS = 420; // walk speed, one cell per tick
 
-type Phase = "idle" | "running" | "won" | "oops";
+/** The three puzzles: where the turtle starts and where the apple waits.
+ *  Distances are 3 → 5 → 4-with-a-shifted-start, so each round is a fresh count. */
+const LEVELS: ReadonlyArray<{ start: number; apple: number }> = [
+  { start: 0, apple: 3 },
+  { start: 0, apple: 5 },
+  { start: 2, apple: 6 }, // twist: turtle starts at cell 2 → count the GAP (4), not "6"
+];
+
+type Phase = "idle" | "running" | "won" | "oops" | "done";
 
 export default function MakeItGo({ onComplete }: ActivityProps) {
-  const [steps, setSteps] = useState<number>(0); // footprints planned
-  const [pos, setPos] = useState<number>(0); // turtle cell while/after running
+  const [level, setLevel] = useState<number>(0);
+  const [steps, setSteps] = useState<number>(0); // footprints planned this round
+  const [pos, setPos] = useState<number>(LEVELS[0].start); // turtle cell while/after running
   const [phase, setPhase] = useState<Phase>("idle");
+
+  const start = LEVELS[level].start;
+  const apple = LEVELS[level].apple;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportedRef = useRef<boolean>(false);
@@ -38,6 +50,14 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
     }
   }, []);
   useEffect(() => () => clearTimer(), [clearTimer]);
+
+  // Fresh round: park the turtle at this level's start, clear the plan.
+  useEffect(() => {
+    clearTimer();
+    setPos(LEVELS[level].start);
+    setSteps(0);
+    setPhase("idle");
+  }, [level, clearTimer]);
 
   // ── Soft optional sound, made on the user's gesture; never throws/blocks. ──
   const blip = useCallback((freq: number, dur: number): void => {
@@ -71,35 +91,35 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
     });
   }, [blip]);
 
-  const busy = phase === "running" || phase === "won";
+  const busy = phase === "running" || phase === "won" || phase === "done";
 
   const addStep = useCallback((): void => {
     if (busy) return;
     blip(660, 0.08);
     setSteps((s) => Math.min(MAX_STEPS, s + 1));
     setPhase("idle");
-    setPos(0);
-  }, [busy, blip]);
+    setPos(LEVELS[level].start);
+  }, [busy, blip, level]);
 
   const clearSteps = useCallback((): void => {
     if (busy) return;
     blip(420, 0.07);
     setSteps(0);
     setPhase("idle");
-    setPos(0);
-  }, [busy, blip]);
+    setPos(LEVELS[level].start);
+  }, [busy, blip, level]);
 
   const reset = useCallback((): void => {
     clearTimer();
     reportedRef.current = false;
+    setLevel(0);
     setSteps(0);
-    setPos(0);
+    setPos(LEVELS[0].start);
     setPhase("idle");
   }, [clearTimer]);
 
   const go = useCallback((): void => {
     if (busy || steps === 0) {
-      // Empty isn't a scold — a tiny nudge wobble, then settle.
       if (steps === 0) {
         setPhase("oops");
         timerRef.current = setTimeout(() => setPhase("idle"), 480);
@@ -108,37 +128,37 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
     }
     clearTimer();
     blip(523, 0.1);
-    setPos(0);
+    setPos(start);
     setPhase("running");
 
-    // Walk: stop at the apple if reached, else at min(steps, last cell).
-    const target = Math.min(steps, APPLE, CELLS - 1);
-    let i = 0;
+    const reach = start + steps; // where the plan would land
+    const walkTo = Math.min(reach, CELLS - 1); // don't run off the track
+    let i = start;
     const tick = (): void => {
       i += 1;
       setPos(i);
-      if (i >= target) {
-        const won = steps === APPLE;
+      if (i >= walkTo) {
+        const won = reach === apple;
         if (won) {
-          setPhase("won");
+          const last = level >= LEVELS.length - 1;
           chime();
-          if (!reportedRef.current) {
-            reportedRef.current = true;
-            onComplete({ passed: true, stars: 3, detail: "Landed on the apple! 🍎" });
+          if (last) {
+            setPhase("done");
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              onComplete({ passed: true, stars: 3, detail: "You solved all three! 🍎🍎🍎" });
+            }
+          } else {
+            // Win this round, then slide the next (harder) puzzle in.
+            setPhase("won");
+            timerRef.current = setTimeout(() => setLevel((l) => l + 1), 1150);
           }
         } else {
+          // Gentle, never a scold: clear the plan and send the turtle home to retry.
           setPhase("oops");
-          onComplete({
-            passed: false,
-            detail:
-              steps < APPLE
-                ? "So close — add one more step! 🐢"
-                : "A little too far — try fewer steps! 🙈",
-          });
-          // Gentle: clear the footprints and send the turtle home to retry.
           timerRef.current = setTimeout(() => {
             setSteps(0);
-            setPos(0);
+            setPos(start);
             setPhase("idle");
           }, 900);
         }
@@ -147,11 +167,13 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
       timerRef.current = setTimeout(tick, STEP_MS);
     };
     timerRef.current = setTimeout(tick, STEP_MS);
-  }, [busy, steps, clearTimer, blip, chime, onComplete]);
+  }, [busy, steps, start, apple, level, clearTimer, blip, chime, onComplete]);
 
   const won = phase === "won";
+  const done = phase === "done";
   const oops = phase === "oops";
   const running = phase === "running";
+  const celebrating = won || done;
 
   // ── Track geometry (virtual units; CSS scales it) ──
   const PAD = 8;
@@ -165,69 +187,75 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
     <div className="flex w-full flex-col items-center gap-3 font-mono">
       <style>{KEYFRAMES}</style>
 
-      {/* ── Tiny emoji status (no sentences) ── */}
+      {/* ── Tiny emoji status + round dots (no sentences) ── */}
       <div
-        className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
+        className="flex items-center gap-3 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "You landed on the apple!"
-            : running
-              ? "The turtle is walking"
-              : oops
-                ? "Not quite, try again"
-                : "Add steps, then press Go"
+          done
+            ? "You solved all three rounds!"
+            : won
+              ? "Round solved! Next one coming up"
+              : running
+                ? "The turtle is walking"
+                : oops
+                  ? "Not quite, try again"
+                  : `Round ${level + 1} of 3 — count the steps, then press Go`
         }
         style={{
-          background: won ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span
           aria-hidden="true"
           style={{
             display: "inline-block",
-            animation: won ? "jcgo-cheer 0.7s cubic-bezier(.34,1.56,.64,1) infinite" : undefined,
+            animation: celebrating ? "jcgo-cheer 0.7s cubic-bezier(.34,1.56,.64,1) infinite" : undefined,
           }}
         >
-          {won ? "🎉" : oops ? "🤔" : running ? "🐾" : "🐢"}
+          {done ? "🏆" : won ? "🎉" : oops ? "🤔" : running ? "🐾" : "🐢"}
         </span>
-        {won ? (
-          <span aria-hidden="true" className="inline-flex gap-0.5">
-            {[0, 1, 2].map((i) => (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {LEVELS.map((_, i) => {
+            const solved = i < level || done;
+            const current = i === level && !done;
+            return (
               <span
                 key={i}
+                className="grid place-items-center rounded-full"
                 style={{
-                  display: "inline-block",
-                  animation: `jcgo-starpop 0.5s cubic-bezier(.34,1.56,.64,1) ${0.15 + i * 0.22}s both`,
+                  height: 14,
+                  width: 14,
+                  background: solved ? ACCENT : current ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jcgo-ready 1.5s ease-in-out infinite" : undefined,
                 }}
-              >
-                ⭐
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span aria-hidden="true" className="text-xl">
-            🐢➡️🍎
-          </span>
-        )}
-        {won && <span aria-hidden="true">✨</span>}
+              />
+            );
+          })}
+        </span>
+
+        {done && <span aria-hidden="true">⭐⭐⭐</span>}
       </div>
 
       {/* ── The track ── */}
-      <div className="relative w-full max-w-[420px] overflow-hidden rounded-2xl border border-line p-2">
+      <div className="relative w-full max-w-[520px] overflow-hidden rounded-2xl border border-line p-2">
         <svg
           viewBox={`0 0 ${VW} ${VH}`}
           className="block w-full select-none"
           style={{ touchAction: "none" }}
           role="img"
-          aria-label="A turtle on the left of a track and an apple to reach"
+          aria-label="A turtle on a track and an apple to reach"
         >
           {/* cells */}
           {Array.from({ length: CELLS }).map((_, c) => {
-            const here = c === pos && (running || won || oops);
+            const here = c === pos && (running || celebrating || oops);
             return (
               <rect
                 key={c}
@@ -243,18 +271,31 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
             );
           })}
 
+          {/* a soft flag marks where the turtle started this round (helps count the gap) */}
+          <text
+            x={cellX(start)}
+            y={PAD + TILE - 6}
+            fontSize={TILE * 0.26}
+            textAnchor="middle"
+            dominantBaseline="central"
+            opacity={0.5}
+            aria-hidden="true"
+          >
+            🚩
+          </text>
+
           {/* apple / goal */}
           <g
             style={{
               transformBox: "fill-box",
               transformOrigin: "center",
-              animation: won
+              animation: celebrating
                 ? "jcgo-applejoy 0.7s cubic-bezier(.34,1.56,.64,1) infinite"
                 : "jcgo-bob 2.2s ease-in-out infinite",
             }}
           >
             <text
-              x={cellX(APPLE)}
+              x={cellX(apple)}
               y={midY + 1}
               fontSize={TILE * 0.56}
               textAnchor="middle"
@@ -280,19 +321,12 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
                   ? "jcgo-wobble 0.5s ease-in-out"
                   : running
                     ? "jcgo-hop 0.42s ease-in-out infinite"
-                    : won
+                    : celebrating
                       ? "jcgo-cheer 0.7s cubic-bezier(.34,1.56,.64,1) infinite"
                       : "jcgo-breathe 2.6s ease-in-out infinite",
               }}
             >
-              <text
-                x={0}
-                y={1}
-                fontSize={TILE * 0.6}
-                textAnchor="middle"
-                dominantBaseline="central"
-                aria-label="turtle"
-              >
+              <text x={0} y={1} fontSize={TILE * 0.6} textAnchor="middle" dominantBaseline="central" aria-label="turtle">
                 🐢
               </text>
             </g>
@@ -302,7 +336,7 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
 
       {/* ── Step-slots: one footprint per planned step ── */}
       <div
-        className="flex min-h-[56px] w-full max-w-[420px] items-center justify-center gap-2 rounded-2xl px-3 py-2"
+        className="flex min-h-[56px] w-full max-w-[520px] items-center justify-center gap-2 rounded-2xl px-3 py-2"
         style={{
           background: "rgba(255,255,255,0.04)",
           border: "2px dashed var(--color-line, #33405c)",
@@ -321,10 +355,7 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
                 border: `2px solid ${filled ? ACCENT : "rgba(120,140,170,0.25)"}`,
                 transform: filled ? "scale(1)" : "scale(0.92)",
                 opacity: filled ? 1 : 0.5,
-                animation:
-                  filled && i === steps - 1
-                    ? "jcgo-snap 0.42s cubic-bezier(.34,1.56,.64,1)"
-                    : undefined,
+                animation: filled && i === steps - 1 ? "jcgo-snap 0.42s cubic-bezier(.34,1.56,.64,1)" : undefined,
               }}
             >
               {filled ? "👣" : ""}
@@ -334,7 +365,7 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
       </div>
 
       {/* ── The two big controls: STEP and GO ── */}
-      <div className="flex w-full max-w-[420px] items-stretch gap-3">
+      <div className="flex w-full max-w-[520px] items-stretch gap-3">
         <button
           type="button"
           onPointerDown={(e) => {
@@ -375,10 +406,7 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
         >
           <span
             aria-hidden="true"
-            style={{
-              display: "inline-block",
-              animation: running ? "jcgo-paw 0.42s steps(2) infinite" : undefined,
-            }}
+            style={{ display: "inline-block", animation: running ? "jcgo-paw 0.42s steps(2) infinite" : undefined }}
           >
             {running ? "🐾" : "▶"}
           </span>
@@ -399,11 +427,7 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
           disabled={busy || steps === 0}
           aria-label="Clear the steps"
           className="jcgo-spring grid h-[52px] w-[52px] place-items-center rounded-2xl text-2xl disabled:opacity-30"
-          style={{
-            touchAction: "none",
-            background: "rgba(255,255,255,0.05)",
-            border: "2px solid var(--color-line, #33405c)",
-          }}
+          style={{ touchAction: "none", background: "rgba(255,255,255,0.05)", border: "2px solid var(--color-line, #33405c)" }}
         >
           <span aria-hidden="true">🧹</span>
         </button>
@@ -414,25 +438,20 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
             reset();
           }}
           disabled={running}
-          aria-label="Start over"
+          aria-label="Start over from round one"
           className="jcgo-spring grid h-[52px] w-[52px] place-items-center rounded-2xl text-2xl disabled:opacity-40"
-          style={{
-            touchAction: "none",
-            background: "rgba(255,255,255,0.05)",
-            border: "2px solid var(--color-line, #33405c)",
-          }}
+          style={{ touchAction: "none", background: "rgba(255,255,255,0.05)", border: "2px solid var(--color-line, #33405c)" }}
         >
           <span aria-hidden="true">🔄</span>
         </button>
       </div>
 
-      {/* celebration: confetti burst flying outward + happy floaters */}
-      {won && (
+      {/* celebration: confetti burst flying outward + happy floaters (final win only) */}
+      {done && (
         <div
-          className="pointer-events-none relative flex h-10 w-full max-w-[420px] items-center justify-center text-2xl"
+          className="pointer-events-none relative flex h-10 w-full max-w-[520px] items-center justify-center text-2xl"
           aria-hidden="true"
         >
-          {/* confetti particles burst out from the centre */}
           {CONFETTI.map((c, i) => (
             <span
               key={i}
@@ -449,23 +468,13 @@ export default function MakeItGo({ onComplete }: ActivityProps) {
               {c.emoji}
             </span>
           ))}
-          {/* gentle bobbing cheer trio in front */}
-          <span
-            className="relative"
-            style={{ animation: "jcgo-float 1.4s ease-in-out infinite" }}
-          >
+          <span className="relative" style={{ animation: "jcgo-float 1.4s ease-in-out infinite" }}>
             ✨
           </span>
-          <span
-            className="relative mx-2"
-            style={{ animation: "jcgo-float 1.4s ease-in-out 0.2s infinite" }}
-          >
+          <span className="relative mx-2" style={{ animation: "jcgo-float 1.4s ease-in-out 0.2s infinite" }}>
             🎉
           </span>
-          <span
-            className="relative"
-            style={{ animation: "jcgo-float 1.4s ease-in-out 0.4s infinite" }}
-          >
+          <span className="relative" style={{ animation: "jcgo-float 1.4s ease-in-out 0.4s infinite" }}>
             ✨
           </span>
         </div>
@@ -538,7 +547,7 @@ const KEYFRAMES = `
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
-/* GO button gently pulses when there are steps ready to run */
+/* GO button + current-round dot gently pulse */
 @keyframes jcgo-ready {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.04); }
@@ -547,12 +556,6 @@ const KEYFRAMES = `
 @keyframes jcgo-paw {
   0%, 100% { transform: translateY(0) rotate(-8deg); }
   50%      { transform: translateY(-2px) rotate(8deg); }
-}
-/* ⭐ pops in one at a time with a bounce */
-@keyframes jcgo-starpop {
-  0%   { transform: scale(0) rotate(-40deg); opacity: 0; }
-  60%  { transform: scale(1.35) rotate(8deg); opacity: 1; }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 /* apple does a joyful springy bounce on win */
 @keyframes jcgo-applejoy {

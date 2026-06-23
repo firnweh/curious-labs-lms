@@ -3,39 +3,32 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  3D Pen Holder Designer ✏️ — functional CAD: shape a product to     */
-/*  meet REAL requirements.                                            */
-/*  Single learning goal: a working 3D design must satisfy concrete,   */
-/*  testable specs at the SAME time — a pocket wide enough to hold the */
-/*  pens, walls thick enough not to be fragile, tall enough that pens  */
-/*  don't tip, and a base wider than the top so the whole thing is     */
-/*  stable. The learner drives four mm sliders until every spec is     */
-/*  green at once, then exports an STL.                                */
+/*  3D Pen Holder Designer ✏️ — functional CAD with a REAL engineering  */
+/*  trade-off. Class 4-6 explorers don't just drag four sliders up      */
+/*  until everything is green — they design AGAINST A FILAMENT BUDGET.  */
+/*                                                                      */
+/*  Every mm of opening, wall, height and base flare costs plastic.     */
+/*  Maxing every slider ALWAYS busts the budget, so brute force fails:  */
+/*  you must reason about which dimensions to spend material on and      */
+/*  which to keep lean. Three escalating briefs:                        */
+/*    R1  learn the loop: meet 4 specs, comfy budget.                   */
+/*    R2  tighter budget — now thick walls steal height; plan trade-offs*/
+/*    R3  the twist — a HARD flare cap (can't just splay the base to    */
+/*        win stability) + a bigger pocket. The only way to be stable    */
+/*        is to keep the build lean so the legal flare is enough.        */
+/*  Finish under budget with material to spare → 3⭐ (efficient). Win    */
+/*  but scrape the budget → fewer ⭐. A clean win is always reachable.   */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#f59e0b";
 const VIEW_W = 360;
 const VIEW_H = 320;
 
-/* ----- design-brief specs (the four testable requirements) ----- */
-const OPENING_MIN = 80; // mm — inner pocket must fit ~10 pens
-const WALL_MIN = 3; // mm — thinner walls are flagged "fragile"
-const HEIGHT_MIN = 90; // mm — tall enough so pens don't tip out
-
-/* ----- slider ranges (each always includes a valid combination) ----- */
+/* ----- slider ranges (each round's valid combo lives inside these) ----- */
 const OPENING_RANGE = { min: 40, max: 110, step: 2 } as const;
 const WALL_RANGE = { min: 1, max: 10, step: 1 } as const;
 const HEIGHT_RANGE = { min: 50, max: 130, step: 2 } as const;
-const BASE_EXTRA_RANGE = { min: 0, max: 40, step: 2 } as const; // mm the base juts out past the top, per side
-
-/* A deliberately not-yet-valid start: pocket too small, walls too thin,
-   too short, and the base no wider than the top → nothing is green. */
-const START = {
-  opening: 56,
-  wall: 2,
-  height: 70,
-  baseExtra: 0,
-} as const;
+const BASE_EXTRA_RANGE = { min: 0, max: 40, step: 2 } as const; // mm the base juts past the top, per side
 
 type RotView = 0 | 1 | 2 | 3;
 
@@ -46,116 +39,245 @@ interface Design {
   baseExtra: number; // how far the base juts past the top, each side (mm)
 }
 
+/* ------------------------------------------------------------------ */
+/*  ROUNDS — three hand-tuned, escalating design briefs.               */
+/*  Each is verified (below) to have a comfortable winning design AND   */
+/*  to be impossible to win by simply maxing every slider.              */
+/* ------------------------------------------------------------------ */
+interface Brief {
+  name: string;
+  story: string;
+  openingMin: number; // pocket must be at least this wide
+  wallMin: number; // walls at least this thick
+  heightMin: number; // at least this tall
+  flareMax: number; // base flare per side may not EXCEED this (R3 twist)
+  budget: number; // filament budget in cm³ (model volume must stay ≤ this)
+  start: Design; // deliberately-invalid starting point
+}
+
+const ROUNDS: readonly Brief[] = [
+  {
+    name: "Brief 1 · Desk tidy",
+    story: "Hold 10 pens, don't be flimsy, don't tip. Plenty of plastic.",
+    openingMin: 80,
+    wallMin: 3,
+    heightMin: 90,
+    flareMax: BASE_EXTRA_RANGE.max,
+    budget: 285,
+    start: { opening: 56, wall: 2, height: 70, baseExtra: 0 },
+  },
+  {
+    name: "Brief 2 · Travel cup",
+    story: "Same job, but the printer is low on filament. Spend it wisely.",
+    openingMin: 84,
+    wallMin: 3,
+    heightMin: 100,
+    flareMax: BASE_EXTRA_RANGE.max,
+    budget: 320,
+    start: { opening: 110, wall: 9, height: 130, baseExtra: 28 },
+  },
+  {
+    name: "Brief 3 · Slim shelf pot",
+    story: "Wide pocket, tall — but the flare may be 8mm at MOST, and barely any spare plastic.",
+    openingMin: 90,
+    wallMin: 3,
+    heightMin: 104,
+    flareMax: 8, // the twist: can't splay the base to fake stability
+    budget: 360,
+    start: { opening: 110, wall: 8, height: 130, baseExtra: 6 },
+  },
+];
+
+/* ----- volume model (deterministic; drives the filament budget) -----
+   We approximate the printed object as the solid block (outer footprint
+   tapering base→top, times height) MINUS the carved pocket. It does not
+   need to be physically exact — only consistent and monotone so spending
+   on any dimension genuinely costs plastic. Result in cm³. */
+function volumeCm3(d: Design): number {
+  const topWidth = d.opening + 2 * d.wall;
+  const baseWidth = topWidth + 2 * d.baseExtra;
+  // average cross-section width across the taper, treated as a square column
+  const avgWidth = (topWidth + baseWidth) / 2; // mm
+  const outerMm3 = avgWidth * avgWidth * d.height; // solid block, mm³
+  const pocketDepth = d.height * 0.82; // pocket doesn't reach the floor
+  const pocketMm3 = d.opening * d.opening * pocketDepth; // carved hollow, mm³
+  const solidMm3 = Math.max(0, outerMm3 - pocketMm3);
+  return solidMm3 / 1000; // mm³ → cm³
+}
+
 interface Specs {
-  topWidth: number; // opening + 2 * wall
-  baseWidth: number; // topWidth + 2 * baseExtra
-  penCapacity: number; // rough count of pens the pocket fits
+  topWidth: number;
+  baseWidth: number;
+  penCapacity: number;
+  volume: number; // cm³ used
+  budget: number; // cm³ allowed
   wideOpening: boolean;
   thickWalls: boolean;
   tallEnough: boolean;
   stableBase: boolean;
-  allOk: boolean;
+  flareLegal: boolean; // base flare within the brief's cap
+  underBudget: boolean; // volume ≤ budget
+  spare: number; // budget - volume (cm³ left over; negative = over)
+  allOk: boolean; // every spec, AND within budget
 }
 
-/** Pure, deterministic grade of a design against the four specs. */
-function evaluate(d: Design): Specs {
+/** Pure, deterministic grade of a design against the active brief. */
+function evaluate(d: Design, b: Brief): Specs {
   const topWidth = d.opening + 2 * d.wall;
   const baseWidth = topWidth + 2 * d.baseExtra;
-  // ~8mm per pen across the opening, leaving a little wiggle room.
   const penCapacity = Math.max(0, Math.floor(d.opening / 8));
+  const volume = volumeCm3(d);
 
-  const wideOpening = d.opening >= OPENING_MIN;
-  const thickWalls = d.wall >= WALL_MIN;
-  const tallEnough = d.height >= HEIGHT_MIN;
-  // Stable when the base is genuinely wider than the top (not just equal).
-  const stableBase = baseWidth > topWidth;
+  const wideOpening = d.opening >= b.openingMin;
+  const thickWalls = d.wall >= b.wallMin;
+  const tallEnough = d.height >= b.heightMin;
+  const stableBase = baseWidth > topWidth; // base genuinely wider than top
+  const flareLegal = d.baseExtra <= b.flareMax;
+  const underBudget = volume <= b.budget + 1e-6;
+  const spare = b.budget - volume;
 
   return {
     topWidth,
     baseWidth,
     penCapacity,
+    volume,
+    budget: b.budget,
     wideOpening,
     thickWalls,
     tallEnough,
     stableBase,
-    allOk: wideOpening && thickWalls && tallEnough && stableBase,
+    flareLegal,
+    underBudget,
+    spare,
+    allOk:
+      wideOpening &&
+      thickWalls &&
+      tallEnough &&
+      stableBase &&
+      flareLegal &&
+      underBudget,
   };
 }
 
+/* Star award for a winning design: efficiency rewards leaving plastic to
+   spare. Reaching ~12% of the budget spare earns full marks. Always
+   winnable at 3⭐ because each brief has a comfortable lean solution. */
+function starsFor(specs: Specs): 1 | 2 | 3 {
+  const ratio = specs.spare / specs.budget; // fraction of budget left over
+  if (ratio >= 0.12) return 3;
+  if (ratio >= 0.04) return 2;
+  return 1;
+}
+
 /* ------------------------------------------------------------------ */
-/*  Isometric projection helpers                                       */
+/*  Isometric projection helpers (unchanged look & feel)               */
 /* ------------------------------------------------------------------ */
 
 const CX = VIEW_W / 2;
-const FLOOR_Y = 252; // y of the ground plane at the model centre
-const ISO = 0.5; // depth squash for the iso look (ellipse ry / rx)
-const MM = 1.4; // px per mm, scales the model into the viewport
+const FLOOR_Y = 252;
+const ISO = 0.5;
+const MM = 1.4; // px per mm
 
 interface XY {
   x: number;
   y: number;
 }
 
-/** Project an (x across, y up, depth) point with a yaw rotation. */
 function iso(xAcross: number, yUp: number, view: RotView): XY {
-  // Each rotation just flips/swaps the horizontal so the holder appears to
-  // spin in place. Depth is faked with the squashed ellipses, so yaw only
-  // needs to nudge the horizontal offset for a sense of turning.
   const lean = [0, 6, 0, -6][view];
   return { x: CX + xAcross + lean, y: FLOOR_Y - yUp };
 }
 
 export default function PenHolderCAD({ onComplete }: ActivityProps) {
-  const [design, setDesign] = useState<Design>({ ...START });
+  const [round, setRound] = useState<number>(0);
+  const brief = ROUNDS[round];
+
+  const [design, setDesign] = useState<Design>({ ...ROUNDS[0].start });
   const [view, setView] = useState<RotView>(0);
-  const [done, setDone] = useState<boolean>(false);
+  const [solvedRound, setSolvedRound] = useState<boolean>(false); // current round met
+  const [allDone, setAllDone] = useState<boolean>(false); // every round complete
   const [showPens, setShowPens] = useState<boolean>(false);
   const [wobbleNonce, setWobbleNonce] = useState<number>(0);
-  const firedRef = useRef<boolean>(false);
+  const [bestStars, setBestStars] = useState<1 | 2 | 3>(3); // worst round caps final stars
+
+  const reportedRef = useRef<boolean>(false);
+  const lockRef = useRef<boolean>(false); // freeze sliders the instant a round is solved
   const nudgeReadyRef = useRef<boolean>(false);
 
-  const specs: Specs = useMemo(() => evaluate(design), [design]);
-
-  // top-heavy → it would tip; drives the wobble-test arrow.
+  const specs: Specs = useMemo(() => evaluate(design, brief), [design, brief]);
   const topHeavy = !specs.stableBase;
 
-  /* Fire success exactly once, from an effect (never during render). */
+  /* When the current design satisfies the brief, lock the round and
+     advance (or finish). Final success fires onComplete exactly once. */
   useEffect(() => {
-    if (specs.allOk && !firedRef.current) {
-      firedRef.current = true;
-      setDone(true);
-      setShowPens(true);
-      onComplete({
-        passed: true,
-        stars: 3,
-        detail: "All four specs met — ready to print!",
-      });
-    }
-  }, [specs.allOk, onComplete]);
+    if (allDone) return;
+    if (!specs.allOk) return;
+    if (lockRef.current) return;
+    lockRef.current = true;
 
-  /* A kind, debounced nudge once the learner pauses on a not-yet-valid design. */
+    const earned = starsFor(specs);
+    setSolvedRound(true);
+    setShowPens(true);
+    setBestStars((prev) => (earned < prev ? earned : prev) as 1 | 2 | 3);
+
+    const isLast = round >= ROUNDS.length - 1;
+    if (isLast) {
+      const finalStars = (earned < bestStars ? earned : bestStars) as 1 | 2 | 3;
+      const t = window.setTimeout(() => {
+        setAllDone(true);
+        if (!reportedRef.current) {
+          reportedRef.current = true;
+          onComplete({
+            passed: true,
+            stars: finalStars,
+            detail:
+              finalStars === 3
+                ? "All three briefs met — lean, strong, printable!"
+                : finalStars === 2
+                  ? "All briefs met — a little plastic-heavy on one design."
+                  : "All briefs met — every design scraped the budget.",
+          });
+        }
+      }, 950);
+      return () => window.clearTimeout(t);
+    }
+    // not the last round: pause on the win, then slide in the next brief
+    const t = window.setTimeout(() => {
+      const next = round + 1;
+      setRound(next);
+      setDesign({ ...ROUNDS[next].start });
+      setView(0);
+      setSolvedRound(false);
+      setShowPens(false);
+      setWobbleNonce(0);
+      lockRef.current = false;
+      nudgeReadyRef.current = false;
+    }, 1100);
+    return () => window.clearTimeout(t);
+  }, [specs, round, allDone, bestStars, onComplete]);
+
+  /* A kind, debounced coaching nudge once the learner pauses on an
+     invalid design — never reports passed:false (no penalty, just help). */
+  const [hint, setHint] = useState<string>("");
   useEffect(() => {
-    if (done) return;
-    if (specs.allOk) return;
+    if (allDone || solvedRound) return;
+    if (specs.allOk) {
+      setHint("");
+      return;
+    }
     if (!nudgeReadyRef.current) {
-      nudgeReadyRef.current = true; // skip the very first render (load)
+      nudgeReadyRef.current = true;
       return;
     }
     const t = window.setTimeout(() => {
-      if (firedRef.current) return;
-      let detail = "Keep going — get all four checks green at once.";
-      if (!specs.thickWalls) detail = "Walls too thin — make them thicker.";
-      else if (!specs.wideOpening) detail = "Pocket too narrow — widen the opening so 10 pens fit.";
-      else if (!specs.tallEnough) detail = "A bit short — make it taller so pens don't tip out.";
-      else if (!specs.stableBase) detail = "Top-heavy — make the base wider than the top.";
-      onComplete({ passed: false, detail });
-    }, 700);
+      setHint(coach(specs, brief));
+    }, 650);
     return () => window.clearTimeout(t);
-  }, [design, specs, done, onComplete]);
+  }, [specs, brief, allDone, solvedRound]);
 
   const update = useCallback(
     (key: keyof Design) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (firedRef.current) return;
+      if (lockRef.current) return;
       const v = Number(e.target.value);
       setDesign((prev) => ({ ...prev, [key]: v }));
       setShowPens(false);
@@ -163,14 +285,14 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
     [],
   );
 
-  const reset = useCallback(() => {
-    firedRef.current = false;
-    nudgeReadyRef.current = false;
-    setDesign({ ...START });
+  const resetRound = useCallback(() => {
+    if (lockRef.current || allDone) return;
+    setDesign({ ...ROUNDS[round].start });
     setView(0);
-    setDone(false);
     setShowPens(false);
-  }, []);
+    setHint("");
+    nudgeReadyRef.current = false;
+  }, [round, allDone]);
 
   const rotate = useCallback((dir: 1 | -1) => {
     setView((v) => (((v + dir + 4) % 4) as RotView));
@@ -189,13 +311,15 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
   const ryBase = baseHalf * ISO;
   const ryOpen = openHalf * ISO;
 
-  // Anchor points in projected space.
-  const baseC = iso(0, 0, view); // centre of base on the floor
-  const topC = iso(0, hPx, view); // centre of the rim
+  const baseC = iso(0, 0, view);
+  const topC = iso(0, hPx, view);
   const pocketDepth = Math.min(hPx - 8 * MM, design.height * MM * 0.82);
-  const pocketC = iso(0, hPx - pocketDepth, view); // floor of the inner pocket
+  const pocketC = iso(0, hPx - pocketDepth, view);
 
   const wobbleName = `g5penholdercad-wobble`;
+  const win = solvedRound || allDone;
+  const budgetPct = Math.min(100, (specs.volume / specs.budget) * 100);
+  const overBudget = !specs.underBudget;
 
   return (
     <div className="flex w-full flex-col gap-3 text-ink" style={{ maxWidth: 440 }}>
@@ -233,12 +357,43 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
         }
       `}</style>
 
+      {/* ---------------- BRIEF HEADER + ROUND PROGRESS ---------------- */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <div className="flex flex-col">
+          <span className="font-display text-sm font-bold" style={{ color: ACCENT }}>
+            {brief.name}
+          </span>
+          <span className="text-[11px] leading-tight text-ink-faint">{brief.story}</span>
+        </div>
+        <div className="flex shrink-0 gap-1" aria-label={`Round ${round + 1} of ${ROUNDS.length}`}>
+          {ROUNDS.map((_, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className="grid h-6 w-6 place-items-center rounded-md font-mono text-[11px] font-bold"
+              style={{
+                background:
+                  i < round || allDone
+                    ? "#22c55e"
+                    : i === round
+                      ? ACCENT
+                      : "rgba(11,16,32,0.6)",
+                color: i <= round || allDone ? "#05070d" : "#5b6a8c",
+                border: "1px solid var(--color-line, #27314f)",
+              }}
+            >
+              {i < round || allDone ? "✓" : i + 1}
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* ---------------- CAD STAGE ---------------- */}
       <div
         className="panel relative overflow-hidden rounded-xl border p-2"
         style={{
-          borderColor: done ? ACCENT : "var(--color-line, #27314f)",
-          boxShadow: done ? `0 0 24px -6px ${ACCENT}` : undefined,
+          borderColor: win ? ACCENT : overBudget ? "#ef4444" : "var(--color-line, #27314f)",
+          boxShadow: win ? `0 0 24px -6px ${ACCENT}` : undefined,
           transition: "box-shadow .3s ease, border-color .3s ease",
         }}
       >
@@ -299,7 +454,6 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
           >
             {/* ---- BASE slab (wider footprint) ---- */}
             <g>
-              {/* base side wall */}
               <path
                 d={`M ${baseC.x - baseHalf} ${baseC.y}
                     A ${baseHalf} ${ryBase} 0 0 0 ${baseC.x + baseHalf} ${baseC.y}
@@ -310,7 +464,6 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
                 stroke="#0a0e18"
                 strokeWidth={1}
               />
-              {/* base top face */}
               <ellipse
                 cx={baseC.x}
                 cy={baseC.y - 10}
@@ -330,8 +483,8 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
                   L ${baseC.x + topHalf} ${topC.y}
                   A ${topHalf} ${ryTop} 0 0 1 ${baseC.x - topHalf} ${topC.y}
                   Z`}
-              fill={done ? "#1f2d18" : "#2a3650"}
-              stroke={done ? ACCENT : "#3c4a6c"}
+              fill={win ? "#1f2d18" : overBudget ? "#3a2230" : "#2a3650"}
+              stroke={win ? ACCENT : overBudget ? "#ef4444" : "#3c4a6c"}
               strokeWidth={1.5}
             />
 
@@ -341,13 +494,12 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
               cy={topC.y}
               rx={topHalf}
               ry={ryTop}
-              fill={done ? "#2b3a22" : "#34425f"}
-              stroke={done ? ACCENT : "#46557a"}
+              fill={win ? "#2b3a22" : "#34425f"}
+              stroke={win ? ACCENT : "#46557a"}
               strokeWidth={1.5}
             />
 
             {/* ---- INNER POCKET (the subtracted hollow) ---- */}
-            {/* pocket inner wall */}
             <path
               d={`M ${topC.x - openHalf} ${topC.y}
                   A ${openHalf} ${ryOpen} 0 0 0 ${topC.x + openHalf} ${topC.y}
@@ -358,7 +510,6 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
               stroke="#0a0e18"
               strokeWidth={1}
             />
-            {/* pocket floor */}
             <ellipse
               cx={pocketC.x}
               cy={pocketC.y}
@@ -366,7 +517,6 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
               ry={ryOpen}
               fill="#070b14"
             />
-            {/* pocket mouth ring — turns amber when walls too thin (fragile) */}
             <ellipse
               cx={topC.x}
               cy={topC.y}
@@ -475,8 +625,8 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
             </text>
           </g>
 
-          {/* Ready-to-print stamp + STL export on win */}
-          {done && (
+          {/* Ready-to-print stamp + STL export on a round win */}
+          {win && (
             <g
               style={{
                 transformBox: "view-box",
@@ -503,7 +653,7 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
                 fill={ACCENT}
                 letterSpacing={1.5}
               >
-                READY TO PRINT
+                {allDone ? "ALL PRINTED" : "BRIEF MET"}
               </text>
               <text
                 x={VIEW_W / 2}
@@ -513,13 +663,15 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
                 fill={ACCENT}
                 opacity={0.9}
               >
-                ⬇ export penholder.stl ✨
+                {allDone
+                  ? "⬇ three designs exported ✨"
+                  : `⬇ ${specs.spare.toFixed(0)}cm³ to spare → ${"⭐".repeat(starsFor(specs))}`}
               </text>
             </g>
           )}
 
           {/* celebration sparkles */}
-          {done && (
+          {win && (
             <>
               <text
                 x={28}
@@ -593,6 +745,43 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
         </div>
       </div>
 
+      {/* ---------------- FILAMENT BUDGET METER ---------------- */}
+      <div
+        className="flex flex-col gap-1 rounded-xl border px-2.5 py-2"
+        style={{
+          borderColor: overBudget ? "#ef4444" : "var(--color-line, #27314f)",
+          background: overBudget ? "rgba(239,68,68,0.08)" : "rgba(11,16,32,0.4)",
+        }}
+        role="group"
+        aria-label="Filament budget"
+      >
+        <div className="flex items-center justify-between font-mono text-[11px]">
+          <span className="text-ink-dim">🧵 Filament used</span>
+          <span
+            className="font-display tabular-nums"
+            style={{ color: overBudget ? "#ef4444" : specs.spare > 0 ? "#22c55e" : ACCENT }}
+            aria-label={`${specs.volume.toFixed(0)} of ${specs.budget} cubic centimetres used`}
+          >
+            {specs.volume.toFixed(0)} / {specs.budget} cm³
+          </span>
+        </div>
+        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-panel-2">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${budgetPct}%`,
+              background: overBudget ? "#ef4444" : specs.spare > specs.budget * 0.12 ? "#22c55e" : ACCENT,
+              transition: "width .15s ease, background .2s ease",
+            }}
+          />
+        </div>
+        <p className="text-[10px] leading-tight text-ink-faint">
+          {overBudget
+            ? "Over budget! Trim a dimension — you can't max everything."
+            : "Win with plastic to spare for ⭐⭐⭐. Maxing every slider always busts the budget."}
+        </p>
+      </div>
+
       {/* ---------------- DESIGN BRIEF CHECKLIST ---------------- */}
       <div
         className="flex flex-col gap-1.5 rounded-xl border border-line bg-panel/40 p-2"
@@ -600,25 +789,25 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
         aria-label="Design brief checklist"
       >
         <p className="px-1 font-mono text-[11px] uppercase tracking-wide text-ink-faint">
-          📋 Design brief — all four must pass
+          📋 Brief — all checks green AND under budget
         </p>
         <SpecRow
           ok={specs.wideOpening}
-          label="Inner opening (10 pens fit)"
+          label="Inner opening (pens fit)"
           value={`${Math.round(design.opening)}mm`}
-          want={`≥ ${OPENING_MIN}mm`}
+          want={`≥ ${brief.openingMin}mm`}
         />
         <SpecRow
           ok={specs.thickWalls}
           label="Wall thickness (not fragile)"
           value={`${Math.round(design.wall)}mm`}
-          want={`≥ ${WALL_MIN}mm`}
+          want={`≥ ${brief.wallMin}mm`}
         />
         <SpecRow
           ok={specs.tallEnough}
           label="Height (pens don't tip)"
           value={`${Math.round(design.height)}mm`}
-          want={`≥ ${HEIGHT_MIN}mm`}
+          want={`≥ ${brief.heightMin}mm`}
         />
         <SpecRow
           ok={specs.stableBase}
@@ -626,6 +815,14 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
           value={`${Math.round(specs.baseWidth)} vs ${Math.round(specs.topWidth)}`}
           want="base > top"
         />
+        {brief.flareMax < BASE_EXTRA_RANGE.max && (
+          <SpecRow
+            ok={specs.flareLegal}
+            label="Flare cap (slim shelf!)"
+            value={`${Math.round(design.baseExtra)}mm`}
+            want={`≤ ${brief.flareMax}mm`}
+          />
+        )}
       </div>
 
       {/* status line */}
@@ -634,78 +831,76 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
         role="status"
         aria-live="polite"
         style={{
-          color: done ? "#05070d" : "#9aa6cf",
-          background: done ? ACCENT : "rgba(11,16,32,0.5)",
-          fontWeight: done ? 700 : 400,
+          color: win ? "#05070d" : "#9aa6cf",
+          background: win ? ACCENT : "rgba(11,16,32,0.5)",
+          fontWeight: win ? 700 : 400,
         }}
       >
-        {done ? "✨🎉 ⭐⭐⭐ " : ""}
-        {done
-          ? "Exported penholder.stl — every spec met!"
-          : !specs.thickWalls
-            ? "Walls too thin — make them thicker."
-            : !specs.wideOpening
-              ? "Pocket too narrow — widen the opening."
-              : !specs.tallEnough
-                ? "A little short — make it taller."
-                : !specs.stableBase
-                  ? "Top-heavy — widen the base past the top."
-                  : "So close — nudge the last check into the green."}
+        {allDone
+          ? `✨🎉 ${"⭐".repeat(bestStars)} All three briefs printed!`
+          : solvedRound
+            ? `✨ Brief met — ${"⭐".repeat(starsFor(specs))} · loading next brief…`
+            : hint || coach(specs, brief)}
       </div>
 
       {/* ---------------- SLIDERS ---------------- */}
       <div className="panel flex flex-col gap-3 rounded-xl p-3">
         <Slider
           label="Inner opening"
-          hint="pocket width for the pens"
+          hint="wider pocket = more plastic"
           value={design.opening}
           range={OPENING_RANGE}
           unit="mm"
           onChange={update("opening")}
-          disabled={done}
+          disabled={win || allDone}
           ok={specs.wideOpening}
         />
         <Slider
           label="Wall thickness"
-          hint="too thin = fragile"
+          hint="too thin = fragile · thick = heavy"
           value={design.wall}
           range={WALL_RANGE}
           unit="mm"
           onChange={update("wall")}
-          disabled={done}
+          disabled={win || allDone}
           ok={specs.thickWalls}
         />
         <Slider
           label="Height"
-          hint="taller keeps pens upright"
+          hint="taller keeps pens upright, costs plastic"
           value={design.height}
           range={HEIGHT_RANGE}
           unit="mm"
           onChange={update("height")}
-          disabled={done}
+          disabled={win || allDone}
           ok={specs.tallEnough}
         />
         <Slider
           label="Base flare"
-          hint="how far the base juts past the top"
+          hint={
+            brief.flareMax < BASE_EXTRA_RANGE.max
+              ? `keep it ≤ ${brief.flareMax}mm this round`
+              : "how far the base juts past the top"
+          }
           value={design.baseExtra}
           range={BASE_EXTRA_RANGE}
           unit="mm"
           onChange={update("baseExtra")}
-          disabled={done}
-          ok={specs.stableBase}
+          disabled={win || allDone}
+          ok={specs.stableBase && specs.flareLegal}
         />
 
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] leading-tight text-ink-faint">
-            Carve a pocket that fits 10 pens, keep the walls strong, stand it
-            tall, and flare the base wider than the top.
+            Meet every check AND stay under the filament budget. Spend plastic
+            only where the brief needs it — leftover plastic earns more stars.
           </p>
           <button
             type="button"
-            onClick={reset}
-            className="shrink-0 rounded-lg border border-line bg-panel/60 px-3 py-1.5 text-xs font-medium text-ink-dim"
-            aria-label="Reset the design to the starting values"
+            onClick={resetRound}
+            disabled={win || allDone}
+            className="shrink-0 rounded-lg border border-line bg-panel/60 px-3 py-1.5 text-xs font-medium text-ink-dim disabled:opacity-50"
+            aria-label="Reset this round to its starting values"
           >
             Reset
           </button>
@@ -713,6 +908,19 @@ export default function PenHolderCAD({ onComplete }: ActivityProps) {
       </div>
     </div>
   );
+}
+
+/* Friendly, prioritized coaching message for an invalid design. */
+function coach(specs: Specs, brief: Brief): string {
+  if (!specs.flareLegal)
+    return `Flare too big — this brief caps it at ${brief.flareMax}mm.`;
+  if (!specs.underBudget)
+    return `Over budget by ${Math.abs(specs.spare).toFixed(0)}cm³ — trim a dimension.`;
+  if (!specs.thickWalls) return "Walls too thin — make them thicker.";
+  if (!specs.wideOpening) return "Pocket too narrow — widen the opening.";
+  if (!specs.tallEnough) return "A little short — make it taller.";
+  if (!specs.stableBase) return "Top-heavy — flare the base past the top.";
+  return "So close — nudge the last check into the green.";
 }
 
 /* ---------------- small presentational helpers ---------------- */

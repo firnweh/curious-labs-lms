@@ -3,99 +3,94 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ── Score & Timer Game 🎮 ────────────────────────────────────────────────────
-   GRADE 4 (explorer, age ~10). ONE learning goal: variables hold a changing
-   SCORE and a counting-down TIME, and CONDITIONS decide when to add points and
-   when the game ends. The learner doesn't play by reflex — they WIRE the game's
-   logic by dropping condition blocks into three rule slots, then press RUN. A
-   fixed, deterministic 10-second demo plays itself: a scripted catcher slides to
-   catch exactly 7 of the falling apples. SCORE rises only if rule A is right,
-   TIME counts down only if rule B is right, and GAME OVER appears only if rule C
-   is right. Win = SCORE 7, TIME 0, GAME OVER. Always winnable, never scolds. */
+   GRADE 4-6 (explorer, age ~9-11). LEARNING GOAL: variables hold a changing
+   SCORE and a counting TIME, and CONDITIONS decide when to add points and when
+   the game ends. The learner doesn't play by reflex — they WIRE the game's logic
+   by dropping condition blocks into rule slots, then press RUN. A deterministic
+   demo plays itself; SCORE, TIME and GAME OVER only behave if the rules are right.
+
+   This is now a REAL problem, not a one-shot fixed answer: THREE escalating
+   rounds, each a fresh configuration that defeats "guess +1 again".
+     • Round 1  — learn it: +1 per catch, −1 / sec, stop when TIME = 0.
+     • Round 2  — TWIST: a "double points" round, so the SCORE block must be +2,
+                  not +1 — pattern-matching the last answer fails. Fresh apple
+                  script, so the count is different too.
+     • Round 3  — TWIST: the WIN CONDITION flips. The game ends when SCORE hits a
+                  TARGET, not when TIME runs out — so the GAME OVER rule must test
+                  SCORE, not TIME. An extra decoy block makes it non-binary.
+   Win a round → it slides the next, harder one in. Win all three → ⭐⭐⭐ and
+   onComplete ONCE. Wrong wiring → no scolding: the demo shows which value
+   misbehaved, then you re-wire and re-run. Deterministic, always winnable. */
 
 const ACCENT = "#22d3ee";
 const STAGE_W = 220;
 const STAGE_H = 260;
 const CATCH_FLOOR = STAGE_H - 34; // y where the catcher's mouth sits
 const TOTAL_TICKS = 10; // one tick per game-second → a 10-second demo
+const FALL_TICKS = 1.4; // how long an apple is visible before landing
+const TICK_MS = 460;
 
 /* ── Block / slot model ──────────────────────────────────────────────────── */
 type SlotId = "score" | "time" | "over";
 type BlockId =
   | "plus1"
-  | "minus1"
+  | "plus2"
   | "plus10"
   | "minusTime1"
-  | "stopAll"
-  | "addScore";
+  | "plusTime1"
+  | "stopTime0"
+  | "stopScore"
+  | "changeScore";
 
 interface BlockDef {
   id: BlockId;
-  /** What goes in the blank, e.g. "+1" or "STOP · GAME OVER". */
+  /** What goes in the blank, e.g. "+1" or "STOP when TIME = 0". */
   label: string;
   glyph: string;
-  /** Which slot this block legitimately belongs to (for grading). */
-  fits: SlotId;
 }
 
-/* Palette: each slot has ONE correct block plus a plausible distractor. */
+/* Palette of every block that can appear in any round. Each round picks a
+   subset (correct answers + plausible distractors) into its tray. */
 const BLOCKS: Record<BlockId, BlockDef> = {
-  plus1: { id: "plus1", label: "+1", glyph: "➕", fits: "score" },
-  plus10: { id: "plus10", label: "+10", glyph: "🔟", fits: "score" },
-  minus1: { id: "minus1", label: "−1", glyph: "⏬", fits: "time" },
-  minusTime1: { id: "minusTime1", label: "+1", glyph: "⏫", fits: "time" },
-  stopAll: { id: "stopAll", label: "STOP · GAME OVER", glyph: "🛑", fits: "over" },
-  addScore: { id: "addScore", label: "change SCORE", glyph: "🔁", fits: "over" },
+  plus1: { id: "plus1", label: "+1", glyph: "➕" },
+  plus2: { id: "plus2", label: "+2", glyph: "✌️" },
+  plus10: { id: "plus10", label: "+10", glyph: "🔟" },
+  minusTime1: { id: "minusTime1", label: "−1", glyph: "⏬" },
+  plusTime1: { id: "plusTime1", label: "+1", glyph: "⏫" },
+  stopTime0: { id: "stopTime0", label: "STOP when TIME = 0", glyph: "🛑" },
+  stopScore: { id: "stopScore", label: "STOP when SCORE = goal", glyph: "🎯" },
+  changeScore: { id: "changeScore", label: "change SCORE", glyph: "🔁" },
 };
-
-/** Tray order: correct blocks mixed with distractors. */
-const TRAY: readonly BlockId[] = [
-  "plus1",
-  "minus1",
-  "stopAll",
-  "plus10",
-  "minusTime1",
-  "addScore",
-];
 
 interface SlotDef {
   id: SlotId;
   rule: string;
-  blank: string;
-  /** The block id that makes this rule correct. */
+  /** The block id that makes this rule correct THIS round. */
   answer: BlockId;
 }
 
-const SLOTS: readonly SlotDef[] = [
-  {
-    id: "score",
-    rule: "WHEN catcher touches apple → change SCORE by",
-    blank: "?",
-    answer: "plus1",
-  },
-  {
-    id: "time",
-    rule: "EVERY second → change TIME by",
-    blank: "?",
-    answer: "minus1",
-  },
-  {
-    id: "over",
-    rule: "IF TIME = 0 →",
-    blank: "?",
-    answer: "stopAll",
-  },
-] as const;
-
-/* ── Deterministic apple script ──────────────────────────────────────────────
-   7 apples are caught, 3 are missed → SCORE must read 7 when rule A is right.
-   Each apple has a seeded x-lane and a tick on which it reaches the floor. */
 interface Apple {
   lane: number; // 0..1 across the stage
   landTick: number; // tick at which it hits CATCH_FLOOR
   caught: boolean; // scripted outcome (deterministic)
 }
 
-const APPLES: readonly Apple[] = [
+interface RoundDef {
+  /** Points each caught apple is worth this round (1, 2, …). */
+  perApple: number;
+  /** How this round ends: at TIME 0, or when SCORE reaches `goalScore`. */
+  endOn: "time" | "score";
+  /** Deterministic apple script. */
+  apples: readonly Apple[];
+  /** The three rule slots, with this round's correct answers. */
+  slots: readonly SlotDef[];
+  /** Which blocks sit in the tray (correct answers + distractors), in order. */
+  tray: readonly BlockId[];
+}
+
+/* ── ROUND 1 — learn the machine ──────────────────────────────────────────
+   7 apples caught of 10, each worth +1 → final SCORE 7. Ends at TIME 0. */
+const R1_APPLES: readonly Apple[] = [
   { lane: 0.2, landTick: 1, caught: true },
   { lane: 0.55, landTick: 2, caught: true },
   { lane: 0.85, landTick: 3, caught: false },
@@ -106,17 +101,108 @@ const APPLES: readonly Apple[] = [
   { lane: 0.9, landTick: 8, caught: true },
   { lane: 0.25, landTick: 9, caught: false },
   { lane: 0.65, landTick: 10, caught: true },
-] as const;
+];
 
-const FALL_TICKS = 1.4; // how long an apple is visible before landing
+/* ── ROUND 2 — DOUBLE POINTS twist ────────────────────────────────────────
+   6 apples caught, each worth +2 → final SCORE 12. The SCORE block must be +2,
+   not the +1 that worked last round. Ends at TIME 0 (same end rule as R1). */
+const R2_APPLES: readonly Apple[] = [
+  { lane: 0.3, landTick: 1, caught: true },
+  { lane: 0.6, landTick: 2, caught: false },
+  { lane: 0.15, landTick: 3, caught: true },
+  { lane: 0.8, landTick: 4, caught: true },
+  { lane: 0.45, landTick: 5, caught: false },
+  { lane: 0.9, landTick: 6, caught: true },
+  { lane: 0.25, landTick: 7, caught: true },
+  { lane: 0.7, landTick: 8, caught: false },
+  { lane: 0.4, landTick: 9, caught: true },
+  { lane: 0.55, landTick: 10, caught: false },
+];
+
+/* ── ROUND 3 — FLIPPED WIN CONDITION twist ────────────────────────────────
+   "First to the goal wins." Each catch is +1, and the game ENDS the moment
+   SCORE reaches the goal (5) — NOT when TIME hits 0. So the GAME OVER rule must
+   test SCORE, not TIME. The 5th catch lands on tick 6, so the demo stops early. */
+const R3_GOAL = 5;
+const R3_APPLES: readonly Apple[] = [
+  { lane: 0.25, landTick: 1, caught: true },
+  { lane: 0.6, landTick: 2, caught: true },
+  { lane: 0.85, landTick: 3, caught: false },
+  { lane: 0.4, landTick: 4, caught: true },
+  { lane: 0.15, landTick: 5, caught: true },
+  { lane: 0.7, landTick: 6, caught: true }, // 5th catch → reaches goal here
+  { lane: 0.5, landTick: 7, caught: true },
+  { lane: 0.9, landTick: 8, caught: false },
+  { lane: 0.3, landTick: 9, caught: true },
+  { lane: 0.65, landTick: 10, caught: true },
+];
+
+const ROUNDS: readonly RoundDef[] = [
+  {
+    perApple: 1,
+    endOn: "time",
+    apples: R1_APPLES,
+    slots: [
+      { id: "score", rule: "WHEN catcher touches apple → change SCORE by", answer: "plus1" },
+      { id: "time", rule: "EVERY second → change TIME by", answer: "minusTime1" },
+      { id: "over", rule: "to end the game →", answer: "stopTime0" },
+    ],
+    tray: ["plus1", "minusTime1", "stopTime0", "plus10", "plusTime1", "changeScore"],
+  },
+  {
+    perApple: 2,
+    endOn: "time",
+    apples: R2_APPLES,
+    slots: [
+      { id: "score", rule: "DOUBLE POINTS round! Each apple is worth", answer: "plus2" },
+      { id: "time", rule: "EVERY second → change TIME by", answer: "minusTime1" },
+      { id: "over", rule: "to end the game →", answer: "stopTime0" },
+    ],
+    tray: ["plus1", "plus2", "minusTime1", "stopTime0", "plusTime1", "plus10"],
+  },
+  {
+    perApple: 1,
+    endOn: "score",
+    apples: R3_APPLES,
+    slots: [
+      { id: "score", rule: "WHEN catcher touches apple → change SCORE by", answer: "plus1" },
+      { id: "time", rule: "EVERY second → change TIME by", answer: "minusTime1" },
+      {
+        id: "over",
+        rule: `RACE TO ${R3_GOAL}! End the game →`,
+        answer: "stopScore",
+      },
+    ],
+    tray: ["plus1", "minusTime1", "stopScore", "stopTime0", "plus2", "changeScore"],
+  },
+];
 
 type Phase = "wiring" | "running" | "done";
 
+/** Catch count up to and including `tick` for a given apple script. */
+function caughtBy(apples: readonly Apple[], tick: number): number {
+  let n = 0;
+  for (const a of apples) if (a.caught && a.landTick <= tick) n += 1;
+  return n;
+}
+
+/** Tick at which SCORE first reaches `goal` catches (the early-stop point). */
+function tickForScore(apples: readonly Apple[], goalCatches: number): number {
+  let n = 0;
+  for (const a of apples) {
+    if (a.caught) {
+      n += 1;
+      if (n >= goalCatches) return a.landTick;
+    }
+  }
+  return TOTAL_TICKS;
+}
+
 /** Catcher x (fractional 0..1) for a given tick — slides toward each caught apple. */
-function catcherLane(tick: number): number {
-  let prev = APPLES[0].lane;
+function catcherLane(apples: readonly Apple[], tick: number): number {
+  let prev = apples[0].lane;
   let prevT = 0;
-  for (const a of APPLES) {
+  for (const a of apples) {
     if (a.caught) {
       if (tick <= a.landTick) {
         const span = a.landTick - prevT || 1;
@@ -131,6 +217,7 @@ function catcherLane(tick: number): number {
 }
 
 export default function GameScoreTimer({ onComplete }: ActivityProps) {
+  const [round, setRound] = useState<number>(0);
   // slot id → block placed in it (or null)
   const [placed, setPlaced] = useState<Record<SlotId, BlockId | null>>({
     score: null,
@@ -139,13 +226,19 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
   });
   const [held, setHeld] = useState<BlockId | null>(null); // tap-to-place selection
   const [phase, setPhase] = useState<Phase>("wiring");
-  const [tick, setTick] = useState<number>(0); // 0..TOTAL_TICKS during demo
+  const [tick, setTick] = useState<number>(0); // 0..stopTick during demo
   const [tries, setTries] = useState<number>(0);
+  const [solvedFirstTry, setSolvedFirstTry] = useState<boolean>(true);
+
+  const cfg = ROUNDS[round];
+  const isLastRound = round >= ROUNDS.length - 1;
 
   const phaseRef = useRef<Phase>("wiring");
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
-  const doneRef = useRef<boolean>(false); // guards onComplete(passed:true) — fires once
+  const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reportedRef = useRef<boolean>(false); // guards onComplete — fires once
+  const triesRef = useRef<number>(0); // total runs this round, for the star tally
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -157,92 +250,134 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
       rafRef.current = null;
     }
   }, []);
-  useEffect(() => stopLoop, [stopLoop]);
-
-  /* Which rules are correctly wired. */
-  const ruleOk = useMemo(
-    () => ({
-      score: placed.score === "plus1",
-      time: placed.time === "minus1",
-      over: placed.over === "stopAll",
-    }),
-    [placed],
-  );
-  const allFilled =
-    placed.score !== null && placed.time !== null && placed.over !== null;
-  const allCorrect = ruleOk.score && ruleOk.time && ruleOk.over;
-
-  /* ── Live watcher values, derived from the current tick + chosen rules ────── */
-  const elapsed = phase === "wiring" ? 0 : tick;
-
-  // SCORE: count caught apples up to now, but only if rule A adds +1.
-  const score = useMemo(() => {
-    if (!ruleOk.score) return 0; // wrong rule → score stays stuck at 0
-    let s = 0;
-    for (const a of APPLES) if (a.caught && a.landTick <= elapsed) s += 1;
-    return s;
-  }, [ruleOk.score, elapsed]);
-
-  // TIME: countdown if rule B is −1; counts UP (wrong) otherwise.
-  const time = useMemo(() => {
-    if (ruleOk.time) return Math.max(0, TOTAL_TICKS - elapsed); // 10 → 0
-    return elapsed; // wrong rule → timer climbs forever
-  }, [ruleOk.time, elapsed]);
-
-  const gameOver =
-    phase === "done" && ruleOk.time && ruleOk.over && elapsed >= TOTAL_TICKS;
-
-  /* ── Demo loop: ~1 tick/sec, 10 ticks total, deterministic ───────────────── */
-  const TICK_MS = 460;
-  const loop = useCallback(
-    (now: number) => {
-      if (phaseRef.current !== "running") return;
-      const t = Math.min(TOTAL_TICKS, (now - startRef.current) / TICK_MS);
-      setTick(t);
-      if (t >= TOTAL_TICKS) {
-        setTick(TOTAL_TICKS);
-        setPhase("done");
-        phaseRef.current = "done";
-        stopLoop();
-        if (allCorrect && !doneRef.current) {
-          doneRef.current = true;
-          onComplete({
-            passed: true,
-            stars: 3,
-            detail: "SCORE 7 · TIME 0 · GAME OVER — your game logic works!",
-          });
-        } else if (!allCorrect) {
-          onComplete({
-            passed: false,
-            detail: "Close! Watch which value misbehaved, then re-wire a rule.",
-          });
-        }
-        return;
-      }
-      rafRef.current = requestAnimationFrame(loop);
+  const clearAdvance = useCallback(() => {
+    if (advanceRef.current !== null) {
+      clearTimeout(advanceRef.current);
+      advanceRef.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      stopLoop();
+      clearAdvance();
     },
-    [allCorrect, onComplete, stopLoop],
+    [stopLoop, clearAdvance],
   );
 
-  const handleRun = useCallback(() => {
-    if (!allFilled) return;
-    stopLoop();
-    setTries((n) => n + 1);
-    setTick(0);
-    startRef.current = performance.now();
-    setPhase("running");
-    phaseRef.current = "running";
-    rafRef.current = requestAnimationFrame(loop);
-  }, [allFilled, loop, stopLoop]);
-
-  const handleReset = useCallback(() => {
+  /* Fresh round: clear the rule sheet and park the demo. */
+  useEffect(() => {
     stopLoop();
     setPlaced({ score: null, time: null, over: null });
     setHeld(null);
     setPhase("wiring");
     phaseRef.current = "wiring";
     setTick(0);
-  }, [stopLoop]);
+    triesRef.current = 0;
+  }, [round, stopLoop]);
+
+  /* Which rules are correctly wired for THIS round. */
+  const ruleOk = useMemo(
+    () => ({
+      score: placed.score === cfg.slots[0].answer,
+      time: placed.time === cfg.slots[1].answer,
+      over: placed.over === cfg.slots[2].answer,
+    }),
+    [placed, cfg],
+  );
+  const allFilled =
+    placed.score !== null && placed.time !== null && placed.over !== null;
+  const allCorrect = ruleOk.score && ruleOk.time && ruleOk.over;
+
+  /* The tick at which this round's demo STOPS — at TIME 0, or early when a
+     correct SCORE rule races to the goal first. Deterministic. */
+  const stopTick = useMemo(() => {
+    if (cfg.endOn === "score" && ruleOk.score && ruleOk.over) {
+      return tickForScore(cfg.apples, R3_GOAL);
+    }
+    return TOTAL_TICKS;
+  }, [cfg, ruleOk.score, ruleOk.over]);
+
+  /* ── Live watcher values, derived from the current tick + chosen rules ────── */
+  const elapsed = phase === "wiring" ? 0 : tick;
+
+  // SCORE: catches so far × points-per-apple, but only if the SCORE rule is right.
+  const score = useMemo(() => {
+    if (!ruleOk.score) return 0; // wrong rule → score stays stuck at 0
+    return caughtBy(cfg.apples, elapsed) * cfg.perApple;
+  }, [ruleOk.score, cfg, elapsed]);
+
+  // TIME: counts down if the rule is −1; counts UP (wrong) otherwise.
+  const time = useMemo(() => {
+    if (ruleOk.time) return Math.max(0, TOTAL_TICKS - elapsed); // 10 → 0
+    return elapsed; // wrong rule → timer climbs the wrong way
+  }, [ruleOk.time, elapsed]);
+
+  const gameOver =
+    phase === "done" && allCorrect && elapsed >= stopTick - 0.001;
+
+  /* ── Demo loop: ~1 tick/sec, deterministic ───────────────────────────────── */
+  const loop = useCallback(
+    (now: number) => {
+      if (phaseRef.current !== "running") return;
+      const t = Math.min(stopTick, (now - startRef.current) / TICK_MS);
+      setTick(t);
+      if (t >= stopTick) {
+        setTick(stopTick);
+        setPhase("done");
+        phaseRef.current = "done";
+        stopLoop();
+        if (allCorrect) {
+          if (isLastRound) {
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              // Full marks if every round was solved on its first run; a clean
+              // win after some debugging still earns 2.
+              onComplete({
+                passed: true,
+                stars: solvedFirstTry ? 3 : 2,
+                detail: solvedFirstTry
+                  ? "All three rounds wired perfectly — first try every time! ⭐⭐⭐"
+                  : "All three rounds solved — your game logic works! ⭐⭐",
+              });
+            }
+          } else {
+            // Win this round; slide the next, harder one in.
+            advanceRef.current = setTimeout(() => {
+              setRound((r) => r + 1);
+            }, 1250);
+          }
+        }
+        // Wrong wiring: no onComplete(false) spam — the watchers already show
+        // which value misbehaved; the learner re-wires and re-runs.
+        return;
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    },
+    [stopTick, allCorrect, isLastRound, solvedFirstTry, onComplete, stopLoop],
+  );
+
+  const handleRun = useCallback(() => {
+    if (!allFilled || phase === "running") return;
+    stopLoop();
+    clearAdvance();
+    setTries((n) => n + 1);
+    triesRef.current += 1;
+    if (triesRef.current > 1) setSolvedFirstTry(false);
+    setTick(0);
+    startRef.current = performance.now();
+    setPhase("running");
+    phaseRef.current = "running";
+    rafRef.current = requestAnimationFrame(loop);
+  }, [allFilled, phase, loop, stopLoop, clearAdvance]);
+
+  const handleReset = useCallback(() => {
+    stopLoop();
+    clearAdvance();
+    reportedRef.current = false;
+    setSolvedFirstTry(true);
+    setTries(0);
+    setRound(0); // triggers the round-reset effect → clears slots
+  }, [stopLoop, clearAdvance]);
 
   /* Tap a tray block to pick it up. */
   const pickBlock = useCallback((id: BlockId) => {
@@ -284,7 +419,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
   );
 
   const running = phase === "running";
-  const catcherX = catcherLane(elapsed) * (STAGE_W - 44) + 22;
+  const catcherX = catcherLane(cfg.apples, elapsed) * (STAGE_W - 44) + 22;
 
   /* Apples currently in flight (falling or just landed) for the SVG. */
   const liveApples = useMemo(() => {
@@ -296,7 +431,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
       caught: boolean;
       landed: boolean;
     }[] = [];
-    APPLES.forEach((a, i) => {
+    cfg.apples.forEach((a, i) => {
       const start = a.landTick - FALL_TICKS;
       if (elapsed < start || elapsed > a.landTick + 0.4) return;
       const k = Math.max(0, Math.min(1, (elapsed - start) / FALL_TICKS));
@@ -305,20 +440,25 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
       out.push({ i, x, y, caught: a.caught, landed: elapsed >= a.landTick });
     });
     return out;
-  }, [phase, elapsed]);
+  }, [phase, elapsed, cfg]);
 
   const status = useMemo(() => {
     if (phase === "running") return `Demo running… ${Math.floor(elapsed)}s`;
-    if (phase === "done")
-      return allCorrect
-        ? "Game complete! Your rules work 🎉"
-        : "The demo finished — check which value looked wrong.";
+    if (phase === "done") {
+      if (allCorrect)
+        return isLastRound
+          ? "Game complete! Your rules work 🎉"
+          : "Round solved! Next round loading…";
+      return "The demo finished — check which value looked wrong, then re-wire.";
+    }
     if (!allFilled) return "Drop a block into each rule slot, then press Run ▶";
     return "Rules wired — press Run ▶ to test them.";
-  }, [phase, elapsed, allCorrect, allFilled]);
+  }, [phase, elapsed, allCorrect, allFilled, isLastRound]);
 
   const timeColor = !ruleOk.time && elapsed > 0 ? "#f87171" : ACCENT;
   const scoreColor = !ruleOk.score && elapsed > 1 ? "#f87171" : ACCENT;
+
+  const finalWin = phase === "done" && allCorrect && isLastRound;
 
   return (
     <div className="flex w-full max-w-[440px] flex-col gap-3 font-mono text-ink">
@@ -327,7 +467,39 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
         @keyframes g4gamescoretimer-flash { 0%,100%{opacity:1} 50%{opacity:.5} }
         @keyframes g4gamescoretimer-rise { 0%{transform:translateY(0);opacity:1} 100%{transform:translateY(-12px);opacity:0} }
         @keyframes g4gamescoretimer-glow { 0%,100%{filter:drop-shadow(0 0 2px ${ACCENT})} 50%{filter:drop-shadow(0 0 8px ${ACCENT})} }
+        @media (prefers-reduced-motion: reduce){
+          [style*="g4gamescoretimer-flash"],[style*="g4gamescoretimer-glow"]{animation:none !important}
+        }
       `}</style>
+
+      {/* ── ROUND HEADER + progress dots ─────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-tech text-ink-faint">
+          {finalWin ? "All rounds cleared" : `Round ${round + 1} of ${ROUNDS.length}`}
+        </p>
+        <span className="inline-flex items-center gap-1.5" aria-hidden>
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || finalWin;
+            const current = i === round && !finalWin;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 12,
+                  width: 12,
+                  background: solved
+                    ? ACCENT
+                    : current
+                      ? "rgba(34,211,238,0.25)"
+                      : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "#33415a"}`,
+                }}
+              />
+            );
+          })}
+        </span>
+      </div>
 
       {/* ── STAGE + VARIABLE WATCHERS ────────────────────────────────────── */}
       <div
@@ -369,6 +541,14 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
             </div>
           ))}
         </div>
+
+        {/* race-to-goal banner (round 3) */}
+        {cfg.endOn === "score" && (
+          <div className="mb-1 rounded-md border border-line bg-panel/50 px-2 py-0.5 text-center text-[10px] text-ink-dim">
+            🎯 First to <b style={{ color: ACCENT }}>SCORE {R3_GOAL}</b> wins —
+            the timer is a trap!
+          </div>
+        )}
 
         <svg
           viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}
@@ -463,7 +643,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
                 fontSize={10}
                 fill="#9fb0d0"
               >
-                ⭐⭐⭐ score {score} · time {Math.round(time)}
+                {isLastRound ? "⭐⭐⭐ " : ""}score {score} · time {Math.round(time)}
               </text>
             </g>
           )}
@@ -479,7 +659,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
         <p className="text-[11px] uppercase tracking-tech text-ink-faint">
           Rule sheet — fill every blank
         </p>
-        {SLOTS.map((slot) => {
+        {cfg.slots.map((slot) => {
           const placedId = placed[slot.id];
           const block = placedId ? BLOCKS[placedId] : null;
           const filled = block !== null;
@@ -510,7 +690,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
                     ? `Rule slot ${slot.id} holds ${block?.label}. Tap to change.`
                     : `Empty rule slot ${slot.id}. Tap to drop the held block.`
                 }
-                className="flex min-w-[92px] items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-xs font-semibold transition disabled:opacity-60"
+                className="flex min-w-[92px] max-w-[150px] items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-semibold leading-tight transition disabled:opacity-60"
                 style={{
                   borderColor: held && !filled ? ACCENT : "#33415a",
                   borderStyle: filled ? "solid" : "dashed",
@@ -531,7 +711,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
                     {showMark && <span aria-hidden>{ok ? "✓" : "✗"}</span>}
                   </>
                 ) : (
-                  <span>{slot.blank}</span>
+                  <span>?</span>
                 )}
               </button>
             </div>
@@ -548,7 +728,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
           className="flex flex-wrap gap-2"
           style={{ touchAction: "manipulation" }}
         >
-          {TRAY.map((id) => {
+          {cfg.tray.map((id) => {
             const b = BLOCKS[id];
             const isHeld = held === id;
             const isUsed = usedBlocks.has(id);
@@ -559,8 +739,8 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
                 onPointerDown={() => pickBlock(id)}
                 disabled={running}
                 aria-pressed={isHeld}
-                aria-label={`Block: change by ${b.label}`}
-                className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                aria-label={`Block: ${b.label}`}
+                className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:opacity-50"
                 style={{
                   borderColor: isHeld ? ACCENT : "#33415a",
                   background: isHeld ? ACCENT : isUsed ? "#0e1626" : "#101a2e",
@@ -584,7 +764,7 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
             type="button"
             onPointerDown={handleReset}
             className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim"
-            aria-label="Reset all rules"
+            aria-label="Reset back to round one"
           >
             Reset
           </button>
@@ -594,15 +774,15 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
             disabled={running || !allFilled}
             className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             style={{ background: ACCENT, color: "#04121a" }}
-            aria-label="Run the 10 second demo"
+            aria-label="Run the demo"
           >
             {running ? "Running…" : "Run ▶"}
           </button>
         </div>
       </div>
 
-      {/* ── WIN CELEBRATION ──────────────────────────────────────────────── */}
-      {phase === "done" && allCorrect && (
+      {/* ── WIN CELEBRATION (final round only) ───────────────────────────── */}
+      {finalWin && (
         <div
           className="rounded-xl border p-3 text-center"
           style={{
@@ -614,12 +794,14 @@ export default function GameScoreTimer({ onComplete }: ActivityProps) {
           aria-label="You finished the lab"
         >
           <p className="text-lg font-bold" style={{ color: ACCENT }}>
-            ✨🎉 Game complete! ⭐⭐⭐
+            ✨🎉 Game complete! {solvedFirstTry ? "⭐⭐⭐" : "⭐⭐"}
           </p>
           <p className="mt-1 text-xs text-ink-dim">
-            SCORE landed on <b style={{ color: ACCENT }}>7</b>, TIME counted down
-            to <b style={{ color: ACCENT }}>0</b>, and GAME OVER fired right on
-            time.
+            You wired all three games — even the double-points round and the
+            race-to-{R3_GOAL} twist where the timer was a trap.
+            {solvedFirstTry
+              ? " Solved every round on the first run — perfect logic!"
+              : " Nice debugging to get there!"}
           </p>
         </div>
       )}

@@ -5,8 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 /* ------------------------------------------------------------------ */
 /*  Doorbell Tunes — a button is a DIGITAL INPUT that triggers a       */
 /*  program, and tone() commands (note + duration) play a melody in   */
-/*  sequence. The learner wires a clean input, composes a 5-note      */
-/*  tune to match a target, then presses the door button to run it.   */
+/*  sequence. Part 1 teaches a clean pull-down input. Part 2 is a      */
+/*  real PUZZLE: the tune is NOT shown — you must DECODE it from a     */
+/*  set of logic clues, reasoning out every note and its length, then */
+/*  press the door button to run your program.                        */
+/*                                                                     */
+/*  Three escalating rounds. Each round's clues pin down exactly ONE   */
+/*  correct 5-note melody (verified by an in-file solver), but you     */
+/*  can't copy it — you have to think. Brute-forcing 7 notes × 2       */
+/*  lengths across 5 cells is 14^5 ≈ 537k combos, so guessing fails;   */
+/*  the clues are the only path. Solve all three → 3 stars.            */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#22d3ee";
@@ -16,7 +24,7 @@ type Dur = "short" | "long";
 
 const NOTES: readonly Note[] = ["C", "D", "E", "F", "G", "A", "B"] as const;
 
-/** A colour per note so the target tiles read at a glance. */
+/** A colour per note so cells read at a glance. */
 const NOTE_COLOR: Record<Note, string> = {
   C: "#f87171",
   D: "#fb923c",
@@ -32,45 +40,87 @@ interface Step {
   dur: Dur;
 }
 
-/** A familiar "ding-dong" doorbell shape — fixed, shown, always copy-able. */
-const TARGET: readonly Step[] = [
-  { note: "E", dur: "long" },
-  { note: "C", dur: "long" },
-  { note: "D", dur: "short" },
-  { note: "G", dur: "short" },
-  { note: "C", dur: "long" },
-] as const;
-
-const STEPS = TARGET.length;
-
-/** Every cell starts blank-ish (a deliberately wrong first guess). */
-function freshSequence(): Step[] {
-  return [
-    { note: "C", dur: "short" },
-    { note: "C", dur: "short" },
-    { note: "C", dur: "short" },
-    { note: "C", dur: "short" },
-    { note: "C", dur: "short" },
-  ];
+interface Round {
+  /** The single melody the clues pin down (used only to grade — never shown). */
+  answer: readonly Step[];
+  /** Plain-language clues the learner reasons from. */
+  clues: readonly string[];
+  /** Where the learner starts — a deliberately-wrong, neutral guess. */
+  start: readonly Step[];
 }
 
-type Phase = "build" | "playing" | "won";
+const s = (note: Note, dur: Dur): Step => ({ note, dur });
+
+/* ---- Three hand-authored, deterministic decode puzzles. -----------------
+   Each clue set was checked (see verifyUnique below, run once in dev) to
+   pin down EXACTLY ONE melody out of all 14^5 possibilities. ------------- */
+const ROUNDS: readonly Round[] = [
+  // R1 — a gentle 5-note "ding-dong". Direct clues, but you still must read
+  // and combine them; nothing is laid out to copy.
+  {
+    answer: [s("E", "long"), s("C", "long"), s("D", "short"), s("G", "short"), s("C", "long")],
+    clues: [
+      "Cell 1 is E, played long.",
+      "Cell 2 is two steps LOWER than cell 1, played long.",
+      "Cell 5 matches cell 2 exactly (same note, same length).",
+      "Cell 3 is one step HIGHER than cell 2, played short.",
+      "Cell 4 is G (the highest note in this tune), played short.",
+    ],
+    start: [s("C", "short"), s("C", "short"), s("C", "short"), s("C", "short"), s("C", "short")],
+  },
+  // R2 — a rising staircase with a length pattern. Needs chained reasoning
+  // (each note defined relative to a neighbour) plus an odd/even length rule.
+  {
+    answer: [s("C", "short"), s("E", "long"), s("F", "short"), s("A", "long"), s("G", "short")],
+    clues: [
+      "Cell 1 is the lowest note there is (C), played short.",
+      "Each odd cell (1, 3, 5) is short; each even cell (2, 4) is long.",
+      "Cell 2 is two steps higher than cell 1.",
+      "Cell 3 is one step higher than cell 2.",
+      "Cell 4 is two steps higher than cell 3.",
+      "Cell 5 is one step LOWER than cell 4.",
+    ],
+    start: [s("C", "long"), s("C", "long"), s("C", "long"), s("C", "long"), s("C", "long")],
+  },
+  // R3 — the TWIST. A mirror/palindrome shape. You anchor on the middle note
+  // (cell 3 = A), then chain DOWN to cells 2 and 1, then MIRROR to fill 4 and 5.
+  // The length rule and the mirror together defeat any "just copy" instinct.
+  {
+    answer: [s("D", "short"), s("F", "long"), s("A", "short"), s("F", "long"), s("D", "short")],
+    clues: [
+      "The tune is a MIRROR: cell 1 = cell 5, and cell 2 = cell 4 (same note AND length).",
+      "Cell 3 is the highest note in the whole tune, and it is A.",
+      "Cell 2 is two steps LOWER than cell 3.",
+      "Cell 1 is two steps LOWER than cell 2.",
+      "Only cells 2 and 4 are long; the other three are short.",
+    ],
+    start: [s("B", "short"), s("B", "short"), s("B", "short"), s("B", "short"), s("B", "short")],
+  },
+] as const;
+
+const sameStep = (a: Step, b: Step): boolean => a.note === b.note && a.dur === b.dur;
+
+type Phase = "build" | "playing" | "roundWon" | "won";
 
 export default function DoorbellTunes({ onComplete }: ActivityProps) {
+  const [round, setRound] = useState<number>(0);
   const [wired, setWired] = useState<boolean>(false);
   const [dragOver, setDragOver] = useState<boolean>(false);
   const [pressed, setPressed] = useState<boolean>(false);
   const [readout, setReadout] = useState<string>("digitalRead(D2) = 0");
-  const [seq, setSeq] = useState<Step[]>(freshSequence);
+  const [seq, setSeq] = useState<Step[]>(() => ROUNDS[0].start.map((x) => ({ ...x })));
   const [active, setActive] = useState<number>(-1); // play-head cell index
   const [flashes, setFlashes] = useState<number>(0); // LED flash counter
   const [ledOn, setLedOn] = useState<boolean>(false);
   const [phase, setPhase] = useState<Phase>("build");
   const [hint, setHint] = useState<string>("");
+  const [checked, setChecked] = useState<boolean>(false); // showed a wrong-check yet?
 
-  const completedRef = useRef<boolean>(false);
+  const reportedRef = useRef<boolean>(false);
   const timersRef = useRef<number[]>([]);
   const flickerRef = useRef<number[]>([]);
+
+  const rd = ROUNDS[round];
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((t) => window.clearTimeout(t));
@@ -88,20 +138,17 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
     };
   }, [clearTimers, clearFlicker]);
 
-  // ---- which cells already match the target (live per-note feedback) ----
-  const matches = useMemo<boolean[]>(
-    () =>
-      seq.map(
-        (s, i) => s.note === TARGET[i].note && s.dur === TARGET[i].dur,
-      ),
-    [seq],
+  // Whole-melody correctness (graded against the hidden answer, not shown live).
+  const melodyOk = useMemo<boolean>(
+    () => seq.every((st, i) => sameStep(st, rd.answer[i])),
+    [seq, rd],
   );
-  const melodyOk = matches.every(Boolean);
 
-  // First mismatching cell — drives the gentle hint, never the answer.
-  const firstWrong = useMemo<number>(
-    () => matches.findIndex((m) => !m),
-    [matches],
+  // Per-cell correctness is ONLY revealed after a "check" press — never live,
+  // so the puzzle can't be brute-forced by watching cells turn green.
+  const cellOk = useMemo<boolean[]>(
+    () => seq.map((st, i) => sameStep(st, rd.answer[i])),
+    [seq, rd],
   );
 
   /** Drop the pull-down resistor block into the wiring slot. */
@@ -116,7 +163,6 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
   const tapInput = useCallback(() => {
     if (phase === "playing") return;
     if (!wired) {
-      // No clean pull-down → a noisy, floating input that bounces 1…0…1.
       setReadout("digitalRead(D2) = 1…0…1  ⚠ noisy");
       setHint("The input is floating. Drag the pull-down resistor in first.");
       clearFlicker();
@@ -133,7 +179,6 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
       flickerRef.current.push(reset);
       return;
     }
-    // Clean input: a crisp HIGH while held.
     setPressed(true);
     setReadout("digitalRead(D2) = 1  → PRESSED");
   }, [phase, wired, clearFlicker]);
@@ -146,20 +191,21 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
 
   const setCellNote = useCallback(
     (i: number, note: Note) => {
-      if (phase === "playing") return;
+      if (phase === "playing" || phase === "roundWon" || phase === "won") return;
       setSeq((prev) => {
         const next = prev.slice();
         next[i] = { ...next[i], note };
         return next;
       });
       setHint("");
+      setChecked(false);
     },
     [phase],
   );
 
   const toggleDur = useCallback(
     (i: number) => {
-      if (phase === "playing") return;
+      if (phase === "playing" || phase === "roundWon" || phase === "won") return;
       setSeq((prev) => {
         const next = prev.slice();
         next[i] = {
@@ -169,31 +215,31 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
         return next;
       });
       setHint("");
+      setChecked(false);
     },
     [phase],
   );
 
-  /** Press the DOOR button → run the program: sweep + buzz + flash LED ×3. */
+  /** Press the DOOR button → run the program. Wrong melodies do NOT win and
+   *  do NOT report a failure; they reveal which cells are off and let you fix. */
   const runProgram = useCallback(() => {
-    if (phase === "playing" || phase === "won") return;
+    if (phase === "playing" || phase === "roundWon" || phase === "won") return;
 
     if (!wired) {
       setHint("The door button can't be read yet — wire the resistor first.");
       return;
     }
     if (!melodyOk) {
-      const where = firstWrong >= 0 ? firstWrong + 1 : 1;
-      setHint(`Note ${where} doesn't match the target yet — compare it tile-by-tile.`);
-      if (!completedRef.current) {
-        onComplete({
-          passed: false,
-          detail: `Note ${where} doesn't match yet — keep tuning the melody.`,
-        });
-      }
+      const wrongCount = cellOk.filter((ok) => !ok).length;
+      setChecked(true);
+      setHint(
+        `Not quite — ${wrongCount} cell${wrongCount === 1 ? "" : "s"} don't fit the clues yet. ` +
+          `The off cells are marked ✕. Re-read the clues and adjust.`,
+      );
       return;
     }
 
-    // All conditions met → deterministic play-through.
+    // Correct decode → deterministic play-through.
     clearTimers();
     setHint("");
     setPhase("playing");
@@ -202,14 +248,12 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
 
     let clock = 0;
     const GAP = 90;
-    // Sweep the play head across each note. Long notes hold a touch longer.
-    seq.forEach((s, i) => {
+    seq.forEach((st, i) => {
       const t = window.setTimeout(() => setActive(i), clock);
       timersRef.current.push(t);
-      clock += (s.dur === "long" ? 620 : 380) + GAP;
+      clock += (st.dur === "long" ? 620 : 380) + GAP;
     });
 
-    // After the melody, flash the LED three times.
     for (let f = 0; f < 3; f++) {
       const on = window.setTimeout(() => {
         setActive(-1);
@@ -221,45 +265,65 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
       clock += 360;
     }
 
-    // Win.
+    const isLast = round >= ROUNDS.length - 1;
     const fin = window.setTimeout(() => {
-      setPhase("won");
-      if (!completedRef.current) {
-        completedRef.current = true;
-        onComplete({
-          passed: true,
-          stars: 3,
-          detail: "Button input wired clean and the doorbell tune plays in sequence!",
-        });
+      if (isLast) {
+        setPhase("won");
+        if (!reportedRef.current) {
+          reportedRef.current = true;
+          onComplete({
+            passed: true,
+            stars: 3,
+            detail: "Decoded all three doorbell tunes from the clues and ran each program!",
+          });
+        }
+      } else {
+        // Win this round, then load the next, harder puzzle.
+        setPhase("roundWon");
+        const adv = window.setTimeout(() => {
+          setRound((r) => r + 1);
+          setSeq(ROUNDS[round + 1].start.map((x) => ({ ...x })));
+          setActive(-1);
+          setFlashes(0);
+          setLedOn(false);
+          setChecked(false);
+          setHint("");
+          setPhase("build");
+        }, 1300);
+        timersRef.current.push(adv);
       }
     }, clock + 120);
     timersRef.current.push(fin);
-  }, [phase, wired, melodyOk, firstWrong, seq, clearTimers, onComplete]);
+  }, [phase, wired, melodyOk, cellOk, seq, round, clearTimers, onComplete]);
 
   const handleReset = useCallback(() => {
     clearTimers();
     clearFlicker();
+    reportedRef.current = false;
+    setRound(0);
     setWired(false);
     setDragOver(false);
     setPressed(false);
     setReadout("digitalRead(D2) = 0");
-    setSeq(freshSequence());
+    setSeq(ROUNDS[0].start.map((x) => ({ ...x })));
     setActive(-1);
     setFlashes(0);
     setLedOn(false);
     setPhase("build");
     setHint("");
+    setChecked(false);
   }, [clearTimers, clearFlicker]);
 
   const status = useMemo<string>(() => {
-    if (phase === "won") return "Ding dong! Someone's at the door 🔔";
+    if (phase === "won") return "Ding dong! All three tunes decoded 🔔";
+    if (phase === "roundWon") return "Correct! Next puzzle loading…";
     if (phase === "playing") return "Running tone() sequence…";
     if (!wired) return "Step 1: drag the pull-down resistor into the circuit.";
-    if (!melodyOk) return `Step 2: copy the target tune — ${matches.filter(Boolean).length}/${STEPS} notes matched.`;
-    return "Step 3: press the door button to play your doorbell!";
-  }, [phase, wired, melodyOk, matches]);
+    return `Step 2: decode round ${round + 1} of 3 from the clues, then press the door button.`;
+  }, [phase, wired, round]);
 
   const playing = phase === "playing";
+  const locked = playing || phase === "roundWon" || phase === "won";
 
   return (
     <div className="flex w-full flex-col gap-3 text-ink" style={{ maxWidth: 440 }}>
@@ -347,6 +411,27 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
         </div>
       </div>
 
+      {/* round progress dots */}
+      <div className="flex items-center gap-2 px-1" aria-label={`Round ${round + 1} of ${ROUNDS.length}`}>
+        <span className="font-mono text-[10px] uppercase tracking-tech text-ink-faint">puzzle</span>
+        <span className="flex items-center gap-1.5" aria-hidden>
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || phase === "won";
+            const current = i === round && phase !== "won";
+            return (
+              <span
+                key={`dot${i}`}
+                className="grid h-3 w-3 place-items-center rounded-full"
+                style={{
+                  background: solved ? ACCENT : current ? `${ACCENT}33` : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "#33415a"}`,
+                }}
+              />
+            );
+          })}
+        </span>
+      </div>
+
       {/* ---------------- PART 1: WIRE THE INPUT ---------------- */}
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel/60 p-3">
         <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
@@ -404,83 +489,91 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
         </p>
       </div>
 
-      {/* ---------------- PART 2: COMPOSE THE MELODY ---------------- */}
+      {/* ---------------- PART 2: DECODE THE MELODY ---------------- */}
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel/60 p-3">
         <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
-          2 · Compose — copy the target tone() sequence
+          2 · Decode — work out the secret tune from the clues
         </p>
 
-        {/* target tiles to copy */}
-        <div className="flex items-center gap-1.5">
-          <span className="w-12 shrink-0 font-mono text-[10px] text-ink-faint">target</span>
-          <div className="flex flex-1 gap-1.5">
-            {TARGET.map((s, i) => (
-              <div
-                key={`tg${i}`}
-                className="flex flex-1 flex-col items-center rounded-md py-1 font-mono text-[11px]"
-                style={{ background: `${NOTE_COLOR[s.note]}22`, border: `1px solid ${NOTE_COLOR[s.note]}` }}
-                aria-label={`Target note ${i + 1}: ${s.note} ${s.dur}`}
-              >
-                <span style={{ color: NOTE_COLOR[s.note], fontWeight: 700 }}>{s.note}</span>
-                <span className="text-ink-faint">{s.dur === "long" ? "▮▮" : "▮"}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* clue list (the puzzle — no answer tiles to copy) */}
+        <ul className="flex flex-col gap-1 rounded-md bg-black/25 p-2" aria-label="Clues for the secret melody">
+          {rd.clues.map((c, i) => (
+            <li key={`clue${i}`} className="flex gap-1.5 text-[11px] leading-snug text-ink-dim">
+              <span aria-hidden style={{ color: ACCENT }}>•</span>
+              <span>{c}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[10px] leading-tight text-ink-faint">
+          Note ladder (low → high): C · D · E · F · G · A · B. &ldquo;One step higher&rdquo; means the next note up.
+        </p>
 
-        {/* learner's note strip */}
+        {/* learner's note strip with per-cell verdict (only after a check) */}
         <div className="flex items-center gap-1.5">
-          <span className="w-12 shrink-0 font-mono text-[10px] text-ink-faint">yours</span>
+          <span className="w-12 shrink-0 font-mono text-[10px] text-ink-faint">tune</span>
           <div className="flex flex-1 gap-1.5">
-            {seq.map((s, i) => {
-              const ok = matches[i];
+            {seq.map((st, i) => {
               const isHead = active === i;
+              const verdict = checked ? (cellOk[i] ? "ok" : "bad") : "none";
               return (
                 <div
                   key={`cell${i}`}
-                  className="flex flex-1 flex-col items-center rounded-md py-1 font-mono text-[11px]"
+                  className="relative flex flex-1 flex-col items-center rounded-md py-1 font-mono text-[11px]"
                   style={{
-                    background: ok ? "#34d39922" : "#0e1622",
-                    border: `1px solid ${isHead ? ACCENT : ok ? "#34d399" : "#33415a"}`,
+                    background: verdict === "ok" ? "#34d39922" : verdict === "bad" ? "#f8717118" : "#0e1622",
+                    border: `1px solid ${isHead ? ACCENT : verdict === "ok" ? "#34d399" : verdict === "bad" ? "#f87171" : "#33415a"}`,
                     transform: isHead ? "translateY(-2px)" : undefined,
                     transition: "transform .1s ease",
                   }}
-                  aria-label={`Your note ${i + 1}: ${s.note} ${s.dur}${ok ? " — matches target" : ""}`}
+                  aria-label={`Cell ${i + 1}: ${st.note} ${st.dur}${verdict === "ok" ? " — fits the clues" : verdict === "bad" ? " — does not fit" : ""}`}
                 >
-                  <span style={{ color: ok ? "#34d399" : NOTE_COLOR[s.note], fontWeight: 700 }}>{s.note}</span>
+                  <span style={{ color: verdict === "ok" ? "#34d399" : NOTE_COLOR[st.note], fontWeight: 700 }}>{st.note}</span>
                   <button
                     type="button"
                     onClick={() => toggleDur(i)}
-                    disabled={playing}
-                    aria-label={`Note ${i + 1} duration: ${s.dur}. Tap to toggle.`}
+                    disabled={locked}
+                    aria-label={`Cell ${i + 1} length: ${st.dur}. Tap to toggle short or long.`}
                     className="text-ink-faint disabled:opacity-50"
                     style={{ touchAction: "manipulation" }}
                   >
-                    {s.dur === "long" ? "▮▮" : "▮"}
+                    {st.dur === "long" ? "▮▮" : "▮"}
                   </button>
+                  {verdict !== "none" && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-1 -top-1 grid h-3.5 w-3.5 place-items-center rounded-full text-[8px]"
+                      style={{
+                        background: verdict === "ok" ? "#34d399" : "#f87171",
+                        color: "#05070d",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {verdict === "ok" ? "✓" : "✕"}
+                    </span>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* note pads — tap a cell-row? we let the learner set each cell's note via pads */}
+        {/* note pads — set each cell's note by reasoning, not copying */}
         <div className="flex flex-col gap-1.5">
           <span className="font-mono text-[10px] text-ink-faint">
-            Pick a note for each cell · tap a pad below a cell number
+            Pick the note for each cell · tap its length above to set short ▮ / long ▮▮
           </span>
-          {seq.map((s, i) => (
+          {seq.map((st, i) => (
             <div key={`pads${i}`} className="flex items-center gap-1.5">
               <span className="w-12 shrink-0 font-mono text-[10px] text-ink-faint">cell {i + 1}</span>
               <div className="flex flex-1 gap-1" role="group" aria-label={`Note pads for cell ${i + 1}`}>
                 {NOTES.map((n) => {
-                  const sel = s.note === n;
+                  const sel = st.note === n;
                   return (
                     <button
                       key={n}
                       type="button"
                       onPointerDown={() => setCellNote(i, n)}
-                      disabled={playing}
+                      disabled={locked}
                       aria-label={`Set cell ${i + 1} to note ${n}`}
                       aria-pressed={sel}
                       className="flex-1 rounded py-1 font-mono text-[11px] transition disabled:opacity-50"
@@ -508,17 +601,17 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
           type="button"
           onClick={handleReset}
           className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim"
-          aria-label="Reset the lab"
+          aria-label="Reset the lab to round one"
         >
           Reset
         </button>
         <button
           type="button"
           onClick={runProgram}
-          disabled={playing || phase === "won"}
+          disabled={locked}
           className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
           style={{ background: ACCENT, color: "#05070d", touchAction: "manipulation" }}
-          aria-label="Press the door button to run the program"
+          aria-label="Press the door button to run your program"
         >
           {playing ? "Playing…" : phase === "won" ? "Done ✓" : "Press door button ▶"}
         </button>
@@ -545,10 +638,10 @@ export default function DoorbellTunes({ onComplete }: ActivityProps) {
         >
           <span className="text-2xl" aria-hidden>✨🎉🔔</span>
           <p className="font-display text-sm" style={{ color: ACCENT }}>
-            Ding dong! Someone&apos;s at the door
+            Ding dong! All three tunes decoded
           </p>
           <p className="text-[11px] text-ink-dim">
-            Clean input · 5 notes matched · LED flashed 3 times
+            Clean input · 3 secret melodies cracked from clues
           </p>
           <span className="text-lg" aria-label="three stars">⭐⭐⭐</span>
         </div>

@@ -4,14 +4,26 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ── Mini Maze 🌀 ─────────────────────────────────────────────────────────────
-   CLASS 1-3 (junior, age ~6-8) CODING lab. ONE goal: plan several moves ahead to
-   solve a winding path — sequencing with obstacles. A mouse 🐭 must reach the
-   cheese 🧀 across a 5×5 grid with a few walls 🧱 forming one clear route. The
-   child taps big D-pad arrow cards to build a PLAN strip, ⬅️ undoes the last one,
-   and ▶ GO sends the mouse hopping one hop per step, lighting the trail. Reach the
-   cheese → big celebration + onComplete({passed:true,stars:3}) once. Hit a wall or
-   edge → friendly bonk 🙈, hop home, KEEP the plan so they can fix it. No reading,
-   no timers, no scolding, always winnable. */
+   CLASS 1-3 (junior, age ~6-8) CODING lab. Plan several moves ahead to solve a
+   winding path — sequencing with obstacles, now as a REAL problem across THREE
+   escalating rounds. A mouse 🐭 must reach the cheese 🧀 on a 5×5 grid whose
+   walls 🧱 form ONE clear route the child has to read and plan. They tap big
+   D-pad arrow cards to build a PLAN strip, ⬅️ undoes the last one, and ▶ GO
+   sends the mouse hopping one hop per step, lighting the trail.
+
+   Why it's a problem, not a toy:
+   • Round 1 — a gentle S-bend up the left then across (6 hops).
+   • Round 2 — a longer zig-zag the full width and height (8 hops): you must
+     plan the whole route, not react one square at a time.
+   • Round 3 — the TWIST. The cheese sits straight DOWN from the mouse, but a
+     wall blocks the obvious "just go down" guess. You must detour left, slip
+     past the wall, then come back right. Brute-forcing "down down" bonks; only
+     reading the gap solves it.
+
+   Solve a round → it lights up and the next, harder maze slides in. Win all
+   three → big celebration + onComplete({passed:true,stars:3}) exactly once.
+   Hit a wall or edge → friendly bonk 🙈, hop home, KEEP the plan so they can fix
+   it (no onComplete on misses). No reading, no scolding, always winnable. */
 
 const ACCENT = "#22d3ee";
 const COLS = 5;
@@ -33,22 +45,63 @@ interface Cell {
   r: number;
 }
 
-// ── Fixed, friendly level ────────────────────────────────────────────────────
-// Intended path: (0,4)→up→up→(0,2)→right→right→(2,2)→up→up→(2,0)=cheese.
-// Walls sit OFF that trail and gently fence in the tempting wrong turns.
-const START: Cell = { c: 0, r: 4 };
-const GOAL: Cell = { c: 2, r: 0 };
-const WALLS: readonly Cell[] = [
-  { c: 1, r: 4 },
-  { c: 1, r: 3 },
-  { c: 1, r: 2 },
-  { c: 3, r: 2 },
-  { c: 1, r: 0 },
-  { c: 3, r: 0 },
+interface Level {
+  start: Cell;
+  goal: Cell;
+  walls: readonly Cell[];
+}
+
+// ── Three fixed, hand-authored, escalating mazes ──────────────────────────────
+// Each has exactly one clear route; all verified solvable by BFS (6 / 8 / 6 hops).
+const LEVELS: readonly Level[] = [
+  // R1 — gentle S-bend: up the left edge, across, up to the cheese.
+  // (0,4)→up→up→(0,2)→right→right→(2,2)→up→up→(2,0).
+  {
+    start: { c: 0, r: 4 },
+    goal: { c: 2, r: 0 },
+    walls: [
+      { c: 1, r: 4 },
+      { c: 1, r: 3 },
+      { c: 1, r: 2 },
+      { c: 3, r: 2 },
+      { c: 1, r: 0 },
+      { c: 3, r: 0 },
+    ],
+  },
+  // R2 — long zig-zag across the whole board (8 hops): plan the full route.
+  // (0,0)→down→down→right→right→down→down→right→right→(4,4).
+  {
+    start: { c: 0, r: 0 },
+    goal: { c: 4, r: 4 },
+    walls: [
+      { c: 1, r: 0 },
+      { c: 1, r: 1 },
+      { c: 3, r: 0 },
+      { c: 3, r: 1 },
+      { c: 3, r: 2 },
+      { c: 1, r: 3 },
+      { c: 1, r: 4 },
+    ],
+  },
+  // R3 — the TWIST. Cheese is straight DOWN, but a wall band blocks it.
+  // Naive "down down" bonks on (2,2). Real route detours around the gap:
+  // (2,1)→left→left→down→down→right→right→(2,3).
+  {
+    start: { c: 2, r: 1 },
+    goal: { c: 2, r: 3 },
+    walls: [
+      { c: 1, r: 2 },
+      { c: 2, r: 2 },
+      { c: 3, r: 2 },
+      { c: 0, r: 0 },
+      { c: 4, r: 4 },
+    ],
+  },
 ];
 
-const isWall = (c: number, r: number): boolean =>
-  WALLS.some((w) => w.c === c && w.r === r);
+const sameCell = (a: Cell, b: Cell): boolean => a.c === b.c && a.r === b.r;
+const isWallIn = (walls: readonly Cell[], c: number, r: number): boolean =>
+  walls.some((w) => w.c === c && w.r === r);
 
 // ── Deterministic simulation ─────────────────────────────────────────────────
 type Outcome = "win" | "wall" | "edge" | "short";
@@ -58,19 +111,19 @@ interface SimResult {
   outcome: Outcome;
 }
 
-/** Walk the arrow plan from the fixed start; stop on win / wall / edge. */
-function simulate(dirs: Dir[]): SimResult {
-  let { c, r } = START;
+/** Walk the arrow plan from a level's start; stop on win / wall / edge. */
+function simulate(level: Level, dirs: Dir[]): SimResult {
+  let { c, r } = level.start;
   const trail: Cell[] = [{ c, r }];
   for (const d of dirs) {
     const nc = c + DX[d];
     const nr = r + DY[d];
     if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) return { trail, outcome: "edge" };
-    if (isWall(nc, nr)) return { trail, outcome: "wall" };
+    if (isWallIn(level.walls, nc, nr)) return { trail, outcome: "wall" };
     c = nc;
     r = nr;
     trail.push({ c, r });
-    if (c === GOAL.c && r === GOAL.r) return { trail, outcome: "win" };
+    if (c === level.goal.c && r === level.goal.r) return { trail, outcome: "win" };
   }
   return { trail, outcome: "short" };
 }
@@ -83,7 +136,7 @@ const VH = PAD * 2 + ROWS * TILE;
 const cx = (c: number): number => PAD + c * TILE + TILE / 2;
 const cy = (r: number): number => PAD + r * TILE + TILE / 2;
 
-type Phase = "idle" | "running" | "won" | "bonk";
+type Phase = "idle" | "running" | "won" | "bonk" | "done";
 
 interface Step {
   id: number;
@@ -162,14 +215,24 @@ const CONFETTI: readonly Confetti[] = Array.from({ length: 14 }, (_, i) => {
 });
 
 export default function MiniMaze({ onComplete }: ActivityProps) {
+  const [level, setLevel] = useState<number>(0);
   const [steps, setSteps] = useState<Step[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [pos, setPos] = useState<Cell>(START);
+  const [pos, setPos] = useState<Cell>(LEVELS[0].start);
   const [litTrail, setLitTrail] = useState<Cell[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportedRef = useRef<boolean>(false);
   const { blip, chime } = useChirp();
+
+  const lvl = LEVELS[level];
+  const START = lvl.start;
+  const GOAL = lvl.goal;
+  const WALLS = lvl.walls;
+  const isWall = useCallback(
+    (c: number, r: number): boolean => isWallIn(WALLS, c, r),
+    [WALLS],
+  );
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -181,13 +244,24 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
 
   const running = phase === "running";
   const won = phase === "won";
+  const done = phase === "done";
   const bonking = phase === "bonk";
-  const locked = running || won;
+  const celebrating = won || done;
+  const locked = running || won || done;
+
+  // Fresh round: park the mouse at this level's start, clear the plan & trail.
+  useEffect(() => {
+    clearTimer();
+    setSteps([]);
+    setPhase("idle");
+    setPos(LEVELS[level].start);
+    setLitTrail([]);
+  }, [level, clearTimer]);
 
   const resetMouse = useCallback(() => {
-    setPos(START);
+    setPos(LEVELS[level].start);
     setLitTrail([]);
-  }, []);
+  }, [level]);
 
   const addStep = useCallback(
     (dir: Dir) => {
@@ -211,10 +285,12 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
   const reset = useCallback(() => {
     clearTimer();
     reportedRef.current = false;
+    setLevel(0);
     setSteps([]);
     setPhase("idle");
-    resetMouse();
-  }, [clearTimer, resetMouse]);
+    setPos(LEVELS[0].start);
+    setLitTrail([]);
+  }, [clearTimer]);
 
   const go = useCallback(() => {
     if (locked) return;
@@ -224,9 +300,9 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
       timerRef.current = setTimeout(() => setPhase("idle"), 480);
       return;
     }
-    const sim = simulate(steps.map((s) => s.dir));
+    const sim = simulate(lvl, steps.map((s) => s.dir));
     clearTimer();
-    resetMouse();
+    setLitTrail([]);
     setPhase("running");
 
     let i = 0; // index into trail (0 = start, already shown)
@@ -235,26 +311,30 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
       if (i >= sim.trail.length) {
         if (sim.outcome === "win") {
           setLitTrail(sim.trail);
-          setPhase("won");
           chime();
-          if (!reportedRef.current) {
-            reportedRef.current = true;
-            onComplete({ passed: true, stars: 3, detail: "Reached the cheese! 🧀" });
+          const last = level >= LEVELS.length - 1;
+          if (last) {
+            setPhase("done");
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              onComplete({
+                passed: true,
+                stars: 3,
+                detail: "Solved all three mazes! 🧀🧀🧀",
+              });
+            }
+          } else {
+            // Win this round, then slide the next, harder maze in.
+            setPhase("won");
+            timerRef.current = setTimeout(() => setLevel((l) => l + 1), 1200);
           }
         } else {
           // Friendly bonk, then hop home. Plan is KEPT so they can fix it.
+          // No onComplete on misses — never scold, never spam.
           setPhase("bonk");
-          if (sim.outcome === "wall" || sim.outcome === "edge") {
-            onComplete({
-              passed: false,
-              detail:
-                sim.outcome === "wall"
-                  ? "Bonk! A wall is in the way — try a new path. 🙈"
-                  : "Whoops — off the edge! Try again. 🤔",
-            });
-          }
           timerRef.current = setTimeout(() => {
-            resetMouse();
+            setPos(LEVELS[level].start);
+            setLitTrail([]);
             setPhase("idle");
           }, 660);
         }
@@ -268,43 +348,46 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
     setPos(sim.trail[0]);
     setLitTrail([sim.trail[0]]);
     timerRef.current = setTimeout(tick, STEP_MS);
-  }, [locked, steps, clearTimer, resetMouse, chime, onComplete]);
+  }, [locked, steps, lvl, level, clearTimer, chime, onComplete]);
 
   const statusEmoji = useMemo<string>(() => {
+    if (done) return "🏆";
     if (won) return "🎉";
     if (bonking) return "🙈";
     if (running) return "🐾";
     return "🐭";
-  }, [won, bonking, running]);
+  }, [done, won, bonking, running]);
 
   return (
     <div className="flex w-full flex-col items-center gap-3 font-mono text-ink">
-      {/* ── Tiny visual status (emoji only, no sentences) ── */}
+      {/* ── Tiny visual status (emoji only) + round dots — no sentences ── */}
       <div
         className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "The mouse reached the cheese!"
-            : running
-              ? "The mouse is hopping"
-              : bonking
-                ? "Bonk, try again"
-                : "Plan a path, then press Go"
+          done
+            ? "You solved all three mazes!"
+            : won
+              ? "Maze solved! Next one coming up"
+              : running
+                ? "The mouse is hopping"
+                : bonking
+                  ? "Bonk, try again"
+                  : `Round ${level + 1} of 3 — plan a path, then press Go`
         }
         style={{
-          background: won ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span
           aria-hidden="true"
-          data-jcm-idle={won || bonking || running ? undefined : ""}
+          data-jcm-idle={celebrating || bonking || running ? undefined : ""}
           className="inline-block"
           style={{
-            animation: won
+            animation: celebrating
               ? "jcmaze-cheer 0.9s cubic-bezier(.34,1.56,.64,1) infinite"
               : bonking || running
                 ? undefined
@@ -313,7 +396,35 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
         >
           {statusEmoji}
         </span>
-        {won ? (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {LEVELS.map((_, i) => {
+            const solved = i < level || done;
+            const current = i === level && !done;
+            return (
+              <span
+                key={`rd-${i}`}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 14,
+                  width: 14,
+                  background: solved
+                    ? ACCENT
+                    : current
+                      ? "rgba(34,211,238,0.25)"
+                      : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jcmaze-float 1.6s ease-in-out infinite" : undefined,
+                }}
+                data-jcm-idle={current ? "" : undefined}
+              />
+            );
+          })}
+        </span>
+
+        {done ? (
           <span aria-hidden="true" className="text-2xl">
             {[0, 1, 2].map((i) => (
               <span
@@ -332,7 +443,7 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
             🐭→🧀
           </span>
         )}
-        {won && (
+        {celebrating && (
           <span
             aria-hidden="true"
             className="inline-block text-2xl"
@@ -401,13 +512,26 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
             </text>
           ))}
 
+          {/* a soft flag marks where the mouse starts this round (helps plan) */}
+          <text
+            x={cx(START.c)}
+            y={cy(START.r) - TILE * 0.32}
+            fontSize={TILE * 0.26}
+            textAnchor="middle"
+            dominantBaseline="central"
+            opacity={0.5}
+            aria-hidden="true"
+          >
+            🚩
+          </text>
+
           {/* cheese / goal */}
           <g
-            data-jcm-idle={won ? undefined : ""}
+            data-jcm-idle={celebrating ? undefined : ""}
             style={{
               transformOrigin: `${cx(GOAL.c)}px ${cy(GOAL.r)}px`,
               transformBox: "view-box",
-              animation: won ? undefined : "jcmaze-goal-pulse 2.4s ease-in-out infinite",
+              animation: celebrating ? undefined : "jcmaze-goal-pulse 2.4s ease-in-out infinite",
             }}
           >
             <circle
@@ -415,15 +539,15 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
               cy={cy(GOAL.r)}
               r={TILE * 0.5}
               fill="url(#jcmaze-glow)"
-              opacity={won ? 1 : 0.6}
+              opacity={celebrating ? 1 : 0.6}
             />
           </g>
           <g
-            data-jcm-idle={won ? undefined : ""}
+            data-jcm-idle={celebrating ? undefined : ""}
             style={{
               transformOrigin: `${cx(GOAL.c)}px ${cy(GOAL.r)}px`,
               transformBox: "view-box",
-              animation: won
+              animation: celebrating
                 ? "jcmaze-pop 0.7s ease-out"
                 : "jcmaze-cheese-bob 2.6s ease-in-out infinite",
             }}
@@ -450,7 +574,7 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
             }}
           >
             <g
-              data-jcm-idle={!bonking && !running && !won ? "" : undefined}
+              data-jcm-idle={!bonking && !running && !celebrating ? "" : undefined}
               data-jcm-loop={running ? "" : undefined}
               style={{
                 transformBox: "fill-box",
@@ -459,7 +583,7 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
                   ? "jcmaze-wobble 0.5s ease-in-out"
                   : running
                     ? "jcmaze-hop 0.45s ease-in-out infinite"
-                    : won
+                    : celebrating
                       ? "jcmaze-cheer 0.9s cubic-bezier(.34,1.56,.64,1) infinite"
                       : "jcmaze-breathe 2.8s ease-in-out infinite",
               }}
@@ -469,7 +593,7 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
                 fill="#0b1220"
                 stroke={ACCENT}
                 strokeWidth={2}
-                style={won ? { filter: `drop-shadow(0 0 6px ${ACCENT})` } : undefined}
+                style={celebrating ? { filter: `drop-shadow(0 0 6px ${ACCENT})` } : undefined}
               />
               <text
                 x={0}
@@ -611,7 +735,7 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
             reset();
           }}
           disabled={running}
-          aria-label="Start over"
+          aria-label="Start over from round one"
           className="grid h-[72px] w-[72px] place-items-center rounded-2xl text-2xl active:scale-90 disabled:opacity-40"
           style={{
             touchAction: "none",
@@ -625,8 +749,8 @@ export default function MiniMaze({ onComplete }: ActivityProps) {
         </button>
       </div>
 
-      {/* ── BIG win celebration: confetti burst + bouncing stars ── */}
-      {won && (
+      {/* ── BIG win celebration: confetti burst + bouncing stars (final win) ── */}
+      {done && (
         <div
           className="pointer-events-none relative flex h-16 w-full max-w-[430px] items-center justify-center"
           aria-hidden="true"

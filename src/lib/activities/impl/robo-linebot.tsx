@@ -4,9 +4,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Line Follower — sensors + conditionals + control loops            */
-/*  The learner maps a 3-state line sensor (line is to the LEFT /     */
-/*  CENTER / RIGHT of the robot) to a steering action. Press Run to   */
-/*  simulate the robot driving the track tick-by-tick.                */
+/*  CLASS 4-6 (explorer, age ~9-11) ROBOTICS lab.                     */
+/*                                                                    */
+/*  The learner programs a robot's control loop: map a 3-state line   */
+/*  sensor (line is LEFT / CENTER / RIGHT of the robot) to a steering */
+/*  action, press Run, and watch the robot drive the track live.      */
+/*                                                                    */
+/*  This is a REAL problem across THREE escalating rounds, not a      */
+/*  one-tap toy:                                                      */
+/*    R1  LEARN  — a normal robot. Find the basic rule that holds the */
+/*                 line. (The intuitive identity mapping works here.) */
+/*    R2  DEBUG  — the rules are ALMOST right but a teammate wired ONE */
+/*                 line wrong. Find the buggy rule and fix it.        */
+/*    R3  MIRROR — the camera was mounted UPSIDE-DOWN, so it reports  */
+/*                 the line on the WRONG side. The obvious mapping    */
+/*                 now drives the robot OFF the track — you must      */
+/*                 reason about the flipped wiring and invert it.     */
+/*                                                                    */
+/*  OPTIMISE for stars: solve cleanly (few Runs / few rule edits) for */
+/*  3 stars; a messy win still passes. Deterministic, winnable,       */
+/*  never scolds. Keeps the original SVG/sim polish.                  */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#34d399";
@@ -15,29 +32,58 @@ const VIEW_H = 200;
 
 type Sensor = "left" | "center" | "right";
 type Action = "left" | "straight" | "right";
-type Phase = "idle" | "running" | "won" | "lost";
+type Phase = "idle" | "running" | "won" | "lost" | "done";
 
 interface Pt {
   x: number;
   y: number;
 }
 
-/** Smooth S-curve track sampled across t in [0,1]. Deterministic. */
-function trackPoint(t: number): Pt {
-  // A gentle S that snakes left→right across the canvas.
-  const x = 36 + t * (VIEW_W - 72);
-  const y = VIEW_H / 2 + Math.sin(t * Math.PI * 2) * 56;
-  return { x, y };
+/** A round's configuration. `mirror` flips what the camera reports;
+ *  `prefill` seeds the rule editor (used by the DEBUG round). */
+interface Round {
+  key: string;
+  label: string;
+  tag: string;
+  blurb: string;
+  amp: number; // S-curve amplitude — bigger = sharper, harder track
+  mirror: boolean; // camera mounted upside-down → sensor side is inverted
+  prefill: Record<Sensor, Action>;
 }
 
-const SAMPLES = 160;
-const TRACK: Pt[] = Array.from({ length: SAMPLES + 1 }, (_, i) =>
-  trackPoint(i / SAMPLES),
-);
-
-const TRACK_D: string = TRACK.map(
-  (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`,
-).join(" ");
+const ROUNDS: ReadonlyArray<Round> = [
+  {
+    key: "learn",
+    label: "Round 1 · Learn the loop",
+    tag: "LEARN",
+    blurb:
+      "Sense → think → steer. Set each rule so the robot turns toward the line and hugs the track to the GOAL.",
+    amp: 48,
+    mirror: false,
+    prefill: { left: "straight", center: "straight", right: "straight" },
+  },
+  {
+    key: "debug",
+    label: "Round 2 · Fix the bug",
+    tag: "DEBUG",
+    blurb:
+      "A teammate pre-wired the robot, but ONE rule is wrong and it keeps sliding off. Find the buggy rule and fix it.",
+    amp: 60,
+    mirror: false,
+    // Almost right: CENTER + RIGHT are correct, LEFT is buggy (steers right → away from the line).
+    prefill: { left: "right", center: "straight", right: "right" },
+  },
+  {
+    key: "mirror",
+    label: "Round 3 · Mirror camera",
+    tag: "MIRROR",
+    blurb:
+      "The camera was bolted on UPSIDE-DOWN, so it reports the line on the WRONG side! The normal rule drives it off the track. Flip your thinking.",
+    amp: 56,
+    mirror: true,
+    prefill: { left: "straight", center: "straight", right: "straight" },
+  },
+];
 
 const SENSOR_LABEL: Record<Sensor, string> = {
   left: "Line is LEFT",
@@ -51,13 +97,31 @@ const ACTIONS: { id: Action; label: string; glyph: string }[] = [
   { id: "right", label: "Steer Right", glyph: "↱" },
 ];
 
-/** Find nearest track index to a point (simple linear scan — track is small). */
-function nearestIndex(px: number, py: number): number {
+/** Smooth S-curve track for a given amplitude. Deterministic. */
+function makeTrack(amp: number): Pt[] {
+  const SAMPLES = 160;
+  return Array.from({ length: SAMPLES + 1 }, (_, i) => {
+    const t = i / SAMPLES;
+    return {
+      x: 36 + t * (VIEW_W - 72),
+      y: VIEW_H / 2 + Math.sin(t * Math.PI * 2) * amp,
+    };
+  });
+}
+
+function trackPath(track: Pt[]): string {
+  return track
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .join(" ");
+}
+
+/** Nearest track index to a point (linear scan — track is small). */
+function nearestIndex(track: Pt[], px: number, py: number): number {
   let best = 0;
   let bestD = Infinity;
-  for (let i = 0; i < TRACK.length; i++) {
-    const dx = TRACK[i].x - px;
-    const dy = TRACK[i].y - py;
+  for (let i = 0; i < track.length; i++) {
+    const dx = track[i].x - px;
+    const dy = track[i].y - py;
     const d = dx * dx + dy * dy;
     if (d < bestD) {
       bestD = d;
@@ -73,12 +137,12 @@ interface RobotState {
   heading: number; // radians
   idx: number; // nearest track index (progress)
   offTicks: number; // consecutive ticks far from the line
-  sensor: Sensor;
+  sensor: Sensor; // what the controller acted on (already mirror-adjusted)
 }
 
-function initialRobot(): RobotState {
-  const start = TRACK[0];
-  const next = TRACK[2];
+function initialRobot(track: Pt[]): RobotState {
+  const start = track[0];
+  const next = track[2];
   return {
     x: start.x,
     y: start.y,
@@ -89,24 +153,37 @@ function initialRobot(): RobotState {
   };
 }
 
+/** The flawless reference rule for a round — used only to give a star
+ *  bonus, never to block a win. (Mirror inverts left/right.) */
+function idealRules(round: Round): Record<Sensor, Action> {
+  return round.mirror
+    ? { left: "right", center: "straight", right: "left" }
+    : { left: "left", center: "straight", right: "right" };
+}
+
 export default function LineFollower({ onComplete }: ActivityProps) {
-  const [rules, setRules] = useState<Record<Sensor, Action>>({
-    left: "straight",
-    center: "straight",
-    right: "straight",
-  });
-  const [robot, setRobot] = useState<RobotState>(initialRobot);
+  const [roundIdx, setRoundIdx] = useState<number>(0);
+  const round = ROUNDS[roundIdx];
+
+  const track = useMemo(() => makeTrack(round.amp), [round.amp]);
+  const trackD = useMemo(() => trackPath(track), [track]);
+
+  const [rules, setRules] = useState<Record<Sensor, Action>>(round.prefill);
+  const [robot, setRobot] = useState<RobotState>(() => initialRobot(track));
   const [phase, setPhase] = useState<Phase>("idle");
-  const [tries, setTries] = useState<number>(0);
+  const [runs, setRuns] = useState<number>(0); // total Runs across all rounds (optimisation metric)
 
   // Refs so the animation loop always reads fresh values without re-binding.
   const rulesRef = useRef(rules);
   const robotRef = useRef(robot);
   const phaseRef = useRef(phase);
+  const trackRef = useRef(track);
+  const roundRef = useRef(round);
   const rafRef = useRef<number | null>(null);
   const accRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
   const ticksRef = useRef<number>(0);
+  const reportedRef = useRef<boolean>(false);
 
   useEffect(() => {
     rulesRef.current = rules;
@@ -114,6 +191,12 @@ export default function LineFollower({ onComplete }: ActivityProps) {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+  useEffect(() => {
+    trackRef.current = track;
+  }, [track]);
+  useEffect(() => {
+    roundRef.current = round;
+  }, [round]);
 
   const stopLoop = useCallback(() => {
     if (rafRef.current !== null) {
@@ -124,18 +207,34 @@ export default function LineFollower({ onComplete }: ActivityProps) {
 
   useEffect(() => stopLoop, [stopLoop]);
 
-  /** Advance the simulation by one fixed tick. Pure-ish: mutates a copy. */
+  // Fresh round: load its pre-wired rules, park the robot at the start.
+  useEffect(() => {
+    stopLoop();
+    const fresh = initialRobot(trackRef.current);
+    robotRef.current = fresh;
+    setRobot(fresh);
+    setRules(ROUNDS[roundIdx].prefill);
+    rulesRef.current = ROUNDS[roundIdx].prefill;
+    accRef.current = 0;
+    ticksRef.current = 0;
+    setPhase("idle");
+    phaseRef.current = "idle";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundIdx, stopLoop]);
+
+  /** Advance the simulation by one fixed tick. */
   const step = useCallback((): RobotState => {
     const r = robotRef.current;
+    const tk = trackRef.current;
+    const rd = roundRef.current;
     const STEP = 2.4; // forward distance per tick
     const TURN = 0.26; // radians steered per tick
 
     // ----- SENSE: where is the line relative to the robot's heading? -----
-    const ni = nearestIndex(r.x, r.y);
-    const target = TRACK[Math.min(ni + 6, TRACK.length - 1)];
+    const ni = nearestIndex(tk, r.x, r.y);
+    const target = tk[Math.min(ni + 6, tk.length - 1)];
     const toX = target.x - r.x;
     const toY = target.y - r.y;
-    // cross product of heading vector and vector-to-line → side of line
     const hx = Math.cos(r.heading);
     const hy = Math.sin(r.heading);
     const cross = hx * toY - hy * toX;
@@ -145,6 +244,14 @@ export default function LineFollower({ onComplete }: ActivityProps) {
     if (Math.abs(cross) < 6 || dist < 4) sensor = "center";
     else if (cross < 0) sensor = "left";
     else sensor = "right";
+
+    // MIRROR twist: the camera is upside-down, so it reports the OPPOSITE
+    // side. The controller (and the on-screen readout) act on this flipped
+    // value — the learner has to reason past it.
+    if (rd.mirror) {
+      if (sensor === "left") sensor = "right";
+      else if (sensor === "right") sensor = "left";
+    }
 
     // ----- THINK: apply the learner's rule -----
     const action = rulesRef.current[sensor];
@@ -156,12 +263,8 @@ export default function LineFollower({ onComplete }: ActivityProps) {
     const nx = r.x + Math.cos(heading) * STEP;
     const ny = r.y + Math.sin(heading) * STEP;
 
-    // distance from the line after moving (for the "lost" check)
-    const checkI = nearestIndex(nx, ny);
-    const lineDist = Math.hypot(
-      TRACK[checkI].x - nx,
-      TRACK[checkI].y - ny,
-    );
+    const checkI = nearestIndex(tk, nx, ny);
+    const lineDist = Math.hypot(tk[checkI].x - nx, tk[checkI].y - ny);
     const offTicks = lineDist > 26 ? r.offTicks + 1 : 0;
 
     return {
@@ -174,23 +277,45 @@ export default function LineFollower({ onComplete }: ActivityProps) {
     };
   }, []);
 
-  const finish = useCallback(
+  // Award stars from the optimisation metric: total Runs used to clear all
+  // three rounds. Lean solving = 3 stars; still always a win.
+  const starsFor = useCallback((totalRuns: number): 1 | 2 | 3 => {
+    if (totalRuns <= 5) return 3; // ~1-2 runs per round
+    if (totalRuns <= 9) return 2;
+    return 1;
+  }, []);
+
+  const finishRound = useCallback(
     (won: boolean) => {
       stopLoop();
-      if (won) {
-        setPhase("won");
-        phaseRef.current = "won";
-        onComplete({ passed: true, stars: 3 });
-      } else {
+      if (!won) {
         setPhase("lost");
         phaseRef.current = "lost";
-        onComplete({
-          passed: false,
-          detail: "Lost the line — check your sensor rules",
-        });
+        return; // gentle retry — never reports a failure
+      }
+      const last = roundIdx >= ROUNDS.length - 1;
+      if (last) {
+        setPhase("done");
+        phaseRef.current = "done";
+        if (!reportedRef.current) {
+          reportedRef.current = true;
+          // `runs` already counts this final run (incremented on Run press).
+          const stars = starsFor(runs);
+          onComplete({
+            passed: true,
+            stars,
+            detail:
+              stars === 3
+                ? "All three robots solved — lean and clean! 🤖⭐"
+                : "All three robots reached the GOAL! 🤖",
+          });
+        }
+      } else {
+        setPhase("won");
+        phaseRef.current = "won";
       }
     },
-    [onComplete, stopLoop],
+    [stopLoop, roundIdx, runs, starsFor, onComplete],
   );
 
   const loop = useCallback(
@@ -200,6 +325,7 @@ export default function LineFollower({ onComplete }: ActivityProps) {
       lastRef.current = now;
       accRef.current += dt;
       const TICK_MS = 28;
+      const tk = trackRef.current;
 
       let steps = 0;
       while (accRef.current >= TICK_MS && steps < 4) {
@@ -209,43 +335,41 @@ export default function LineFollower({ onComplete }: ActivityProps) {
         const next = step();
         robotRef.current = next;
 
-        // WIN: reached the end of the track.
-        if (next.idx >= TRACK.length - 3) {
+        if (next.idx >= tk.length - 3) {
           setRobot(next);
-          finish(true);
+          finishRound(true);
           return;
         }
-        // LOSE: drifted off the line for too long, or never made it
-        // to the goal in a reasonable number of ticks (e.g. spinning).
         if (next.offTicks > 22 || ticksRef.current > 600) {
           setRobot(next);
-          finish(false);
+          finishRound(false);
           return;
         }
       }
       setRobot(robotRef.current);
       rafRef.current = requestAnimationFrame(loop);
     },
-    [step, finish],
+    [step, finishRound],
   );
 
   const handleRun = useCallback(() => {
+    if (phaseRef.current === "running") return;
     stopLoop();
-    const fresh = initialRobot();
+    const fresh = initialRobot(trackRef.current);
     robotRef.current = fresh;
     setRobot(fresh);
     accRef.current = 0;
     ticksRef.current = 0;
     lastRef.current = performance.now();
-    setTries((t) => t + 1);
+    setRuns((n) => n + 1);
     setPhase("running");
     phaseRef.current = "running";
     rafRef.current = requestAnimationFrame(loop);
   }, [loop, stopLoop]);
 
-  const handleReset = useCallback(() => {
+  const parkRobot = useCallback(() => {
     stopLoop();
-    const fresh = initialRobot();
+    const fresh = initialRobot(trackRef.current);
     robotRef.current = fresh;
     setRobot(fresh);
     accRef.current = 0;
@@ -254,44 +378,98 @@ export default function LineFollower({ onComplete }: ActivityProps) {
     phaseRef.current = "idle";
   }, [stopLoop]);
 
+  const nextRound = useCallback(() => {
+    if (roundIdx < ROUNDS.length - 1) setRoundIdx((i) => i + 1);
+  }, [roundIdx]);
+
   const setRule = useCallback(
     (sensor: Sensor, action: Action) => {
-      if (phaseRef.current === "running") return;
+      if (phaseRef.current === "running" || phaseRef.current === "done") return;
       setRules((prev) => ({ ...prev, [sensor]: action }));
-      if (phase === "won" || phase === "lost") handleReset();
+      rulesRef.current = { ...rulesRef.current, [sensor]: action };
+      if (phaseRef.current === "lost") parkRobot();
     },
-    [phase, handleReset],
+    [parkRobot],
   );
 
   const running = phase === "running";
-  const progressPct = Math.round((robot.idx / (TRACK.length - 1)) * 100);
+  const done = phase === "done";
+  const locked = running || done;
+  const progressPct = Math.round((robot.idx / (track.length - 1)) * 100);
+
+  // Does the current wiring match the round's flawless rule? (UI hint only.)
+  const isIdeal = useMemo(() => {
+    const ideal = idealRules(round);
+    return (["left", "center", "right"] as Sensor[]).every(
+      (s) => rules[s] === ideal[s],
+    );
+  }, [rules, round]);
 
   const status = useMemo(() => {
-    if (phase === "won") return "Reached the goal! Nice driving 🤖";
-    if (phase === "lost") return "Lost the line — tweak a rule and retry.";
+    if (done) return "All three robots solved! 🏆";
+    if (phase === "won") return "Reached the GOAL! Next robot is harder… ▶";
+    if (phase === "lost") return "Slid off the line — tweak a rule and retry.";
     if (phase === "running")
-      return `Driving… sensor: ${SENSOR_LABEL[robot.sensor]} · ${progressPct}%`;
-    return "Set the rules, then press Run ▶";
-  }, [phase, robot.sensor, progressPct]);
+      return `Driving… reads ${SENSOR_LABEL[robot.sensor]} · ${progressPct}%`;
+    return round.blurb;
+  }, [done, phase, robot.sensor, progressPct, round.blurb]);
 
-  const carColor = phase === "won" ? ACCENT : phase === "lost" ? "#f87171" : "#67e8f9";
+  const carColor =
+    phase === "won" || done
+      ? ACCENT
+      : phase === "lost"
+        ? "#f87171"
+        : "#67e8f9";
+
+  const goalRing =
+    phase === "won" || done
+      ? `0 0 0 1px ${ACCENT}, 0 0 24px -4px ${ACCENT}`
+      : undefined;
 
   return (
     <div className="flex w-full flex-col gap-3 text-ink">
+      {/* ---------------- ROUND HEADER + PROGRESS DOTS ---------------- */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-xs font-semibold text-ink">
+          {round.label}
+        </span>
+        <span
+          aria-hidden
+          className="inline-flex items-center gap-1.5"
+          title={`Round ${roundIdx + 1} of ${ROUNDS.length}`}
+        >
+          {ROUNDS.map((_, i) => {
+            const solved = i < roundIdx || done;
+            const current = i === roundIdx && !done;
+            return (
+              <span
+                key={i}
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{
+                  background: solved
+                    ? ACCENT
+                    : current
+                      ? "rgba(52,211,153,0.3)"
+                      : "rgba(120,140,170,0.18)",
+                  border: `1.5px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.4)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+      </div>
+
       {/* ---------------- CANVAS ---------------- */}
       <div
         className="panel relative overflow-hidden rounded-xl"
-        style={{
-          boxShadow:
-            phase === "won" ? `0 0 0 1px ${ACCENT}, 0 0 24px -4px ${ACCENT}` : undefined,
-          transition: "box-shadow .3s ease",
-        }}
+        style={{ boxShadow: goalRing, transition: "box-shadow .3s ease" }}
       >
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="block h-auto w-full"
           role="img"
-          aria-label="Line-following robot track simulation"
+          aria-label={`Line-following robot, ${round.label}`}
         >
           <defs>
             <radialGradient id="lf-goal" cx="50%" cy="50%" r="50%">
@@ -326,7 +504,7 @@ export default function LineFollower({ onComplete }: ActivityProps) {
 
           {/* track glow + line */}
           <path
-            d={TRACK_D}
+            d={trackD}
             fill="none"
             stroke={ACCENT}
             strokeOpacity={0.18}
@@ -334,7 +512,7 @@ export default function LineFollower({ onComplete }: ActivityProps) {
             strokeLinecap="round"
           />
           <path
-            d={TRACK_D}
+            d={trackD}
             fill="none"
             stroke={ACCENT}
             strokeWidth={4}
@@ -342,25 +520,25 @@ export default function LineFollower({ onComplete }: ActivityProps) {
           />
 
           {/* start marker */}
-          <circle cx={TRACK[0].x} cy={TRACK[0].y} r={5} fill="#67e8f9" />
+          <circle cx={track[0].x} cy={track[0].y} r={5} fill="#67e8f9" />
           {/* goal marker */}
           <circle
-            cx={TRACK[TRACK.length - 1].x}
-            cy={TRACK[TRACK.length - 1].y}
+            cx={track[track.length - 1].x}
+            cy={track[track.length - 1].y}
             r={16}
             fill="url(#lf-goal)"
           />
           <circle
-            cx={TRACK[TRACK.length - 1].x}
-            cy={TRACK[TRACK.length - 1].y}
+            cx={track[track.length - 1].x}
+            cy={track[track.length - 1].y}
             r={6}
             fill="none"
             stroke={ACCENT}
             strokeWidth={2}
           />
           <text
-            x={TRACK[TRACK.length - 1].x}
-            y={TRACK[TRACK.length - 1].y - 14}
+            x={track[track.length - 1].x}
+            y={track[track.length - 1].y - 14}
             fill={ACCENT}
             fontSize={9}
             textAnchor="middle"
@@ -375,7 +553,6 @@ export default function LineFollower({ onComplete }: ActivityProps) {
               (robot.heading * 180) / Math.PI
             })`}
           >
-            {/* sensor whisker */}
             <line
               x1={0}
               y1={0}
@@ -395,13 +572,26 @@ export default function LineFollower({ onComplete }: ActivityProps) {
               stroke="#05070d"
               strokeWidth={1}
             />
-            {/* sensor eye */}
             <circle cx={6} cy={0} r={2} fill="#05070d" />
           </g>
         </svg>
 
+        {/* MIRROR badge so kids know the rule is twisted, not random */}
+        {round.mirror && (
+          <span
+            className="pointer-events-none absolute right-2 top-2 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-tech"
+            style={{
+              background: "rgba(248,113,113,0.16)",
+              border: "1px solid #f87171",
+              color: "#fca5a5",
+            }}
+          >
+            🔄 Mirror cam
+          </span>
+        )}
+
         {/* status line overlaid in-canvas */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between px-3 py-1.5">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-3 py-1.5">
           <span className="font-mono text-[11px] text-ink-dim">{status}</span>
           {phase === "running" && (
             <span
@@ -417,7 +607,11 @@ export default function LineFollower({ onComplete }: ActivityProps) {
       {/* ---------------- RULE EDITOR ---------------- */}
       <div className="flex flex-col gap-2">
         <p className="font-mono text-[11px] uppercase tracking-tech text-ink-faint">
-          If the sensor says… → steer like this
+          {round.tag === "DEBUG"
+            ? "Pre-wired rules — one is buggy. Fix it!"
+            : round.mirror
+              ? "Camera is flipped — set rules that still reach GOAL"
+              : "If the sensor reads… → steer like this"}
         </p>
         {(["left", "center", "right"] as Sensor[]).map((sensor) => (
           <div
@@ -444,7 +638,7 @@ export default function LineFollower({ onComplete }: ActivityProps) {
                     key={a.id}
                     type="button"
                     onClick={() => setRule(sensor, a.id)}
-                    disabled={running}
+                    disabled={locked}
                     aria-pressed={active}
                     aria-label={`${SENSOR_LABEL[sensor]}: ${a.label}`}
                     title={a.label}
@@ -470,27 +664,45 @@ export default function LineFollower({ onComplete }: ActivityProps) {
       {/* ---------------- CONTROLS ---------------- */}
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] text-ink-faint">
-          Tries: {tries}
+          Runs: {runs}
+          {isIdeal && !running && phase !== "won" && !done && (
+            <span style={{ color: ACCENT }}> · looks tuned ✓</span>
+          )}
         </span>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim"
-            aria-label="Reset the robot to the start"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            onClick={handleRun}
-            disabled={running}
-            className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
-            style={{ background: ACCENT, color: "#05070d" }}
-            aria-label="Run the simulation"
-          >
-            {running ? "Running…" : "Run ▶"}
-          </button>
+          {phase === "won" ? (
+            <button
+              type="button"
+              onClick={nextRound}
+              className="rounded-lg px-4 py-2 text-sm font-semibold"
+              style={{ background: ACCENT, color: "#05070d" }}
+              aria-label="Go to the next robot"
+            >
+              Next robot ▶
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={parkRobot}
+                disabled={locked}
+                className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim disabled:opacity-50"
+                aria-label="Reset the robot to the start"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleRun}
+                disabled={locked}
+                className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+                style={{ background: ACCENT, color: "#05070d" }}
+                aria-label="Run the simulation"
+              >
+                {running ? "Running…" : "Run ▶"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

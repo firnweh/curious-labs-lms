@@ -3,15 +3,25 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  Smart Plant Waterer — combine two sensors with AND, log the data  */
-/*  Learning goal: a bot acts only when BOTH conditions are true      */
-/*  (soil dry AND air hot). Build the rule, play the day, read the    */
-/*  logged data, and avoid the "dry but cold" traps.                  */
+/*  Smart Plant Waterer — design the watering brain over 3 rounds.     */
+/*  Learning goal: combine two sensors with AND logic so a bot waters  */
+/*  only when it truly helps. Each round changes the day AND the rule  */
+/*  shape, so you cannot brute-force one fixed answer — you must read  */
+/*  the data and reason about where BOTH conditions are true.          */
+/*                                                                     */
+/*  R1  AND      : dry AND hot  (learn the rule)                       */
+/*  R2  AND+gate : dry AND hot, but two decoys sit right on the edge   */
+/*                 of the dials — pick thresholds that thread between   */
+/*                 a watered tick and a trap tick.                      */
+/*  R3  DEBUG    : the bot ships with an almost-right rule that floods  */
+/*                 one trap and skips one real moment. Find & fix it.   */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#a855f7";
 const VIEW_W = 320;
 const VIEW_H = 150;
+const SOIL_MAX = 600;
+const TEMP_MAX = 40;
 
 /** One reading in the simulated day. soil: 0 (bone dry) → 600 (soaked). */
 interface Tick {
@@ -20,84 +30,202 @@ interface Tick {
   temp: number;
 }
 
-/**
- * A fixed day of 6 readings. Hand-picked so the target rule
- * (soil < 300 AND temp > 25) fires on exactly 3 ticks and the two
- * "dry but cold" traps stay OFF. Deterministic & always winnable.
- */
-const DAY: readonly Tick[] = [
-  { time: "06:00", soil: 280, temp: 18 }, // dry but COLD  → trap, stay OFF
+interface Round {
+  key: string;
+  badge: string;
+  brief: string;
+  day: readonly Tick[];
+  /** Allowed dial values (the search space) for this round. */
+  soilOptions: readonly number[];
+  tempOptions: readonly number[];
+  /** Correct thresholds — used only to derive TARGET, never shown. */
+  soilRule: number;
+  tempRule: number;
+  /** Starting dial positions. For DEBUG these are an almost-right rule. */
+  startSoil: number;
+  startTemp: number;
+  /** Why this round is tricky — one short coaching line. */
+  twist: string;
+}
+
+/* Round 1 — learn AND. Three dry-and-hot moments, two dry-but-cold traps. */
+const R1_DAY: readonly Tick[] = [
+  { time: "06:00", soil: 280, temp: 18 }, // dry but COLD  → OFF
   { time: "09:00", soil: 250, temp: 27 }, // dry & hot     → water
   { time: "12:00", soil: 180, temp: 33 }, // dry & hot     → water
-  { time: "15:00", soil: 460, temp: 31 }, // hot but WET   → stay OFF
-  { time: "18:00", soil: 200, temp: 22 }, // dry but COLD  → trap, stay OFF
+  { time: "15:00", soil: 460, temp: 31 }, // hot but WET   → OFF
+  { time: "18:00", soil: 200, temp: 22 }, // dry but COLD  → OFF
   { time: "21:00", soil: 120, temp: 26 }, // dry & hot     → water
 ] as const;
 
-/** The correct watering decisions, derived once from the target rule. */
-const TARGET: readonly boolean[] = DAY.map((t) => t.soil < 300 && t.temp > 25);
-const SOIL_OPTIONS: readonly number[] = [200, 250, 300, 350, 400] as const;
-const TEMP_OPTIONS: readonly number[] = [20, 22, 25, 28, 30] as const;
-const SOIL_MAX = 600;
-const TEMP_MAX = 40;
+/* Round 2 — edge cases. A near-dry/near-hot tick must be threaded so it
+   stays OFF, while a true dry-hot tick a hair away must fire. Only one
+   pair of dials separates them, so a careless guess floods or skips. */
+const R2_DAY: readonly Tick[] = [
+  { time: "07:00", soil: 230, temp: 24 }, // dry, almost-hot → OFF (temp too low)
+  { time: "10:00", soil: 230, temp: 26 }, // dry & hot       → water
+  { time: "13:00", soil: 340, temp: 32 }, // damp, hot       → OFF (soil too wet)
+  { time: "16:00", soil: 290, temp: 30 }, // dry & hot       → water
+  { time: "19:00", soil: 150, temp: 21 }, // dry but cold    → OFF
+  { time: "22:00", soil: 120, temp: 28 }, // dry & hot       → water
+] as const;
 
-type Phase = "idle" | "playing" | "won" | "miss";
+/* Round 3 — DEBUG. Ships with soil<400 AND temp>20 (too loose): it floods
+   the cold-but-dry trap at 17:00 and waters the wet tick at 11:00. Tighten
+   both dials to the only pair that fixes both bugs without dropping a real
+   watering. */
+const R3_DAY: readonly Tick[] = [
+  { time: "08:00", soil: 220, temp: 29 }, // dry & hot    → water
+  { time: "11:00", soil: 380, temp: 31 }, // hot but WET  → OFF (loose rule floods)
+  { time: "14:00", soil: 160, temp: 34 }, // dry & hot    → water
+  { time: "17:00", soil: 240, temp: 23 }, // dry but COLD → OFF (loose rule floods)
+  { time: "20:00", soil: 200, temp: 27 }, // dry & hot    → water
+  { time: "23:00", soil: 290, temp: 24 }, // borderline cold → OFF
+] as const;
+
+const ROUNDS: readonly Round[] = [
+  {
+    key: "r1",
+    badge: "Round 1 · Learn AND",
+    brief: "Water only when soil is DRY and air is HOT.",
+    day: R1_DAY,
+    soilOptions: [200, 250, 300, 350, 400],
+    tempOptions: [20, 22, 25, 28, 30],
+    soilRule: 300,
+    tempRule: 25,
+    startSoil: 400,
+    startTemp: 20,
+    twist: "Two cold mornings are dry too — AND must keep them OFF.",
+  },
+  {
+    key: "r2",
+    badge: "Round 2 · Thread the edge",
+    brief: "Same AND rule — but the traps sit RIGHT next to real moments.",
+    day: R2_DAY,
+    soilOptions: [220, 260, 300, 320, 360],
+    tempOptions: [22, 24, 25, 27, 29],
+    soilRule: 300,
+    tempRule: 25,
+    startSoil: 360,
+    startTemp: 22,
+    twist: "07:00 is dry but only 24° — your temp line must sit just above it.",
+  },
+  {
+    key: "r3",
+    badge: "Round 3 · Debug the bot",
+    brief: "The bot shipped with a too-loose rule that over-waters. Tighten the dials to stop the bad calls.",
+    day: R3_DAY,
+    soilOptions: [220, 260, 300, 350, 400],
+    tempOptions: [20, 22, 25, 26, 28],
+    soilRule: 300,
+    tempRule: 25,
+    startSoil: 400,
+    startTemp: 20,
+    twist: "It waters a wet tick and the cold ones too. Tighten BOTH dials.",
+  },
+] as const;
+
+const TOTAL_ROUNDS = ROUNDS.length;
+
+/** Decisions a (soil,temp) threshold pair makes across a day. */
+function decide(
+  day: readonly Tick[],
+  soil: number,
+  temp: number,
+): boolean[] {
+  return day.map((t) => t.soil < soil && t.temp > temp);
+}
+
+/** Stars: clean run (few replays) earns more. */
+function starsFor(replays: number): 1 | 2 | 3 {
+  if (replays <= 1) return 3;
+  if (replays <= 3) return 2;
+  return 1;
+}
+
+type Phase = "idle" | "playing" | "won-round" | "miss" | "won-all";
 
 export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
-  const [soilThresh, setSoilThresh] = useState<number>(400);
-  const [tempThresh, setTempThresh] = useState<number>(20);
+  const [roundIdx, setRoundIdx] = useState<number>(0);
+  const round = ROUNDS[roundIdx];
+  const DAY = round.day;
+  const TARGET = useMemo<boolean[]>(
+    () => decide(DAY, round.soilRule, round.tempRule),
+    [DAY, round.soilRule, round.tempRule],
+  );
+
+  const [soilThresh, setSoilThresh] = useState<number>(round.startSoil);
+  const [tempThresh, setTempThresh] = useState<number>(round.startTemp);
   const [tick, setTick] = useState<number>(0); // current scrubbed tick
   const [played, setPlayed] = useState<number>(-1); // furthest tick simulated
   const [phase, setPhase] = useState<Phase>("idle");
-  const [tries, setTries] = useState<number>(0);
-  const wonRef = useRef<boolean>(false);
+  const [tries, setTries] = useState<number>(0); // total play presses (all rounds)
+  const [roundReplays, setRoundReplays] = useState<number>(0); // plays this round
+  const [graded, setGraded] = useState<boolean>(false); // revealed correctness?
+  const reportedRef = useRef<boolean>(false);
+  const allDoneRef = useRef<boolean>(false);
 
   /** Decisions the learner's CURRENT rule makes across the whole day. */
   const decisions = useMemo<boolean[]>(
-    () => DAY.map((t) => t.soil < soilThresh && t.temp > tempThresh),
-    [soilThresh, tempThresh],
+    () => decide(DAY, soilThresh, tempThresh),
+    [DAY, soilThresh, tempThresh],
   );
 
-  const correctCount = useMemo<number>(
-    () => decisions.reduce((n, d, i) => (d === TARGET[i] ? n + 1 : n), 0),
-    [decisions],
+  const ruleSolved = useMemo<boolean>(
+    () => decisions.every((d, i) => d === TARGET[i]),
+    [decisions, TARGET],
   );
-  const ruleSolved = correctCount === DAY.length;
 
   // Which logged rows the learner has revealed so far (0..played).
   const loggedRows = played + 1;
   const cur = DAY[tick];
   const curPump = decisions[tick];
-  // A "flood" is watering a dry-but-cold trap (or any wrong ON).
-  const curFlood = phase !== "idle" && curPump && !TARGET[tick];
+  // Only show right/wrong markings once a run has been judged.
+  const curFlood = graded && phase !== "idle" && curPump && !TARGET[tick];
 
-  const finish = useCallback(() => {
-    if (wonRef.current) return;
-    wonRef.current = true;
-    setPhase("won");
-    onComplete({
-      passed: true,
-      stars: 3,
-      detail: "AND rule watered the 3 dry-hot moments and blocked both traps.",
-    });
-  }, [onComplete]);
+  const advanceOrFinish = useCallback(() => {
+    if (roundIdx < TOTAL_ROUNDS - 1) {
+      // Move to the next round, fresh dials & day.
+      const nextIdx = roundIdx + 1;
+      const next = ROUNDS[nextIdx];
+      setRoundIdx(nextIdx);
+      setSoilThresh(next.startSoil);
+      setTempThresh(next.startTemp);
+      setRoundReplays(0);
+      setPlayed(-1);
+      setTick(0);
+      setGraded(false);
+      setPhase("idle");
+    } else {
+      // All rounds cleared.
+      if (allDoneRef.current) return;
+      allDoneRef.current = true;
+      setPhase("won-all");
+      if (!reportedRef.current) {
+        reportedRef.current = true;
+        const stars = starsFor(roundReplays);
+        onComplete({
+          passed: true,
+          stars,
+          detail:
+            stars === 3
+              ? "Designed all 3 watering brains first try — true AND-logic engineer!"
+              : "All 3 rounds solved — your AND rules water only when it helps.",
+        });
+      }
+    }
+  }, [roundIdx, roundReplays, onComplete]);
 
   // Advance the simulated day one tick at a time while "playing".
   useEffect(() => {
     if (phase !== "playing") return;
     if (played >= DAY.length - 1) {
       // Reached the end of the day — judge the run.
+      setGraded(true);
       if (ruleSolved) {
-        finish();
+        setPhase("won-round");
       } else {
         setPhase("miss");
-        if (!wonRef.current) {
-          onComplete({
-            passed: false,
-            detail:
-              "Some decisions were wrong — check the rows ringed in red and retune your rule.",
-          });
-        }
       }
       return;
     }
@@ -105,24 +233,28 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
       const next = played + 1;
       setPlayed(next);
       setTick(next);
-    }, 650);
+    }, 600);
     return () => window.clearTimeout(id);
-  }, [phase, played, ruleSolved, finish, onComplete]);
+  }, [phase, played, ruleSolved, DAY.length]);
 
   const handlePlay = useCallback(() => {
-    if (wonRef.current) return;
+    if (phase === "playing" || phase === "won-round" || phase === "won-all")
+      return;
     setTries((t) => t + 1);
+    setRoundReplays((r) => r + 1);
+    setGraded(false);
     setPlayed(0);
     setTick(0);
     setPhase("playing");
-  }, []);
+  }, [phase]);
 
   const handleReset = useCallback(() => {
-    if (wonRef.current) return;
+    if (phase === "won-round" || phase === "won-all") return;
     setPlayed(-1);
     setTick(0);
+    setGraded(false);
     setPhase("idle");
-  }, []);
+  }, [phase]);
 
   const scrub = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,7 +266,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
 
   const setSoil = useCallback(
     (v: number) => {
-      if (wonRef.current) return;
+      if (phase === "won-round" || phase === "won-all") return;
       setSoilThresh(v);
       if (phase !== "idle") handleReset();
     },
@@ -142,7 +274,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
   );
   const setTemp = useCallback(
     (v: number) => {
-      if (wonRef.current) return;
+      if (phase === "won-round" || phase === "won-all") return;
       setTempThresh(v);
       if (phase !== "idle") handleReset();
     },
@@ -153,35 +285,56 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
   const chartD = useMemo<string>(() => {
     if (loggedRows < 1) return "";
     const pts = DAY.slice(0, loggedRows).map((t, i) => {
-      const x =
-        12 + (i / Math.max(DAY.length - 1, 1)) * (VIEW_W - 24);
+      const x = 12 + (i / Math.max(DAY.length - 1, 1)) * (VIEW_W - 24);
       const y = VIEW_H - 14 - (t.soil / SOIL_MAX) * (VIEW_H - 28);
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
     });
     return pts.join(" ");
-  }, [loggedRows]);
+  }, [DAY, loggedRows]);
+
+  const goodWaterings = useMemo<number>(
+    () => DAY.filter((_, i) => i < loggedRows && decisions[i] && TARGET[i]).length,
+    [DAY, loggedRows, decisions, TARGET],
+  );
+  const targetWaterings = useMemo<number>(
+    () => TARGET.filter(Boolean).length,
+    [TARGET],
+  );
 
   const plantGreen = useMemo<string>(() => {
-    // Brighter green as more correct waterings have been logged.
-    const goodSoFar = DAY.slice(0, loggedRows).filter(
-      (_, i) => decisions[i] && TARGET[i],
-    ).length;
-    const t = goodSoFar / 3;
+    const t = targetWaterings > 0 ? goodWaterings / targetWaterings : 0;
     const light = 32 + Math.round(t * 30);
     return `hsl(140 65% ${light}%)`;
-  }, [loggedRows, decisions]);
+  }, [goodWaterings, targetWaterings]);
 
   const status = useMemo<string>(() => {
-    if (phase === "won") return "Perfect day! The plant is thriving ✨";
+    if (phase === "won-all") return "Every round solved! The garden is thriving ✨";
+    if (phase === "won-round")
+      return `Round ${roundIdx + 1} cleared — press Next round ▶`;
     if (phase === "miss")
-      return "A wrong call slipped through — retune and replay.";
+      return "A wrong call slipped through — check the ⚠ rows and retune.";
     if (phase === "playing")
       return `Logging ${cur.time} · soil ${cur.soil} · temp ${cur.temp}°`;
     return "Build the rule, then press Play day ▶";
-  }, [phase, cur]);
+  }, [phase, cur, roundIdx]);
 
   const soilPct = Math.round((cur.soil / SOIL_MAX) * 100);
   const tempPct = Math.round((cur.temp / TEMP_MAX) * 100);
+
+  // Coaching for a missed run, based on the actual bug in the rule.
+  const missHint = useMemo<string>(() => {
+    const flooded = decisions.some((d, i) => d && !TARGET[i]);
+    const skipped = decisions.some((d, i) => !d && TARGET[i]);
+    if (flooded && skipped)
+      return "Both kinds of mistake — you watered a trap AND skipped a real moment. Nudge both dials.";
+    if (flooded)
+      return "You watered a tick that should stay OFF (too dry-only or too hot-only). Tighten a dial.";
+    if (skipped)
+      return "You skipped a dry-and-hot moment — loosen a dial just enough to let it fire.";
+    return "Replay to lock it in.";
+  }, [decisions, TARGET]);
+
+  const isDone = phase === "won-all";
 
   return (
     <div className="flex w-full max-w-[440px] flex-col gap-3 font-mono text-ink">
@@ -202,11 +355,40 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
         }
       `}</style>
 
+      {/* ---------------- ROUND HEADER ---------------- */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <span
+          className="rounded-md px-2 py-1 text-[11px] font-bold tracking-tech"
+          style={{ background: `${ACCENT}22`, color: ACCENT }}
+        >
+          {isDone ? "All rounds clear ✓" : round.badge}
+        </span>
+        <div className="flex gap-1" aria-hidden>
+          {ROUNDS.map((r, i) => (
+            <span
+              key={r.key}
+              className="h-2 w-2 rounded-full"
+              style={{
+                background:
+                  i < roundIdx || isDone
+                    ? ACCENT
+                    : i === roundIdx
+                      ? `${ACCENT}88`
+                      : "#1b2433",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+      {!isDone && (
+        <p className="-mt-1 px-1 text-[11px] text-ink-dim">{round.brief}</p>
+      )}
+
       {/* ---------------- DASHBOARD ---------------- */}
       <div
         className="panel relative overflow-hidden rounded-xl p-2"
         style={
-          phase === "won"
+          phase === "won-round" || phase === "won-all"
             ? { boxShadow: `0 0 0 1px ${ACCENT}, 0 0 24px -4px ${ACCENT}` }
             : undefined
         }
@@ -220,7 +402,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
               style={{
                 color: plantGreen,
                 animation:
-                  phase === "won"
+                  phase === "won-round" || phase === "won-all"
                     ? "g6smartplantwaterer-sway 1.6s ease-in-out infinite"
                     : undefined,
                 filter: `drop-shadow(0 0 6px ${plantGreen}55)`,
@@ -257,7 +439,6 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
             <Gauge
               label="Soil moisture"
               value={cur.soil}
-              max={SOIL_MAX}
               pct={soilPct}
               unit=""
               color="#38bdf8"
@@ -266,7 +447,6 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
             <Gauge
               label="Temperature"
               value={cur.temp}
-              max={TEMP_MAX}
               pct={tempPct}
               unit="°C"
               color="#fb923c"
@@ -330,7 +510,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
             const x = 12 + (i / Math.max(DAY.length - 1, 1)) * (VIEW_W - 24);
             const y = VIEW_H - 14 - (t.soil / SOIL_MAX) * (VIEW_H - 28);
             const on = decisions[i];
-            const wrong = on !== TARGET[i];
+            const wrong = graded && on !== TARGET[i];
             return (
               <g key={t.time}>
                 <circle
@@ -359,9 +539,19 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
           className="mt-1 px-1 text-xs"
           role="status"
           aria-live="polite"
-          style={phase === "won" ? { color: ACCENT } : undefined}
+          style={
+            phase === "won-round" || phase === "won-all"
+              ? { color: ACCENT }
+              : undefined
+          }
         >
-          <span className={phase === "won" ? "font-display" : "text-ink-dim"}>
+          <span
+            className={
+              phase === "won-round" || phase === "won-all"
+                ? "font-display"
+                : "text-ink-dim"
+            }
+          >
             {status}
           </span>
         </div>
@@ -388,13 +578,15 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
       {/* ---------------- RULE BUILDER ---------------- */}
       <div className="panel flex flex-col gap-2 rounded-xl p-3">
         <p className="text-[11px] uppercase tracking-tech text-ink-faint">
-          Snap the watering rule together
+          {roundIdx === 2
+            ? "Fix the bot's watering rule"
+            : "Snap the watering rule together"}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <Block>IF soil &lt;</Block>
           <Dial
             value={soilThresh}
-            options={SOIL_OPTIONS}
+            options={round.soilOptions}
             onPick={setSoil}
             ariaLabel="Soil threshold"
           />
@@ -402,7 +594,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
           <Block>temp &gt;</Block>
           <Dial
             value={tempThresh}
-            options={TEMP_OPTIONS}
+            options={round.tempOptions}
             onPick={setTemp}
             unit="°"
             ariaLabel="Temperature threshold"
@@ -410,38 +602,55 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
           <Block tone="then">THEN pump 8s</Block>
         </div>
 
+        {!isDone && (
+          <p className="text-[11px] text-ink-faint">
+            <span style={{ color: ACCENT }}>Hint:</span> {round.twist}
+          </p>
+        )}
+
         <div className="mt-1 flex items-center justify-between gap-2">
           <span className="text-[11px] text-ink-faint">
-            Tries: {tries} · correct calls: {correctCount}/{DAY.length}
+            Round {Math.min(roundIdx + 1, TOTAL_ROUNDS)}/{TOTAL_ROUNDS} · plays:{" "}
+            {tries}
           </span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleReset}
-              disabled={phase === "idle" || phase === "won"}
+              disabled={phase === "idle" || phase === "won-round" || isDone}
               className="rounded-lg border border-line bg-panel/60 px-3 py-1.5 text-xs font-medium text-ink-dim disabled:opacity-50"
               aria-label="Reset the day"
             >
               Reset
             </button>
-            <button
-              type="button"
-              onClick={handlePlay}
-              disabled={phase === "playing" || phase === "won"}
-              className="rounded-lg px-4 py-1.5 text-xs font-medium disabled:opacity-60"
-              style={{ background: ACCENT, color: "#0b0710" }}
-              aria-label="Play the simulated day"
-            >
-              {phase === "playing" ? "Playing…" : "Play day ▶"}
-            </button>
+            {phase === "won-round" ? (
+              <button
+                type="button"
+                onClick={advanceOrFinish}
+                className="rounded-lg px-4 py-1.5 text-xs font-medium"
+                style={{ background: ACCENT, color: "#0b0710" }}
+                aria-label="Go to the next round"
+              >
+                Next round ▶
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePlay}
+                disabled={phase === "playing" || isDone}
+                className="rounded-lg px-4 py-1.5 text-xs font-medium disabled:opacity-60"
+                style={{ background: ACCENT, color: "#0b0710" }}
+                aria-label="Play the simulated day"
+              >
+                {phase === "playing" ? "Playing…" : "Play day ▶"}
+              </button>
+            )}
           </div>
         </div>
 
         {phase === "miss" && (
           <p className="text-[11px]" style={{ color: ACCENT }}>
-            {decisions.some((d, i) => d && !TARGET[i])
-              ? "It was dry but cold — your AND rule should block this. Raise the temp dial."
-              : "You skipped a dry-and-hot moment — loosen a dial so it fires there."}
+            {missHint}
           </p>
         )}
       </div>
@@ -465,7 +674,7 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
               {DAY.map((t, i) => {
                 const shown = i < loggedRows;
                 const on = decisions[i];
-                const wrong = shown && on !== TARGET[i];
+                const wrong = shown && graded && on !== TARGET[i];
                 return (
                   <tr
                     key={t.time}
@@ -502,21 +711,21 @@ export default function SmartPlantWaterer({ onComplete }: ActivityProps) {
         </div>
       </div>
 
-      {/* ---------------- WHAT THE DATA TELLS THE FARMER ---------------- */}
-      {phase === "won" && (
+      {/* ---------------- WIN PANEL ---------------- */}
+      {isDone && (
         <div
           className="panel rounded-xl p-3 text-xs"
           style={{ boxShadow: `0 0 0 1px ${ACCENT}55` }}
         >
           <p className="font-display text-sm" style={{ color: ACCENT }}>
-            ✨🎉 What the data tells the farmer ⭐⭐⭐
+            ✨🎉 You engineered the watering brain ⭐⭐⭐
           </p>
           <p className="mt-1 leading-snug text-ink-dim">
-            The pump fired 3 times — only when the soil was dry{" "}
-            <b>and</b> the air was hot (09:00, 12:00, 21:00). On the two cold
-            mornings the soil was dry too, but the AND rule kept the pump OFF,
-            so no water was wasted. Combining two sensors makes a smarter, more
-            careful watering robot.
+            Across 3 different days you tuned an <b>AND</b> rule so the pump
+            fired only when the soil was dry <b>and</b> the air was hot — even
+            when traps sat right on the edge, and even when the bot shipped with
+            a buggy rule you had to debug. Combining two sensors with AND makes a
+            careful robot that never wastes water.
           </p>
         </div>
       )}
@@ -538,7 +747,6 @@ function Gauge({
 }: {
   label: string;
   value: number;
-  max: number;
   pct: number;
   unit: string;
   color: string;
@@ -573,7 +781,11 @@ function Block({
   const bg =
     tone === "and" ? "#a855f733" : tone === "then" ? "#38bdf833" : "#1b2433";
   const fg =
-    tone === "and" ? ACCENT : tone === "then" ? "#7dd3fc" : "var(--color-ink-dim, #9aa6b2)";
+    tone === "and"
+      ? ACCENT
+      : tone === "then"
+        ? "#7dd3fc"
+        : "var(--color-ink-dim, #9aa6b2)";
   return (
     <span
       className="rounded-md px-2 py-1 text-[11px] font-medium"

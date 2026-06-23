@@ -8,13 +8,24 @@ import { useCallback, useMemo, useRef, useState } from "react";
    THRESHOLD rule — "IF light < threshold → lamp ON, ELSE OFF" — lets a circuit
    decide on its own when to switch the lamp on.
 
-   The learner drags a day-night slider that deterministically drives the LDR
-   value (noon ~900, dusk ~400, night ~120). They drag a horizontal THRESHOLD
-   line on a vertical 0–1023 gauge; the rule it writes updates live in code-style
-   text. Pressing CHECK runs a fixed 4-step day (Morning, Afternoon, Dusk, Night)
-   and ticks/crosses whether the lamp behaved correctly (OFF in day, ON at dusk &
-   night). A green PASS band on the gauge shows every winning threshold, so it is
-   always solvable. WIN → onComplete({passed:true, stars:3}) exactly once.
+   The learner drags a horizontal THRESHOLD line on a vertical 0–1023 gauge; the
+   rule it writes updates live in code-style text. Pressing CHECK runs that round's
+   day (each time of day reads a fixed LDR) and ticks/crosses whether the lamp
+   behaved correctly. A day-night slider lets them probe the live sensor first.
+
+   THREE ESCALATING ROUNDS (deterministic — no luck):
+     1. Wide window. A green PASS band shows the winning range → gentle on-ramp.
+        Any threshold in (400, 700] wins.
+     2. Pinched window. A dim hallway reading (520) must stay OFF while dusk
+        (480) must come ON — the band is NARROW (480 < t ≤ 520). You must reason
+        from the two close numbers, not eyeball a fat band.
+     3. THE DUSTY-SENSOR TWIST. The band is HIDDEN. A dirty sensor reads LOW all
+        day (every reading shifted down), so the obvious "drop it in the middle"
+        guess fails. You must read the actual numbers and squeeze the line into
+        a tight gap (300 < t ≤ 360). Brute-force and the green-band crutch are
+        both gone — only the rule survives.
+
+   Finishing all three earns ⭐⭐⭐. WIN reports onComplete exactly once.
    ──────────────────────────────────────────────────────────────────────────── */
 
 const ACCENT = "#34d399";
@@ -41,7 +52,7 @@ const yToValue = (y: number): number =>
 const clamp = (v: number, lo: number, hi: number): number =>
   v < lo ? lo : v > hi ? hi : v;
 
-// ── The fixed 4-step day. Each step's LDR is deterministic. ──────────────────
+// ── A time-of-day reading inside a round. LDR is deterministic. ──────────────
 interface DayStep {
   id: string;
   label: string;
@@ -51,23 +62,76 @@ interface DayStep {
   shouldBeOn: boolean;
 }
 
-const DAY: readonly DayStep[] = [
-  { id: "morning", label: "Morning", emoji: "🌅", ldr: 880, shouldBeOn: false },
-  { id: "afternoon", label: "Afternoon", emoji: "☀️", ldr: 700, shouldBeOn: false },
-  { id: "dusk", label: "Dusk", emoji: "🌆", ldr: 400, shouldBeOn: true },
-  { id: "night", label: "Night", emoji: "🌙", ldr: 120, shouldBeOn: true },
+// ── A round = a labelled day + the winning threshold window + a drawn band ───
+interface Round {
+  key: string;
+  title: string;
+  brief: string; // one-line "what's new" shown above the gauge
+  steps: readonly DayStep[];
+  startThreshold: number;
+  /** True winning window: passLo < threshold ≤ passHi. */
+  passLo: number;
+  passHi: number;
+  /** Drawn green band [lo,hi]; null = hidden (the twist round). */
+  band: { lo: number; hi: number } | null;
+  /** Socratic hint for this round (never the exact answer). */
+  hint: string;
+}
+
+/* Round windows are derived directly from the readings:
+   - lamp OFF at value V  →  V must NOT be < threshold  →  threshold ≤ V
+   - lamp ON  at value V  →  V must be < threshold       →  threshold > V
+   so the window is (max ON-reading, min OFF-reading]. */
+const ROUNDS: readonly Round[] = [
+  {
+    key: "r1",
+    title: "Round 1 · A normal day",
+    brief: "Lamp OFF in daylight, ON at dusk & night. The green band is the safe zone.",
+    steps: [
+      { id: "r1-morning", label: "Morning", emoji: "🌅", ldr: 880, shouldBeOn: false },
+      { id: "r1-afternoon", label: "Afternoon", emoji: "☀️", ldr: 700, shouldBeOn: false },
+      { id: "r1-dusk", label: "Dusk", emoji: "🌆", ldr: 400, shouldBeOn: true },
+      { id: "r1-night", label: "Night", emoji: "🌙", ldr: 120, shouldBeOn: true },
+    ],
+    startThreshold: 250, // starts too low → lamp dark at dusk
+    passLo: 400,
+    passHi: 700,
+    band: { lo: 410, hi: 690 },
+    hint: "Dusk reads 400 and must be ON, so your line must sit ABOVE 400 — but still BELOW the afternoon 700.",
+  },
+  {
+    key: "r2",
+    title: "Round 2 · The tricky hallway",
+    brief: "A dim hallway (520) must stay OFF, but dusk (480) must come ON. The safe zone got thin!",
+    steps: [
+      { id: "r2-noon", label: "Noon", emoji: "☀️", ldr: 760, shouldBeOn: false },
+      { id: "r2-hall", label: "Dim hall", emoji: "🚪", ldr: 520, shouldBeOn: false },
+      { id: "r2-dusk", label: "Dusk", emoji: "🌆", ldr: 480, shouldBeOn: true },
+      { id: "r2-night", label: "Night", emoji: "🌙", ldr: 90, shouldBeOn: true },
+    ],
+    startThreshold: 650, // too high → lamp wrongly ON in the dim hall
+    passLo: 480,
+    passHi: 520,
+    band: { lo: 486, hi: 514 },
+    hint: "Only 40 numbers separate the dim hall (520, OFF) from dusk (480, ON). Squeeze the line between them: above 480, at-or-below 520.",
+  },
+  {
+    key: "r3",
+    title: "Round 3 · Dusty sensor 🌫️",
+    brief: "The sensor is dirty, so EVERY reading is low. No green band — trust the numbers, not your eyes.",
+    steps: [
+      { id: "r3-day", label: "Daytime", emoji: "🌤️", ldr: 510, shouldBeOn: false },
+      { id: "r3-cloud", label: "Cloudy", emoji: "☁️", ldr: 360, shouldBeOn: false },
+      { id: "r3-dusk", label: "Dusk", emoji: "🌆", ldr: 300, shouldBeOn: true },
+      { id: "r3-night", label: "Night", emoji: "🌙", ldr: 70, shouldBeOn: true },
+    ],
+    startThreshold: 450, // a "middle" guess that fails — cloudy 360 wrongly ON
+    passLo: 300,
+    passHi: 360,
+    band: null, // hidden — defeats the drop-it-in-the-green strategy
+    hint: "Dust pulls every reading down. Cloudy reads 360 and must stay OFF; dusk reads 300 and must come ON. Land between 300 and 360.",
+  },
 ];
-
-// Pass band: lamp must be OFF at afternoon (700) and ON at dusk (400).
-//   OFF at 700  → 700 must NOT be < threshold → threshold ≤ 700
-//   ON  at 400  → 400 must be < threshold      → threshold > 400
-// So any threshold in (400, 700] wins. We show a slightly inset green band.
-const PASS_LO = 401;
-const PASS_HI = 700;
-const BAND_DRAW_LO = 410; // drawn band stays comfortably inside the true range
-const BAND_DRAW_HI = 690;
-
-const START_THRESHOLD = 250; // a wrong-ish start: lamp stays dark at dusk
 
 // The outside-light slider (0 = night, 1 = bright noon) → drives the live LDR.
 const START_DAYLIGHT = 0.7;
@@ -77,16 +141,22 @@ const daylightToLdr = (d: number): number => Math.round(80 + d * 850);
 type Mark = "pass" | "fail" | "pending";
 
 export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
-  const [threshold, setThreshold] = useState<number>(START_THRESHOLD);
+  const [roundIdx, setRoundIdx] = useState<number>(0);
+  const round = ROUNDS[roundIdx];
+
+  const [threshold, setThreshold] = useState<number>(ROUNDS[0].startThreshold);
   const [daylight, setDaylight] = useState<number>(START_DAYLIGHT);
   const [dragging, setDragging] = useState<boolean>(false);
   const [marks, setMarks] = useState<Record<string, Mark>>({});
-  const [won, setWon] = useState<boolean>(false);
+  const [roundClear, setRoundClear] = useState<boolean>(false); // this round solved
+  const [won, setWon] = useState<boolean>(false); // ALL rounds solved
   const [hintShown, setHintShown] = useState<boolean>(false);
   const [checked, setChecked] = useState<boolean>(false);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const reportedRef = useRef<boolean>(false);
+
+  const locked = roundClear || won; // threshold frozen between solving & advancing
 
   // Live LDR reading driven by the day-night slider (deterministic).
   const liveLdr = useMemo<number>(() => daylightToLdr(daylight), [daylight]);
@@ -104,14 +174,14 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
 
   const onThreshDown = useCallback(
     (e: React.PointerEvent<SVGGElement>): void => {
-      if (won) return;
+      if (locked) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
       setDragging(true);
       setThreshold(pointerToThreshold(e.clientY));
       setChecked(false);
     },
-    [won, pointerToThreshold],
+    [locked, pointerToThreshold],
   );
 
   const onThreshMove = useCallback(
@@ -134,19 +204,19 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
 
   const nudgeThreshold = useCallback(
     (delta: number): void => {
-      if (won) return;
+      if (locked) return;
       setThreshold((t) => clamp(t + delta, 0, LDR_MAX));
       setChecked(false);
     },
-    [won],
+    [locked],
   );
 
-  // ── CHECK: run the fixed 4-step day deterministically. ─────────────────────
+  // ── CHECK: run this round's day deterministically. ─────────────────────────
   const runCheck = useCallback((): void => {
-    if (won) return;
+    if (locked) return;
     const next: Record<string, Mark> = {};
     let allPass = true;
-    for (const step of DAY) {
+    for (const step of round.steps) {
       const lampOn = step.ldr < threshold; // the rule, applied
       const correct = lampOn === step.shouldBeOn;
       next[step.id] = correct ? "pass" : "fail";
@@ -154,28 +224,45 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
     }
     setMarks(next);
     setChecked(true);
-    if (allPass && !reportedRef.current) {
+    if (!allPass) return; // gentle retry — no failure report spam
+
+    const isLast = roundIdx === ROUNDS.length - 1;
+    setRoundClear(true);
+    if (isLast && !reportedRef.current) {
       reportedRef.current = true;
       setWon(true);
       onComplete({
         passed: true,
         stars: 3,
-        detail: `Threshold ${threshold} works all day — lamp OFF in daylight, ON at dusk & night. 💡✨`,
-      });
-    } else if (!allPass) {
-      onComplete({
-        passed: false,
-        detail: "Almost! Slide the threshold into the green band so the lamp is right at every time of day.",
+        detail:
+          "All three days solved — even the dusty sensor! You set the lamp's threshold by reasoning from the numbers. 💡⭐⭐⭐",
       });
     }
-  }, [won, threshold, onComplete]);
+  }, [locked, round, roundIdx, threshold, onComplete]);
+
+  // Advance to the next round (only available once the current one is clear).
+  const nextRound = useCallback((): void => {
+    if (!roundClear || won) return;
+    const ni = roundIdx + 1;
+    if (ni >= ROUNDS.length) return;
+    setRoundIdx(ni);
+    setThreshold(ROUNDS[ni].startThreshold);
+    setDaylight(START_DAYLIGHT);
+    setMarks({});
+    setChecked(false);
+    setRoundClear(false);
+    setHintShown(false);
+    setDragging(false);
+  }, [roundClear, won, roundIdx]);
 
   const reset = useCallback((): void => {
     reportedRef.current = false;
-    setThreshold(START_THRESHOLD);
+    setRoundIdx(0);
+    setThreshold(ROUNDS[0].startThreshold);
     setDaylight(START_DAYLIGHT);
     setDragging(false);
     setMarks({});
+    setRoundClear(false);
     setWon(false);
     setChecked(false);
     setHintShown(false);
@@ -187,24 +274,48 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
     if (step.shouldBeOn) {
       return `Lamp stayed OFF at ${step.label.toLowerCase()} — your line must sit ABOVE ${step.ldr}.`;
     }
-    return `Lamp came ON in daylight — your line must sit BELOW ${step.ldr}.`;
+    return `Lamp came ON when it should be off — your line must sit BELOW ${step.ldr}.`;
   }, []);
 
   const passCount = useMemo<number>(
-    () => DAY.reduce((n, s) => (marks[s.id] === "pass" ? n + 1 : n), 0),
-    [marks],
+    () => round.steps.reduce((n, s) => (marks[s.id] === "pass" ? n + 1 : n), 0),
+    [marks, round],
   );
 
   const status = won
-    ? "Solved! The lamp switches itself on at dusk and night. ⭐⭐⭐"
-    : checked
-      ? `${passCount} of 4 times of day correct — nudge the line and check again.`
-      : "Drag the threshold line, then press CHECK to run the day.";
+    ? "Solved all three days! The lamp switches itself on at the right time. ⭐⭐⭐"
+    : roundClear
+      ? `${round.title} cleared! Press NEXT for the next challenge. ▶`
+      : checked
+        ? `${passCount} of ${round.steps.length} times of day correct — nudge the line and check again.`
+        : "Drag the threshold line, then press CHECK to run the day.";
 
   const threshY = valueToY(threshold);
+  const isLastRound = roundIdx === ROUNDS.length - 1;
 
   return (
     <div className="mx-auto flex w-full max-w-[440px] flex-col items-center gap-3 font-mono text-ink">
+      {/* ── Round progress dots ── */}
+      <div className="flex w-full items-center justify-center gap-2" aria-label={`Round ${roundIdx + 1} of ${ROUNDS.length}`}>
+        {ROUNDS.map((r, i) => {
+          const done = won || i < roundIdx || (i === roundIdx && roundClear);
+          const active = i === roundIdx && !roundClear && !won;
+          return (
+            <span
+              key={r.key}
+              aria-hidden="true"
+              className="h-2.5 rounded-full transition-all"
+              style={{
+                width: active ? 26 : 10,
+                background: done ? ACCENT : active ? ACCENT : "var(--color-line, #33405c)",
+                opacity: done || active ? 1 : 0.5,
+                boxShadow: active ? `0 0 8px ${ACCENT}88` : undefined,
+              }}
+            />
+          );
+        })}
+      </div>
+
       {/* ── Status pill ── */}
       <div
         className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-1.5 text-center text-sm"
@@ -212,15 +323,25 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
         aria-live="polite"
         aria-label={status}
         style={{
-          background: won ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: won || roundClear ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${won || roundClear ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: won || roundClear ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
-        <span aria-hidden="true">{won ? "🎉" : "💡"}</span>
-        <span aria-hidden="true">{won ? "⭐⭐⭐" : "IF light < threshold → ON"}</span>
+        <span aria-hidden="true">{won ? "🎉" : roundClear ? "✅" : "💡"}</span>
+        <span aria-hidden="true">
+          {won ? "⭐⭐⭐" : roundClear ? `${round.title} cleared!` : "IF light < threshold → ON"}
+        </span>
         {won && <span aria-hidden="true">✨</span>}
       </div>
+
+      {/* ── What's new this round ── */}
+      {!won && (
+        <p className="w-full text-center text-[11px] text-ink-dim" aria-label={`${round.title}. ${round.brief}`}>
+          <span className="font-display" style={{ color: ACCENT }} aria-hidden="true">{round.title}</span>
+          <span aria-hidden="true"> — {round.brief}</span>
+        </p>
+      )}
 
       {/* ── Day-night slider drives the outside light → live LDR ── */}
       <div className="w-full rounded-2xl border border-line bg-panel/60 p-3">
@@ -260,7 +381,7 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
           className="block w-full select-none"
           style={{ touchAction: "none" }}
           role="img"
-          aria-label="A room with a window and an automatic lamp, next to a light-sensor gauge from 0 to 1023 with a draggable threshold line and a green pass band."
+          aria-label="A room with a window and an automatic lamp, next to a light-sensor gauge from 0 to 1023 with a draggable threshold line."
         >
           <defs>
             <linearGradient id="g4nightlamp-sky" x1="0" y1="0" x2="0" y2="1">
@@ -299,31 +420,42 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
           {/* LDR sensor tile on the wall, showing the live number */}
           <g aria-label={`Light sensor reads ${liveLdr}`}>
             <rect x={36} y={224} width={94} height={36} rx={6} fill="#0b1220" stroke={ACCENT} strokeWidth={1.5} />
-            <text x={50} y={242} fontSize={13} aria-hidden="true">🔆</text>
+            <text x={50} y={242} fontSize={13} aria-hidden="true">{isLastRound ? "🌫️" : "🔆"}</text>
             <text x={120} y={243} fontSize={16} textAnchor="end" dominantBaseline="central" fill={ACCENT} className="font-display" aria-hidden="true">
               {liveLdr}
             </text>
-            <text x={83} y={255} fontSize={8} textAnchor="middle" fill="#6b7a90" aria-hidden="true">LDR reading</text>
+            <text x={83} y={255} fontSize={8} textAnchor="middle" fill="#6b7a90" aria-hidden="true">
+              {isLastRound ? "dusty LDR" : "LDR reading"}
+            </text>
           </g>
 
           {/* ── The vertical gauge (0..1023) ── */}
           <rect x={GAUGE_X} y={GAUGE_TOP} width={GAUGE_W} height={GAUGE_H} rx={8} fill="rgba(255,255,255,0.03)" stroke="rgba(120,140,170,0.4)" strokeWidth={2} />
 
-          {/* green PASS band — every winning threshold lives here */}
-          <rect
-            x={GAUGE_X}
-            y={valueToY(BAND_DRAW_HI)}
-            width={GAUGE_W}
-            height={valueToY(BAND_DRAW_LO) - valueToY(BAND_DRAW_HI)}
-            fill={ACCENT}
-            opacity={0.16}
-          />
-          <text x={GAUGE_X + GAUGE_W / 2} y={valueToY((BAND_DRAW_LO + BAND_DRAW_HI) / 2)} fontSize={8} textAnchor="middle" dominantBaseline="central" fill={ACCENT} aria-hidden="true">
-            PASS
-          </text>
+          {/* green PASS band — every winning threshold lives here (hidden in the twist round) */}
+          {round.band && (
+            <>
+              <rect
+                x={GAUGE_X}
+                y={valueToY(round.band.hi)}
+                width={GAUGE_W}
+                height={valueToY(round.band.lo) - valueToY(round.band.hi)}
+                fill={ACCENT}
+                opacity={0.16}
+              />
+              <text x={GAUGE_X + GAUGE_W / 2} y={valueToY((round.band.lo + round.band.hi) / 2)} fontSize={8} textAnchor="middle" dominantBaseline="central" fill={ACCENT} aria-hidden="true">
+                PASS
+              </text>
+            </>
+          )}
+          {!round.band && (
+            <text x={GAUGE_X + GAUGE_W / 2} y={GAUGE_TOP + 14} fontSize={7.5} textAnchor="middle" fill="#6b7a90" aria-hidden="true">
+              no band 🌫️
+            </text>
+          )}
 
           {/* gauge ticks + step markers (where each time-of-day reads) */}
-          {DAY.map((s) => {
+          {round.steps.map((s) => {
             const ty = valueToY(s.ldr);
             const mk = marks[s.id];
             const ring = mk === "pass" ? ACCENT : mk === "fail" ? "#f87171" : "#6b7a90";
@@ -354,7 +486,7 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
             onPointerMove={onThreshMove}
             onPointerUp={onThreshUp}
             onPointerCancel={onThreshUp}
-            style={{ cursor: won ? "default" : "grab", touchAction: "none" }}
+            style={{ cursor: locked ? "default" : "grab", touchAction: "none" }}
             role="slider"
             tabIndex={0}
             aria-label="Threshold line — drag up or down to set when the lamp switches on"
@@ -406,7 +538,7 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
 
       {/* ── Day-sequence checklist ── */}
       <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-        {DAY.map((s) => {
+        {round.steps.map((s) => {
           const mk: Mark = marks[s.id] ?? "pending";
           const border = mk === "pass" ? ACCENT : mk === "fail" ? "#f87171" : "var(--color-line, #33405c)";
           return (
@@ -431,9 +563,9 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
       </div>
 
       {/* one-line reasons for any failing step */}
-      {checked && !won && (
+      {checked && !roundClear && !won && (
         <div className="w-full space-y-1" aria-live="polite">
-          {DAY.filter((s) => marks[s.id] === "fail").map((s) => (
+          {round.steps.filter((s) => marks[s.id] === "fail").map((s) => (
             <p key={s.id} className="text-[11px]" style={{ color: "#f87171" }}>
               {s.emoji} {reasonFor(s, "fail")}
             </p>
@@ -442,9 +574,9 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
       )}
 
       {/* hint reveal */}
-      {hintShown && !won && (
+      {hintShown && !roundClear && !won && (
         <p className="w-full text-[11px]" style={{ color: ACCENT }} aria-live="polite">
-          💡 At dusk the sensor reads 400 — your line must sit just above that, but still below the afternoon reading of 700.
+          💡 {round.hint}
         </p>
       )}
 
@@ -453,7 +585,7 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
         <button
           type="button"
           onPointerDown={(e) => { e.preventDefault(); reset(); }}
-          aria-label="Start over"
+          aria-label="Start over from round 1"
           className="grid h-[54px] w-[56px] place-items-center rounded-2xl text-xl transition active:scale-90"
           style={{ touchAction: "none", background: "rgba(255,255,255,0.05)", border: "2px solid var(--color-line, #33405c)" }}
         >
@@ -462,27 +594,42 @@ export default function AutomaticNightLamp({ onComplete }: ActivityProps) {
         <button
           type="button"
           onPointerDown={(e) => { e.preventDefault(); setHintShown(true); }}
-          disabled={won}
+          disabled={locked}
           aria-label="Show a hint"
           className="grid h-[54px] w-[56px] place-items-center rounded-2xl text-xl transition active:scale-90 disabled:opacity-40"
           style={{ touchAction: "none", background: "rgba(255,255,255,0.05)", border: "2px solid var(--color-line, #33405c)" }}
         >
           <span aria-hidden="true">💭</span>
         </button>
-        <button
-          type="button"
-          onPointerDown={(e) => { e.preventDefault(); runCheck(); }}
-          disabled={won}
-          aria-label="Check the threshold across the whole day"
-          className="flex h-[54px] flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold transition active:scale-95 disabled:opacity-50"
-          style={{ touchAction: "none", background: ACCENT, color: "#04130d", boxShadow: "0 6px 0 0 #15916a" }}
-        >
-          <span aria-hidden="true">{won ? "✅" : "▶"}</span>
-          <span aria-hidden="true" className="font-extrabold">{won ? "SOLVED" : "CHECK"}</span>
-        </button>
+
+        {/* CHECK while solving → NEXT once a non-final round is clear → SOLVED at the end */}
+        {roundClear && !won ? (
+          <button
+            type="button"
+            onPointerDown={(e) => { e.preventDefault(); nextRound(); }}
+            aria-label="Go to the next round"
+            className="flex h-[54px] flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold transition active:scale-95"
+            style={{ touchAction: "none", background: ACCENT, color: "#04130d", boxShadow: "0 6px 0 0 #15916a" }}
+          >
+            <span aria-hidden="true">▶</span>
+            <span aria-hidden="true" className="font-extrabold">NEXT ROUND</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onPointerDown={(e) => { e.preventDefault(); runCheck(); }}
+            disabled={won}
+            aria-label="Check the threshold across the whole day"
+            className="flex h-[54px] flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold transition active:scale-95 disabled:opacity-50"
+            style={{ touchAction: "none", background: ACCENT, color: "#04130d", boxShadow: "0 6px 0 0 #15916a" }}
+          >
+            <span aria-hidden="true">{won ? "✅" : "▶"}</span>
+            <span aria-hidden="true" className="font-extrabold">{won ? "SOLVED" : "CHECK"}</span>
+          </button>
+        )}
       </div>
 
-      {/* celebratory floaters when solved */}
+      {/* celebratory floaters when fully solved */}
       {won && (
         <div className="pointer-events-none flex justify-center gap-2 text-2xl">
           <span style={{ animation: "g4nightlamp-float 1.6s ease-in-out infinite" }} aria-hidden="true">✨</span>

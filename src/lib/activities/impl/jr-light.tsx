@@ -1,16 +1,26 @@
 "use client";
 import type { ActivityProps } from "@/lib/activities/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * "Light It Up" 💡 — a JUNIOR (Class 1-3, age ~6-8) ROBOTICS lab.
- * Single learning goal: a circuit must be a COMPLETE LOOP for power to flow.
+ * Learning goal: power only flows when the circuit is a COMPLETE LOOP — so the
+ * child must FIND every break and close them ALL, not tap one lucky spot.
  *
- * A battery 🔋 and a bulb 💡 are joined by a wire loop with ONE open GAP.
- * The child taps the glowing gap to snap the missing wire in — the loop
- * closes, a spark zips around the wire, and the bulb bursts to life with a
- * warm pulsing glow and little rays. Deterministic + always winnable.
- * Near-zero reading: emoji, colour, one big word (TAP / ON).
+ * Upgraded from a single-tap toy into a 3-ROUND circuit-debugging puzzle:
+ *   • Round 1 — one open GAP to snap shut (eases them in, the classic feel).
+ *   • Round 2 — TWO gaps; closing only one leaves the bulb dark, so the child
+ *     must hunt the whole loop and fix every break.
+ *   • Round 3 — the TWIST: a sneaky open SWITCH that *looks* like solid wire
+ *     (its lever is flipped up) hides among the gaps. Tapping only the obvious
+ *     sparkly gaps fails — the child has to trace the loop, spot the broken
+ *     switch, and flip it down too. Guessing / pattern-matching can't win it.
+ *
+ * Closing the LAST break snaps the wire in, a spark zips around the loop, and
+ * the bulb bursts to life. Win all three → big celebration, ⭐⭐⭐, onComplete
+ * once. Wrong/incomplete taps never scold: a gentle wobble + retry. Deterministic,
+ * always winnable, near-zero reading (emoji, colour, shape, animation), touch-first.
  */
 
 const ACCENT = "#34d399"; // robotics green = success / glow
@@ -19,65 +29,305 @@ const WIRE_ON = "#34d399";
 const SPARK = "#fff6c4";
 
 /**
- * Rounded-rectangle loop in a 320x240 SVG. The wire runs all the way around;
- * the TOP-MIDDLE segment is the missing gap the child closes. The full loop
- * path is used both to draw the lit wire and to send the spark zipping round.
+ * Rounded-rectangle loop in a 320x240 SVG. The wire runs all the way around.
+ * Breaks are punched out at fixed points on this path; each round opens a
+ * different set, and the child must close every one of them.
  */
 const LOOP_PATH =
   "M 110 56 L 70 56 Q 48 56 48 80 L 48 168 Q 48 192 72 192 L 248 192 Q 272 192 272 168 L 272 80 Q 272 56 250 56 L 210 56";
-// The gap sits across the top between x=110 and x=210 at y=56.
-const GAP = { x1: 110, y: 56, x2: 210 } as const;
+
+type Orient = "h" | "v"; // how the wire runs through this break
+type BreakKind = "gap" | "switch";
+
+/**
+ * Every break the puzzle can open, keyed by id. A "gap" is two exposed ends the
+ * child snaps together. A "switch" is a lever sitting on solid-looking wire —
+ * the decoy — that must be flipped down. Coordinates sit ON the loop path.
+ */
+const SPOTS: Record<
+  string,
+  { x: number; y: number; orient: Orient; kind: BreakKind; len: number }
+> = {
+  top: { x: 160, y: 56, orient: "h", kind: "gap", len: 100 }, // the classic top gap (over the bulb's row)
+  bottom: { x: 160, y: 192, orient: "h", kind: "gap", len: 96 }, // bottom wire
+  left: { x: 48, y: 124, orient: "v", kind: "gap", len: 84 }, // left side wire
+  right: { x: 272, y: 124, orient: "v", kind: "switch", len: 84 }, // right side — the sneaky switch
+};
+type SpotId = keyof typeof SPOTS;
+
+/** The three rounds: which breaks are open. Hand-authored, escalating, no RNG. */
+const ROUNDS: ReadonlyArray<ReadonlyArray<SpotId>> = [
+  ["top"], // R1: one gap
+  ["top", "bottom"], // R2: two gaps to find
+  ["top", "right"], // R3: a gap + the decoy SWITCH (looks like wire — must flip it)
+];
+
+type Phase = "solving" | "won" | "done" | "oops";
 
 export default function LightItUp({ onComplete }: ActivityProps) {
-  const [closed, setClosed] = useState<boolean>(false);
-  const [wobble, setWobble] = useState<boolean>(false);
+  const [round, setRound] = useState<number>(0);
+  const [fixed, setFixed] = useState<Record<string, boolean>>({});
+  const [phase, setPhase] = useState<Phase>("solving");
+  const [poke, setPoke] = useState<number>(0); // bumps to retrigger the wobble pulse
 
   const reportedRef = useRef<boolean>(false);
   const wobbleTimer = useRef<number | null>(null);
+  const advanceTimer = useRef<number | null>(null);
+  const audioRef = useRef<AudioContext | null>(null);
 
-  const lit = closed; // complete loop → power flows → bulb glows
+  const openSpots = ROUNDS[round];
+  const lit = phase === "won" || phase === "done"; // complete loop → bulb glows
+  const allFixed = openSpots.every((id) => fixed[id]);
 
-  const closeGap = useCallback((): void => {
-    if (closed) return;
-    setClosed(true);
-  }, [closed]);
-
-  const nudge = useCallback((): void => {
-    setWobble(true);
+  const clearTimers = useCallback((): void => {
     if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
-    wobbleTimer.current = window.setTimeout(() => setWobble(false), 520);
+    if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+    wobbleTimer.current = null;
+    advanceTimer.current = null;
   }, []);
 
-  // Tapping the bulb itself before the loop is closed: gentle wobble, no scold.
+  // ── Soft optional sound, made on the user's gesture; never throws/blocks. ──
+  const blip = useCallback((freq: number, dur: number): void => {
+    try {
+      type WinAudio = typeof AudioContext;
+      const w = window as unknown as { webkitAudioContext?: WinAudio };
+      const Ctx: WinAudio | undefined = window.AudioContext ?? w.webkitAudioContext;
+      if (!Ctx) return;
+      const ac = audioRef.current ?? new Ctx();
+      audioRef.current = ac;
+      if (ac.state === "suspended") void ac.resume();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ac.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, ac.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start();
+      osc.stop(ac.currentTime + dur + 0.02);
+    } catch {
+      /* sound is a nicety — silently ignore any failure */
+    }
+  }, []);
+
+  const chime = useCallback((): void => {
+    [523, 659, 784, 1046].forEach((f, i) => {
+      window.setTimeout(() => blip(f, 0.18), i * 110);
+    });
+  }, [blip]);
+
+  const nudge = useCallback((): void => {
+    blip(300, 0.09);
+    setPoke((p) => p + 1);
+    setPhase("oops");
+    if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
+    wobbleTimer.current = window.setTimeout(() => setPhase("solving"), 520);
+  }, [blip]);
+
+  // Close one break. When the last one closes, the loop lights up.
+  const closeSpot = useCallback(
+    (id: SpotId): void => {
+      if (lit || fixed[id]) return;
+      blip(660, 0.08);
+      const nextFixed = { ...fixed, [id]: true };
+      setFixed(nextFixed);
+      const complete = openSpots.every((s) => nextFixed[s]);
+      if (complete) {
+        chime();
+        const last = round >= ROUNDS.length - 1;
+        if (last) {
+          setPhase("done");
+          if (!reportedRef.current) {
+            reportedRef.current = true;
+            onComplete({ passed: true, stars: 3, detail: "You fixed every circuit — it lit up! 💡💡💡" });
+          }
+        } else {
+          setPhase("won");
+          if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+          advanceTimer.current = window.setTimeout(() => {
+            setRound((r) => r + 1);
+            setFixed({});
+            setPhase("solving");
+          }, 1250);
+        }
+      } else {
+        setPhase("solving");
+      }
+    },
+    [lit, fixed, openSpots, round, blip, chime, onComplete],
+  );
+
+  // Tapping the bulb before the loop is whole: gentle wobble, no scold, no onComplete spam.
   const pokeBulb = useCallback((): void => {
     if (lit) return;
     nudge();
-    onComplete({ passed: false, detail: "The loop has a gap — close it first! 🔌" });
-  }, [lit, nudge, onComplete]);
+  }, [lit, nudge]);
 
   const reset = useCallback((): void => {
-    if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
+    clearTimers();
     reportedRef.current = false;
-    setClosed(false);
-    setWobble(false);
-  }, []);
+    setRound(0);
+    setFixed({});
+    setPhase("solving");
+    setPoke(0);
+  }, [clearTimers]);
 
-  // Celebrate exactly once when the loop is complete.
-  useEffect(() => {
-    if (lit && !reportedRef.current) {
-      reportedRef.current = true;
-      onComplete({ passed: true, stars: 3, detail: "Complete loop — the bulb lit up! 💡" });
-    }
-  }, [lit, onComplete]);
+  useEffect(() => () => clearTimers(), [clearTimers]);
 
-  useEffect(
-    () => () => {
-      if (wobbleTimer.current !== null) window.clearTimeout(wobbleTimer.current);
-    },
-    [],
+  const wobbling = phase === "oops";
+  const done = phase === "done";
+  const won = phase === "won";
+
+  // How many breaks still need closing this round (drives the little hint dots).
+  const remaining = useMemo(
+    () => openSpots.filter((id) => !fixed[id]).length,
+    [openSpots, fixed],
   );
 
-  const statusEmoji = lit ? "🎉" : "👆";
+  const statusEmoji = done ? "🏆" : won ? "🎉" : wobbling ? "🤔" : lit ? "🎉" : "🔎";
+
+  // Geometry helpers for drawing a break (gap ends or switch lever) on the path.
+  const renderBreak = (id: SpotId): ReactElement => {
+    const s = SPOTS[id];
+    const isFixed = !!fixed[id];
+    const horizontal = s.orient === "h";
+    const half = s.len / 2;
+    const e1 = horizontal ? { x: s.x - half, y: s.y } : { x: s.x, y: s.y - half };
+    const e2 = horizontal ? { x: s.x + half, y: s.y } : { x: s.x, y: s.y + half };
+
+    // Big invisible finger target straddling the break.
+    const target = horizontal
+      ? { x: s.x - half - 12, y: s.y - 26, w: s.len + 24, h: 52 }
+      : { x: s.x - 26, y: s.y - half - 12, w: 52, h: s.len + 24 };
+
+    return (
+      <g
+        key={id}
+        onClick={() => closeSpot(id)}
+        onPointerDown={() => closeSpot(id)}
+        role="button"
+        tabIndex={isFixed ? -1 : 0}
+        aria-label={
+          isFixed
+            ? "This break is closed"
+            : s.kind === "switch"
+              ? "A switch is open here — tap to flip it closed"
+              : "A gap in the wire — tap to snap it shut"
+        }
+        style={{ cursor: isFixed ? "default" : "pointer" }}
+      >
+        <rect x={target.x} y={target.y} width={target.w} height={target.h} fill="transparent" />
+
+        {isFixed ? (
+          // The wire (or switch) snaps closed with a springy bounce — power can pass.
+          <line
+            className="jrlight-anim"
+            x1={e1.x}
+            y1={e1.y}
+            x2={e2.x}
+            y2={e2.y}
+            stroke="url(#jrl-wireOn)"
+            strokeWidth="8"
+            strokeLinecap="round"
+            style={{
+              transformBox: "fill-box",
+              transformOrigin: "center",
+              filter: `drop-shadow(0 0 5px ${ACCENT})`,
+              animation: "jrlight-pop .5s cubic-bezier(.34,1.56,.64,1)",
+            }}
+          />
+        ) : s.kind === "switch" ? (
+          // DECOY: looks like solid wire, but the lever is flipped UP → broken.
+          // (Drawn darker + with an obvious raised arm so a tracing child can spot it.)
+          <g>
+            {/* the two posts the switch bridges */}
+            <circle cx={e1.x} cy={e1.y} r="6" fill="#6b779e" />
+            <circle cx={e2.x} cy={e2.y} r="6" fill="#6b779e" />
+            {/* the lever, hinged at the bottom post, swung OUT (open) */}
+            <line
+              x1={e2.x}
+              y1={e2.y}
+              x2={e2.x + 22}
+              y2={e2.y - s.len * 0.7}
+              stroke="#f2c14e"
+              strokeWidth="7"
+              strokeLinecap="round"
+            />
+            {/* a soft pulsing ring so the child can find the sneaky one */}
+            <circle
+              className="jrlight-anim"
+              cx={s.x}
+              cy={s.y}
+              r="20"
+              fill="none"
+              stroke="#f2c14e"
+              strokeWidth="2.5"
+              style={{
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                animation: "jrlight-hint 1.3s ease-in-out infinite",
+              }}
+            />
+            <text
+              x={s.x + (horizontal ? 0 : 30)}
+              y={s.y - (horizontal ? 28 : 0) + 6}
+              textAnchor="middle"
+              fontSize="22"
+              aria-hidden="true"
+              className="jrlight-anim"
+              style={{
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                animation: "jrlight-breathe 1.6s ease-in-out infinite",
+              }}
+            >
+              🔀
+            </text>
+          </g>
+        ) : (
+          // GAP: two exposed wire ends with pulsing "tap here" beacons.
+          <g>
+            <circle cx={e1.x} cy={e1.y} r="6" fill="#6b779e" />
+            <circle cx={e2.x} cy={e2.y} r="6" fill="#6b779e" />
+            {[e1, e2].map((p, i) => (
+              <circle
+                key={i}
+                className="jrlight-anim"
+                cx={p.x}
+                cy={p.y}
+                r="11"
+                fill="none"
+                stroke={ACCENT}
+                strokeWidth="2.5"
+                style={{
+                  transformBox: "fill-box",
+                  transformOrigin: "center",
+                  animation: `jrlight-hint 1.2s ease-in-out ${i * 0.3}s infinite`,
+                }}
+              />
+            ))}
+            <text
+              className="jrlight-anim"
+              x={s.x + (horizontal ? 0 : -28)}
+              y={s.y - (horizontal ? 22 : 0) + 6}
+              textAnchor="middle"
+              fontSize="28"
+              aria-hidden="true"
+              style={{
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                animation: "jrlight-breathe 1.6s ease-in-out infinite",
+              }}
+            >
+              {horizontal ? "👇" : "👉"}
+            </text>
+          </g>
+        )}
+      </g>
+    );
+  };
 
   return (
     <div className="flex w-full flex-col items-center gap-3" style={{ maxWidth: 430 }}>
@@ -120,25 +370,68 @@ export default function LightItUp({ onComplete }: ActivityProps) {
           0%, 100% { transform: scale(1); opacity: .8; }
           50% { transform: scale(1.4); opacity: 1; }
         }
+        @keyframes jrlight-ready {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.12); }
+        }
         @media (prefers-reduced-motion: reduce) {
           .jrlight-anim { animation: none !important; }
         }
       `}</style>
 
-      {/* Emoji-only status */}
+      {/* Emoji-only status + round progress dots (no sentences) */}
       <div
-        className="flex items-center gap-2 rounded-full px-5 py-1.5 text-3xl"
+        className="flex items-center gap-3 rounded-full px-5 py-1.5 text-3xl"
         role="status"
         aria-live="polite"
-        aria-label={lit ? "The bulb is on!" : "Tap the gap to close the loop"}
+        aria-label={
+          done
+            ? "You fixed all three circuits!"
+            : won
+              ? "Circuit fixed! A trickier one is coming"
+              : wobbling
+                ? "Not quite — keep looking for the break"
+                : `Round ${round + 1} of 3 — find every break and close it`
+        }
         style={{
           background: lit ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
           border: `2px solid ${lit ? ACCENT : "var(--color-line, #27314f)"}`,
           boxShadow: lit ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
-        <span aria-hidden="true">{statusEmoji}</span>
-        {lit && (
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-block",
+            animation: lit ? "jrlight-ready 0.7s cubic-bezier(.34,1.56,.64,1) infinite" : undefined,
+          }}
+        >
+          {statusEmoji}
+        </span>
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || done;
+            const current = i === round && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 14,
+                  width: 14,
+                  background: solved ? ACCENT : current ? "rgba(52,211,153,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jrlight-ready 1.6s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done && (
           <span
             className="jrlight-anim text-2xl"
             aria-hidden="true"
@@ -157,14 +450,16 @@ export default function LightItUp({ onComplete }: ActivityProps) {
             ? "radial-gradient(circle at 50% 38%, rgba(52,211,153,0.16), transparent 62%)"
             : undefined,
           transition: "background 420ms ease",
+          animation: wobbling ? "jrlight-wobble .5s ease" : undefined,
         }}
+        key={`board-${round}-${poke}`}
       >
         <svg
           viewBox="0 0 320 240"
           className="block w-full select-none"
           style={{ touchAction: "manipulation" }}
           role="img"
-          aria-label="A battery and a light bulb joined by a wire loop with one open gap at the top. Tap the gap to close the loop and light the bulb."
+          aria-label="A battery and a light bulb joined by a wire loop. Some places in the loop are broken — find every break and close it so power can flow and the bulb lights up."
         >
           <defs>
             <radialGradient id="jrl-bulb" cx="50%" cy="50%" r="50%">
@@ -194,7 +489,7 @@ export default function LightItUp({ onComplete }: ActivityProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* The live wire — colour + glow only once the loop is closed */}
+          {/* The live wire — colour + glow only once every break is closed */}
           <path
             d={LOOP_PATH}
             fill="none"
@@ -208,82 +503,8 @@ export default function LightItUp({ onComplete }: ActivityProps) {
             }}
           />
 
-          {/* ---- The missing gap ---- */}
-          {!closed ? (
-            <g
-              onClick={closeGap}
-              onPointerDown={closeGap}
-              role="button"
-              tabIndex={0}
-              aria-label="Tap to snap the wire in and close the loop"
-              style={{ cursor: "pointer" }}
-            >
-              {/* big invisible finger target across the whole top */}
-              <rect
-                x={GAP.x1 - 14}
-                y={GAP.y - 40}
-                width={GAP.x2 - GAP.x1 + 28}
-                height="80"
-                fill="transparent"
-              />
-              {/* the two exposed wire ends */}
-              {[GAP.x1, GAP.x2].map((x) => (
-                <circle key={x} cx={x} cy={GAP.y} r="6" fill="#6b779e" />
-              ))}
-              {/* pulsing "tap here" beacons */}
-              {[GAP.x1, GAP.x2].map((x, i) => (
-                <circle
-                  key={`b-${x}`}
-                  className="jrlight-anim"
-                  cx={x}
-                  cy={GAP.y}
-                  r="11"
-                  fill="none"
-                  stroke={ACCENT}
-                  strokeWidth="2.5"
-                  style={{
-                    transformBox: "fill-box",
-                    transformOrigin: "center",
-                    animation: `jrlight-hint 1.2s ease-in-out ${i * 0.3}s infinite`,
-                  }}
-                />
-              ))}
-              {/* a friendly pointing finger over the gap */}
-              <text
-                className="jrlight-anim"
-                x={(GAP.x1 + GAP.x2) / 2}
-                y={GAP.y - 24}
-                textAnchor="middle"
-                fontSize="30"
-                aria-hidden="true"
-                style={{
-                  transformBox: "fill-box",
-                  transformOrigin: "center",
-                  animation: "jrlight-breathe 1.6s ease-in-out infinite",
-                }}
-              >
-                👇
-              </text>
-            </g>
-          ) : (
-            // The wire snaps in with a springy bounce
-            <line
-              className="jrlight-anim"
-              x1={GAP.x1}
-              y1={GAP.y}
-              x2={GAP.x2}
-              y2={GAP.y}
-              stroke="url(#jrl-wireOn)"
-              strokeWidth="8"
-              strokeLinecap="round"
-              style={{
-                transformBox: "fill-box",
-                transformOrigin: "center",
-                filter: `drop-shadow(0 0 5px ${ACCENT})`,
-                animation: "jrlight-pop .5s cubic-bezier(.34,1.56,.64,1)",
-              }}
-            />
-          )}
+          {/* ---- The breaks for THIS round ---- */}
+          {openSpots.map((id) => renderBreak(id))}
 
           {/* ---- Battery (bottom centre-left) ---- */}
           <g transform="translate(110 192)">
@@ -352,7 +573,7 @@ export default function LightItUp({ onComplete }: ActivityProps) {
               className="jrlight-anim"
               role="button"
               tabIndex={lit ? -1 : 0}
-              aria-label={lit ? "The bulb is glowing" : "Bulb — close the loop to light it"}
+              aria-label={lit ? "The bulb is glowing" : "Bulb — close every break to light it"}
               onClick={pokeBulb}
               onPointerDown={pokeBulb}
               filter={lit ? "url(#jrl-soft)" : undefined}
@@ -395,8 +616,8 @@ export default function LightItUp({ onComplete }: ActivityProps) {
           )}
         </svg>
 
-        {/* Confetti burst on win */}
-        {lit && (
+        {/* Confetti burst on FINAL win only */}
+        {done && (
           <div
             className="pointer-events-none absolute inset-0 overflow-hidden"
             aria-hidden="true"
@@ -418,7 +639,7 @@ export default function LightItUp({ onComplete }: ActivityProps) {
                       "--dy": dy,
                       "--rot": rot,
                       animation: `jrlight-confetti 1.1s ease-out ${i * 0.04}s both`,
-                    } as React.CSSProperties
+                    } as CSSProperties
                   }
                 >
                   {bits[i % bits.length]}
@@ -429,16 +650,52 @@ export default function LightItUp({ onComplete }: ActivityProps) {
         )}
       </div>
 
-      {/* Controls */}
+      {/* "Breaks left to fix" dots — counts down as the child closes each one. */}
+      <div
+        className="flex min-h-[40px] items-center justify-center gap-2 rounded-full px-5 py-1.5"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "2px solid var(--color-line, #27314f)",
+        }}
+        aria-hidden="true"
+      >
+        <span className="text-2xl">{lit ? "💡" : "🔧"}</span>
+        {openSpots.map((id, i) => {
+          const isFixed = !!fixed[id];
+          return (
+            <span
+              key={id}
+              className="grid h-7 w-7 place-items-center rounded-full text-lg transition"
+              style={{
+                background: isFixed ? "rgba(52,211,153,0.18)" : "rgba(255,255,255,0.03)",
+                border: `2px solid ${isFixed ? ACCENT : "rgba(120,140,170,0.4)"}`,
+                transform: isFixed ? "scale(1)" : "scale(.92)",
+                animation:
+                  isFixed && remaining === 0 && i === openSpots.length - 1
+                    ? "jrlight-pop .5s cubic-bezier(.34,1.56,.64,1)"
+                    : undefined,
+              }}
+            >
+              {isFixed ? "✅" : "❓"}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Controls — light status + start over */}
       <div className="flex items-center justify-center gap-3">
         <button
           type="button"
           onPointerDown={(e) => {
             e.preventDefault();
-            if (!lit) closeGap();
+            if (lit) return;
+            // Convenience: tapping the big button closes the next still-open break.
+            const next = openSpots.find((id) => !fixed[id]);
+            if (next) closeSpot(next);
           }}
-          aria-label={lit ? "The light is on" : "Close the loop"}
-          className="jrlight-anim font-display flex items-center gap-2 rounded-2xl px-7 font-bold"
+          disabled={lit}
+          aria-label={lit ? "The light is on" : "Close the next break"}
+          className="jrlight-anim font-display flex items-center gap-2 rounded-2xl px-7 font-bold disabled:cursor-default"
           style={{
             minHeight: 72,
             fontSize: 22,
@@ -459,7 +716,7 @@ export default function LightItUp({ onComplete }: ActivityProps) {
           <span aria-hidden="true" className="text-3xl">
             {lit ? "💡" : "🔌"}
           </span>
-          {lit ? "ON" : "TAP"}
+          {lit ? "ON" : "FIX"}
         </button>
 
         <button
@@ -483,13 +740,6 @@ export default function LightItUp({ onComplete }: ActivityProps) {
           <span aria-hidden="true">🔄</span>
         </button>
       </div>
-
-      {/* wobble feedback wrapper (gentle, friendly) */}
-      <div
-        className="jrlight-anim h-1"
-        style={{ animation: wobble ? "jrlight-wobble .5s ease" : undefined }}
-        aria-hidden="true"
-      />
     </div>
   );
 }

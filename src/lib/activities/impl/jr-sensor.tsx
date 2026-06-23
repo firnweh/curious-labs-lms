@@ -4,144 +4,294 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Magic Eye 👀 — a JUNIOR (Class 1-3, age ~6-8) ROBOTICS lab.
- * ONE learning goal: a SENSOR lets a robot notice something and react on its
- * own — sensor → action. Here a night-light robot has a big 👁️ light sensor.
- * The child taps the eye to ARM the sensor, then steps through 3 ☀️/🌙 scenes.
- * RULE: when it is NIGHT the lamp turns ON by itself; in DAY it stays off.
- * The robot reacts automatically once armed, so it is ALWAYS winnable. Tapping
- * the BIG check confirms each scene; after all 3 correct reactions → party +
- * onComplete({passed:true,stars:3}) once. No reading needed: emoji + colour.
+ * ONE learning goal, now made into a real PROBLEM: a SENSOR robot reacts by a
+ * RULE the child sets — "WHEN the eye sees ___, the light turns ON." The child
+ * doesn't just watch; they CHOOSE the trigger, then press GO ▶ to run every
+ * scene and PREDICT→RUN→REVEAL whether their rule was right.
+ *
+ * THREE rounds, each a fresh, harder rule (escalating):
+ *   1) Night-light: light should come ON in the DARK 🌙 (off in ☀️).
+ *   2) TWIST — sun-catcher: the rule FLIPS, light comes ON in the BRIGHT ☀️.
+ *      (the "dark = on" habit from round 1 now fails → must re-reason.)
+ *   3) DECOY threshold: three brightnesses ☀️ ⛅ 🌙. Only the DARKEST 🌙 must
+ *      trigger; the dim ⛅ middle is a trap that must stay OFF. Picking "dark"
+ *      is the only choice that lights the right scenes and leaves the trap dark.
+ *
+ * The child taps ONE big trigger-card to set the rule, presses GO to run the
+ * scenes (the robot reacts automatically, frame by frame), then the round is
+ * checked: every scene right → that round is won and the next, harder one
+ * slides in. A wrong rule → gentle 🤔 wobble, scenes reset, try another card.
+ * Always winnable, never scolds. NO READING (emoji, colour, brightness dots).
+ * Touch-first (onPointerDown), deterministic, onComplete once on FINAL win.
  * ────────────────────────────────────────────────────────────────────────── */
 
 const ACCENT = "#34d399";
-const SCENES: readonly ("day" | "night")[] = ["day", "night", "day"];
-const TOTAL = SCENES.length;
+const SCENE_MS = 760; // time the robot dwells on each scene while running
 
-type Phase = "arm" | "play" | "win";
+/** A single light level the eye can read. Brighter = bigger number. */
+type Level = "bright" | "dim" | "dark";
+
+/** A round: the ordered scenes that play, the trigger cards the child may pick,
+ *  and which single trigger is the CORRECT rule (lights exactly the right scenes). */
+interface Round {
+  scenes: readonly Level[];
+  /** Trigger choices shown as big cards (the rule = "ON when eye reads this"). */
+  choices: readonly Level[];
+  /** The one trigger that makes the lamp behave correctly in every scene. */
+  answer: Level;
+}
+
+/** Hand-authored, deterministic rounds — distance/decoys are fixed, never random. */
+const ROUNDS: readonly Round[] = [
+  // 1) plain night-light: dark → on, bright → off. Two scenes, two choices.
+  { scenes: ["bright", "dark"], choices: ["bright", "dark"], answer: "dark" },
+  // 2) TWIST: the rule flips — light belongs in the BRIGHT.
+  { scenes: ["dark", "bright"], choices: ["bright", "dark"], answer: "bright" },
+  // 3) DECOY: dim middle must stay off; only the darkest triggers.
+  { scenes: ["bright", "dim", "dark"], choices: ["bright", "dim", "dark"], answer: "dark" },
+];
+
+type Phase = "pick" | "running" | "oops" | "won" | "done";
+
+/** Visuals per light level — sky gradient + sun/moon/cloud emoji + dot count. */
+const LOOK: Record<Level, { sky: string; orb: string; dots: number; aria: string }> = {
+  bright: {
+    sky: "linear-gradient(180deg, #2a4d8f 0%, #4f86d6 55%, #8fc0f0 100%)",
+    orb: "☀️",
+    dots: 3,
+    aria: "bright day",
+  },
+  dim: {
+    sky: "linear-gradient(180deg, #243a63 0%, #3c5a8c 55%, #6f8db5 100%)",
+    orb: "⛅",
+    dots: 2,
+    aria: "dim, cloudy light",
+  },
+  dark: {
+    sky: "linear-gradient(180deg, #0a1230 0%, #131b46 60%, #1c2350 100%)",
+    orb: "🌙",
+    dots: 1,
+    aria: "dark night",
+  },
+};
 
 export default function JrSensor({ onComplete }: ActivityProps) {
-  const [phase, setPhase] = useState<Phase>("arm");
-  const [armed, setArmed] = useState<boolean>(false);
-  const [scene, setScene] = useState<number>(0);
-  const [good, setGood] = useState<number>(0); // scenes confirmed correct
+  const [round, setRound] = useState<number>(0);
+  const [pick, setPick] = useState<Level | null>(null); // the rule the child set
+  const [phase, setPhase] = useState<Phase>("pick");
+  const [sceneIdx, setSceneIdx] = useState<number>(0); // which scene is showing
   const [blink, setBlink] = useState<boolean>(false);
-  const [nudge, setNudge] = useState<boolean>(false);
 
   const reportedRef = useRef<boolean>(false);
-  const blinkTimer = useRef<number | null>(null);
-  const nudgeTimer = useRef<number | null>(null);
+  const timers = useRef<number[]>([]);
 
-  const isNight = SCENES[scene] === "night";
-  const lampOn = armed && isNight; // the sensor's automatic reaction
-  const won = phase === "win";
+  const cfg = ROUNDS[round];
+  const scenes = cfg.scenes;
+  const showing: Level = scenes[Math.min(sceneIdx, scenes.length - 1)];
+  const armed = pick !== null;
+
+  // The sensor's automatic reaction: lamp is ON iff this scene matches the rule.
+  const lampOn = armed && (phase === "running" || phase === "won" || phase === "done") && showing === pick;
+
+  const won = phase === "won";
+  const done = phase === "done";
+  const running = phase === "running";
+  const oops = phase === "oops";
+  const celebrating = won || done;
 
   const clearTimers = useCallback((): void => {
-    if (blinkTimer.current !== null) window.clearTimeout(blinkTimer.current);
-    if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  }, []);
+  const later = useCallback((fn: () => void, ms: number): void => {
+    timers.current.push(window.setTimeout(fn, ms));
   }, []);
 
-  // Tap the eye → arm the sensor and start the scenes. A happy blink.
-  const armSensor = useCallback((): void => {
-    if (phase !== "arm") return;
-    setArmed(true);
-    setPhase("play");
-    setBlink(true);
-    if (blinkTimer.current !== null) window.clearTimeout(blinkTimer.current);
-    blinkTimer.current = window.setTimeout(() => setBlink(false), 420);
-  }, [phase]);
+  useEffect(() => () => clearTimers(), [clearTimers]);
 
-  // Big check: confirm the robot reacted right to THIS scene, advance.
-  const confirm = useCallback((): void => {
-    if (phase !== "play") return;
-    setBlink(true);
-    if (blinkTimer.current !== null) window.clearTimeout(blinkTimer.current);
-    blinkTimer.current = window.setTimeout(() => setBlink(false), 380);
+  // Fresh round: forget the old rule, park on the first scene, clear running state.
+  useEffect(() => {
+    clearTimers();
+    setPick(null);
+    setPhase("pick");
+    setSceneIdx(0);
+    setBlink(false);
+  }, [round, clearTimers]);
 
-    const nextGood = good + 1;
-    setGood(nextGood);
-    if (nextGood >= TOTAL) {
-      setPhase("win");
-    } else {
-      setScene((s) => s + 1);
+  // Tap a trigger card → set the rule (only while choosing). Happy blink.
+  const choose = useCallback(
+    (lvl: Level): void => {
+      if (phase !== "pick" && phase !== "oops") return;
+      setPick(lvl);
+      setPhase("pick");
+      setSceneIdx(0);
+      setBlink(true);
+      later(() => setBlink(false), 360);
+    },
+    [phase, later],
+  );
+
+  // GO ▶ — run the scenes one by one; the lamp reacts by the chosen rule.
+  // After the last scene, check: did the rule light EXACTLY the right scenes?
+  const run = useCallback((): void => {
+    if (pick === null || phase === "running" || celebrating) return;
+    clearTimers();
+    setPhase("running");
+    setSceneIdx(0);
+    setBlink(true);
+    later(() => setBlink(false), 300);
+
+    // Is the chosen trigger the correct rule for this round?
+    const correct = pick === cfg.answer;
+
+    // Step through every scene so the child SEES the robot react to each.
+    for (let i = 1; i < scenes.length; i += 1) {
+      const idx = i;
+      later(() => setSceneIdx(idx), SCENE_MS * i);
     }
-  }, [phase, good]);
 
-  // Tapping the lamp by hand is "cheating" the sensor — gentle wobble nudge.
-  const handLamp = useCallback((): void => {
-    if (phase !== "play") return;
-    setNudge(true);
-    if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
-    nudgeTimer.current = window.setTimeout(() => setNudge(false), 520);
-    onComplete({ passed: false, detail: "Let the eye do it — the sensor turns the light on by itself! 👀" });
-  }, [phase, onComplete]);
+    // After the final scene has been seen, reveal the verdict.
+    const endAt = SCENE_MS * scenes.length + 260;
+    later(() => {
+      if (correct) {
+        const last = round >= ROUNDS.length - 1;
+        if (last) {
+          setPhase("done");
+          if (!reportedRef.current) {
+            reportedRef.current = true;
+            onComplete({ passed: true, stars: 3, detail: "You set every sensor rule right! 👀💡" });
+          }
+        } else {
+          setPhase("won");
+          later(() => setRound((r) => r + 1), 1250);
+        }
+      } else {
+        // Gentle, never a scold: wobble, drop back to the first scene, let them
+        // try a different trigger card. Do NOT report a failure.
+        setPhase("oops");
+        later(() => {
+          setPick(null);
+          setSceneIdx(0);
+          setPhase("pick");
+        }, 1000);
+      }
+    }, endAt);
+  }, [pick, phase, celebrating, cfg.answer, scenes, round, clearTimers, later, onComplete]);
 
   const reset = useCallback((): void => {
     clearTimers();
     reportedRef.current = false;
-    setPhase("arm");
-    setArmed(false);
-    setScene(0);
-    setGood(0);
+    setRound(0);
+    setPick(null);
+    setPhase("pick");
+    setSceneIdx(0);
     setBlink(false);
-    setNudge(false);
   }, [clearTimers]);
 
-  useEffect(() => {
-    if (won && !reportedRef.current) {
-      reportedRef.current = true;
-      onComplete({ passed: true, stars: 3, detail: "The sensor reacted to every scene! 👀💡" });
-    }
-  }, [won, onComplete]);
+  const look = LOOK[showing];
 
-  useEffect(() => () => clearTimers(), [clearTimers]);
+  const statusEmoji = done
+    ? "🏆"
+    : won
+      ? "🎉"
+      : oops
+        ? "🤔"
+        : running
+          ? lampOn
+            ? "💡"
+            : "👁️"
+          : pick === null
+            ? "👁️"
+            : "▶️";
 
-  const statusEmoji = won ? "🎉" : phase === "arm" ? "👁️" : lampOn ? "💡" : "🌞";
+  // Eye face: blinking → 😆, sleeping (no rule yet) → 💤, watching → 👁️.
+  const eyeFace = blink ? "😆" : armed ? "👁️" : "💤";
 
-  // Sky gradient: warm day vs deep night, smoothly cross-fades.
-  const sky = isNight
-    ? "linear-gradient(180deg, #0a1230 0%, #131b46 60%, #1c2350 100%)"
-    : "linear-gradient(180deg, #2a4d8f 0%, #4f86d6 55%, #8fc0f0 100%)";
+  // Whether each scene in the strip has already been visited this run.
+  const sceneState = useCallback(
+    (i: number): "past" | "current" | "future" => {
+      if (running || celebrating) {
+        if (i < sceneIdx) return "past";
+        if (i === sceneIdx) return "current";
+        return "future";
+      }
+      return "future";
+    },
+    [running, celebrating, sceneIdx],
+  );
+
+  const ariaStatus = useMemo<string>(() => {
+    if (done) return "You solved all three sensor rules!";
+    if (won) return "Rule correct! The next robot is coming.";
+    if (oops) return "That rule did not fit. Try a different trigger.";
+    if (running) return "Running the scenes — watch the robot react.";
+    if (pick === null) return `Round ${round + 1} of 3. Choose what the eye should react to, then press Go.`;
+    return "A trigger is chosen. Press Go to test the rule.";
+  }, [done, won, oops, running, pick, round]);
 
   return (
     <div className="flex w-full flex-col items-center gap-3" style={{ maxWidth: 430 }}>
-      {/* ── Tiny emoji status ── */}
+      {/* ── Tiny emoji status + round dots ── */}
       <div
-        className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
+        className="flex items-center gap-3 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
-        aria-label={
-          won
-            ? "The sensor reacted to every scene!"
-            : phase === "arm"
-              ? "Tap the big eye to turn on the sensor"
-              : isNight
-                ? "It is night — the light should be on"
-                : "It is day — the light should be off"
-        }
+        aria-label={ariaStatus}
         style={{
-          background: won ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.05)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #27314f)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.05)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #27314f)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
-        <span aria-hidden="true">{statusEmoji}</span>
-        {won ? (
-          <span aria-hidden="true" className="text-2xl">⭐⭐⭐</span>
-        ) : (
-          <span aria-hidden="true" className="text-xl">{isNight ? "🌙→💡" : "☀️→🌑"}</span>
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-block",
+            animation: celebrating ? "jrsensor-celebrate 0.7s ease-in-out infinite" : undefined,
+          }}
+        >
+          {statusEmoji}
+        </span>
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || done;
+            const current = i === round && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 13,
+                  width: 13,
+                  background: solved ? ACCENT : current ? "rgba(52,211,153,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jrsensor-dot 1.5s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done && (
+          <span aria-hidden="true" className="text-2xl">
+            ⭐⭐⭐
+          </span>
         )}
       </div>
 
       {/* ── The scene: sky + robot ── */}
       <div
         className="relative w-full overflow-hidden rounded-2xl border border-line"
-        style={{ background: sky, transition: "background 700ms ease", touchAction: "manipulation" }}
+        style={{ background: look.sky, transition: "background 600ms ease", touchAction: "manipulation" }}
       >
         <svg
           viewBox="0 0 360 300"
           className="block w-full select-none"
           role="img"
-          aria-label="A night-light robot with a big eye sensor under a sky that is day or night."
+          aria-label="A robot with a big eye sensor under a sky that can be bright, dim, or dark."
         >
           <defs>
             <radialGradient id="js-lampGlow" cx="50%" cy="50%" r="50%">
@@ -154,7 +304,7 @@ export default function JrSensor({ onComplete }: ActivityProps) {
             </radialGradient>
           </defs>
 
-          {/* Sun / Moon up in the sky, gently bobbing */}
+          {/* Sun / cloud / Moon up in the sky, gently bobbing */}
           <g
             style={{
               transformBox: "view-box",
@@ -163,15 +313,21 @@ export default function JrSensor({ onComplete }: ActivityProps) {
             }}
           >
             <text x="300" y="56" fontSize="40" textAnchor="middle" dominantBaseline="central" aria-hidden="true">
-              {isNight ? "🌙" : "☀️"}
+              {look.orb}
             </text>
           </g>
-          {/* Stars only at night */}
-          {isNight && (
+          {/* Stars only when dark */}
+          {showing === "dark" && (
             <g aria-hidden="true">
-              <text x="70" y="46" fontSize="16" style={{ animation: "jrsensor-twinkle 2s ease-in-out infinite" }}>✨</text>
-              <text x="140" y="34" fontSize="13" style={{ animation: "jrsensor-twinkle 2.4s ease-in-out infinite 0.4s" }}>⭐</text>
-              <text x="210" y="50" fontSize="14" style={{ animation: "jrsensor-twinkle 2.2s ease-in-out infinite 0.8s" }}>✨</text>
+              <text x="70" y="46" fontSize="16" style={{ animation: "jrsensor-twinkle 2s ease-in-out infinite" }}>
+                ✨
+              </text>
+              <text x="140" y="34" fontSize="13" style={{ animation: "jrsensor-twinkle 2.4s ease-in-out infinite 0.4s" }}>
+                ⭐
+              </text>
+              <text x="210" y="50" fontSize="14" style={{ animation: "jrsensor-twinkle 2.2s ease-in-out infinite 0.8s" }}>
+                ✨
+              </text>
             </g>
           )}
 
@@ -185,15 +341,15 @@ export default function JrSensor({ onComplete }: ActivityProps) {
             style={{
               transformBox: "fill-box",
               transformOrigin: "center bottom",
-              animation: won
+              animation: celebrating
                 ? "jrsensor-celebrate 0.7s ease-in-out infinite"
-                : nudge
+                : oops
                   ? "jrsensor-wobble 0.5s ease-in-out"
                   : "jrsensor-breathe 2.6s ease-in-out infinite",
             }}
           >
-            {/* The lamp on its head */}
-            <g onPointerDown={handLamp} style={{ cursor: phase === "play" ? "pointer" : "default" }}>
+            {/* The lamp on its head — reacts automatically, not tappable. */}
+            <g>
               {/* lamp stalk */}
               <rect x="174" y="120" width="12" height="26" rx="6" fill="#1d2b46" stroke="#41527a" strokeWidth="2" />
               {/* bulb */}
@@ -217,27 +373,21 @@ export default function JrSensor({ onComplete }: ActivityProps) {
             {/* Robot head/body box */}
             <rect x="120" y="150" width="120" height="110" rx="24" fill="#101a30" stroke={ACCENT} strokeWidth="4" />
 
-            {/* The BIG EYE sensor */}
+            {/* The BIG EYE sensor — glows once a rule is set */}
             {armed && (
               <circle cx="180" cy="196" r="46" fill="url(#js-eyeGlow)" opacity="0.6" style={{ animation: "jrsensor-glow 2s ease-in-out infinite" }} />
             )}
             <g
-              onPointerDown={armSensor}
-              role="button"
-              aria-label={phase === "arm" ? "Tap to switch on the eye sensor" : "Eye sensor"}
               style={{
-                cursor: phase === "arm" ? "pointer" : "default",
                 transformBox: "fill-box",
                 transformOrigin: "center",
                 animation: blink
                   ? "jrsensor-blink 0.4s ease"
-                  : phase === "arm"
-                    ? "jrsensor-pulse 1.4s ease-in-out infinite"
-                    : "jrsensor-scan 3s ease-in-out infinite",
+                  : armed
+                    ? "jrsensor-scan 3s ease-in-out infinite"
+                    : "jrsensor-pulse 1.4s ease-in-out infinite",
               }}
             >
-              {/* generous invisible hit area for little fingers */}
-              <circle cx="180" cy="196" r="50" fill="transparent" />
               <circle
                 cx="180"
                 cy="196"
@@ -248,7 +398,7 @@ export default function JrSensor({ onComplete }: ActivityProps) {
                 style={{ transition: "fill 300ms ease, stroke 300ms ease" }}
               />
               <text x="180" y="198" fontSize="38" textAnchor="middle" dominantBaseline="central" aria-hidden="true">
-                {blink ? "😆" : armed ? "👁️" : "💤"}
+                {eyeFace}
               </text>
             </g>
 
@@ -258,8 +408,8 @@ export default function JrSensor({ onComplete }: ActivityProps) {
           </g>
         </svg>
 
-        {/* Celebration confetti burst */}
-        {won && (
+        {/* Celebration confetti burst (final win only) */}
+        {done && (
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {["🎉", "✨", "⭐", "💡", "🎊", "✨", "⭐", "🎉", "💫", "✨"].map((c, i) => (
               <span
@@ -278,66 +428,124 @@ export default function JrSensor({ onComplete }: ActivityProps) {
         )}
       </div>
 
-      {/* ── Progress dots: one per scene ── */}
-      <div className="flex items-center justify-center gap-2 text-xl" aria-hidden="true">
-        {SCENES.map((s, i) => (
-          <span
-            key={i}
-            style={{
-              transform: i < good ? "scale(1.15)" : "scale(1)",
-              transition: "transform 240ms cubic-bezier(.34,1.56,.64,1)",
-              opacity: i === good && phase === "play" ? 1 : i < good ? 1 : 0.4,
-            }}
-          >
-            {i < good ? "✅" : s === "night" ? "🌙" : "☀️"}
-          </span>
-        ))}
+      {/* ── Scene strip: the brightnesses this round will run through ── */}
+      <div className="flex items-center justify-center gap-2" aria-hidden="true">
+        {scenes.map((lvl, i) => {
+          const st = sceneState(i);
+          const litHere = (running || celebrating) && st !== "future" && lvl === pick;
+          return (
+            <span
+              key={i}
+              className="grid place-items-center rounded-xl text-xl"
+              style={{
+                height: 44,
+                width: 44,
+                background: litHere ? "rgba(255,224,138,0.22)" : "rgba(255,255,255,0.05)",
+                border: `2px solid ${
+                  st === "current" ? ACCENT : litHere ? "#ffd25e" : "rgba(120,140,170,0.3)"
+                }`,
+                boxShadow: st === "current" ? `0 0 10px ${ACCENT}88` : undefined,
+                transform: st === "current" ? "scale(1.12)" : "scale(1)",
+                opacity: st === "future" && (running || celebrating) ? 0.5 : 1,
+                transition: "all 260ms cubic-bezier(.34,1.56,.64,1)",
+              }}
+            >
+              {/* show the lamp result on visited scenes, else the sky orb */}
+              {st === "future" || !(running || celebrating) ? LOOK[lvl].orb : litHere ? "💡" : "🌑"}
+            </span>
+          );
+        })}
       </div>
 
-      {/* ── Big action button + reset ── */}
+      {/* ── Trigger cards: WHEN the eye sees THIS, the light turns on ── */}
+      <div
+        className="flex w-full items-stretch justify-center gap-3 rounded-2xl px-3 py-3"
+        style={{ background: "rgba(255,255,255,0.04)", border: "2px dashed var(--color-line, #27314f)" }}
+        aria-label="Pick what the eye sensor should react to"
+      >
+        {cfg.choices.map((lvl) => {
+          const selected = pick === lvl;
+          const lockedOut = running || celebrating;
+          return (
+            <button
+              key={lvl}
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                choose(lvl);
+              }}
+              disabled={lockedOut}
+              aria-label={`Make the light react to ${LOOK[lvl].aria}`}
+              className="jrsensor-spring flex flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-2 disabled:opacity-50"
+              style={{
+                minHeight: 84,
+                touchAction: "none",
+                background: selected ? "rgba(52,211,153,0.18)" : "rgba(255,255,255,0.05)",
+                border: `3px solid ${selected ? ACCENT : "rgba(120,140,170,0.3)"}`,
+                boxShadow: selected ? `0 0 14px ${ACCENT}66, 0 4px 0 0 rgba(0,0,0,0.3)` : "0 4px 0 0 rgba(0,0,0,0.3)",
+              }}
+            >
+              <span aria-hidden="true" className="text-3xl">
+                {LOOK[lvl].orb}
+              </span>
+              {/* brightness dots: bright = ●●●, dim = ●●, dark = ● */}
+              <span aria-hidden="true" className="inline-flex items-center gap-1">
+                {Array.from({ length: 3 }).map((_, d) => (
+                  <span
+                    key={d}
+                    className="rounded-full"
+                    style={{
+                      height: 6,
+                      width: 6,
+                      background: d < LOOK[lvl].dots ? (selected ? ACCENT : "#ffd25e") : "rgba(120,140,170,0.3)",
+                    }}
+                  />
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Big GO button + reset ── */}
       <div className="flex w-full items-stretch justify-center gap-3">
-        {phase === "arm" ? (
-          <button
-            type="button"
-            onPointerDown={armSensor}
-            aria-label="Turn on the eye sensor"
-            className="flex min-h-[72px] flex-1 items-center justify-center gap-2 rounded-2xl text-2xl font-extrabold transition active:scale-95"
-            style={{
-              touchAction: "manipulation",
-              background: ACCENT,
-              color: "#06120d",
-              boxShadow: "0 6px 0 0 #138a5f",
-            }}
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            run();
+          }}
+          disabled={pick === null || running || celebrating}
+          aria-label="Go — run the scenes and test the rule"
+          className="jrsensor-spring flex min-h-[72px] flex-1 items-center justify-center gap-2 rounded-2xl text-2xl font-extrabold disabled:opacity-50"
+          style={{
+            touchAction: "none",
+            background: celebrating ? "rgba(52,211,153,0.25)" : ACCENT,
+            color: "#06120d",
+            boxShadow: celebrating ? undefined : "0 6px 0 0 #138a5f",
+            animation: pick !== null && !running && !celebrating ? "jrsensor-dot 1.5s ease-in-out infinite" : undefined,
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ display: "inline-block", animation: running ? "jrsensor-pulse 0.6s ease-in-out infinite" : undefined }}
           >
-            <span aria-hidden="true">👁️</span>
-            <span>GO</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onPointerDown={confirm}
-            disabled={won}
-            aria-label={isNight ? "Yes — the light is on at night" : "Yes — the light is off in the day"}
-            className="flex min-h-[72px] flex-1 items-center justify-center gap-2 rounded-2xl text-2xl font-extrabold transition active:scale-95 disabled:opacity-60"
-            style={{
-              touchAction: "manipulation",
-              background: won ? "rgba(52,211,153,0.25)" : ACCENT,
-              color: "#06120d",
-              boxShadow: won ? undefined : "0 6px 0 0 #138a5f",
-            }}
-          >
-            <span aria-hidden="true">{won ? "🎉" : "✅"}</span>
-            <span>{won ? "YAY" : "OK"}</span>
-          </button>
-        )}
+            {done ? "🎉" : running ? "👀" : "▶"}
+          </span>
+          <span>{done ? "YAY" : "GO"}</span>
+        </button>
 
         <button
           type="button"
-          onPointerDown={reset}
-          aria-label="Start over"
-          className="grid min-h-[72px] w-[72px] place-items-center rounded-2xl text-3xl transition active:scale-90"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            reset();
+          }}
+          disabled={running}
+          aria-label="Start over from the first robot"
+          className="jrsensor-spring grid min-h-[72px] w-[72px] place-items-center rounded-2xl text-3xl disabled:opacity-40"
           style={{
-            touchAction: "manipulation",
+            touchAction: "none",
             background: "rgba(255,255,255,0.05)",
             border: "2px solid var(--color-line, #27314f)",
             boxShadow: "0 6px 0 0 rgba(0,0,0,0.35)",
@@ -389,13 +597,25 @@ export default function JrSensor({ onComplete }: ActivityProps) {
           30% { transform: translateY(-10px) rotate(-4deg); }
           60% { transform: translateY(0) rotate(4deg); }
         }
+        @keyframes jrsensor-dot {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
         @keyframes jrsensor-confetti {
           0% { transform: translate(0, 0) scale(0.4); opacity: 0; }
           20% { opacity: 1; }
           100% { transform: translate(var(--dx, 0), 120px) scale(1.1) rotate(180deg); opacity: 0; }
         }
+        .jrsensor-spring {
+          transition: transform 0.18s cubic-bezier(.34,1.56,.64,1);
+          will-change: transform;
+        }
+        .jrsensor-spring:active:not(:disabled) {
+          transform: scale(0.92);
+        }
         @media (prefers-reduced-motion: reduce) {
           .jrsensor-anim, [style*="jrsensor-"] { animation: none !important; }
+          .jrsensor-spring { transition: none; }
         }
       `}</style>
     </div>

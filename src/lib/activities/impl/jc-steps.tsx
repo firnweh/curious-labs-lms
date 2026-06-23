@@ -3,14 +3,26 @@ import type { ActivityProps } from "@/lib/activities/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ── Walk the Path 👣 ─────────────────────────────────────────────────────────
-   JUNIORS (Class 1-3, age ~6-8). Single learning goal: SEQUENCING — the moves
-   run in the EXACT order you place them. A chick 🐥 sits at the start of a 4×4
-   grid; a home 🏠 waits across one gentle bend. The child taps a big D-pad of
-   arrow cards (⬆️⬇️⬅️➡️); each tap APPENDS to a visible plan strip. A huge GO ▶
-   runs the plan one hop per arrow. Reach home → big celebration + stars, and
-   onComplete({passed:true,stars:3}) fires once. Step off the grid → friendly
-   bonk 🙈, hop back to start, no scolding. NO READING NEEDED — all emoji + shape.
-   Intended path (4 steps): right, right, up, up. */
+   JUNIORS (Class 1-3, age ~6-8). Single learning goal: SEQUENCING + PLANNING —
+   the moves run in the EXACT order you place them, and now the child must really
+   PLAN the route across THREE rounds of growing challenge. A chick 🐥 starts on a
+   4×4 grid; a home 🏠 waits somewhere across the board. The child taps a big
+   D-pad of arrow cards (⬆️⬇️⬅️➡️); each tap APPENDS to a visible plan strip. A
+   huge GO ▶ runs the plan one hop per arrow.
+
+   THE ROUNDS (deterministic, hand-authored):
+     1. Two hops up — a gentle warm-up that teaches the mechanic.
+     2. A bend: right, right, up, up — real ordering, no straight shot.
+     3. THE TWIST: a rock 🪨 blocks the straight line between chick and home, so
+        the obvious "head straight at it" plan bonks. The child must look, spot
+        the rock, and plan a DETOUR around it. Brute-force / repeating the last
+        round's path fails — you have to reason about the route.
+
+   Reach home → that round is won and the next, harder one slides in. Solve all
+   three → big celebration + ⭐⭐⭐ and onComplete({passed:true,stars:3}) fires once.
+   Step off the grid OR bump the rock → friendly bonk 🙈, hop back to start, no
+   scolding, try again. NO READING NEEDED — all emoji, colour, shape, animation.
+   Touch-first, deterministic, always winnable. */
 
 const ACCENT = "#22d3ee";
 const COLS = 4;
@@ -32,21 +44,35 @@ interface Cell {
   r: number;
 }
 
-// One gentle bend: (0,3) → right,right → up,up → (2,1).
-const START: Cell = { c: 0, r: 3 };
-const GOAL: Cell = { c: 2, r: 1 };
+/** A round = where the chick starts, where home is, and any rocks to route around.
+ *  Hand-authored so each is solvable and each is a fresh, harder route. */
+interface Level {
+  start: Cell;
+  goal: Cell;
+  rocks: readonly Cell[];
+}
+
+const LEVELS: readonly Level[] = [
+  // 1) Warm-up: two hops straight up. Learn that order + GO move the chick.
+  { start: { c: 1, r: 3 }, goal: { c: 1, r: 1 }, rocks: [] },
+  // 2) A bend: right, right, up, up. Ordering matters, no straight shot.
+  { start: { c: 0, r: 3 }, goal: { c: 2, r: 1 }, rocks: [] },
+  // 3) TWIST: a rock sits on the straight line up. Heading straight bonks —
+  //    the child must DETOUR around it (e.g. up, right, up, up, left).
+  { start: { c: 1, r: 3 }, goal: { c: 1, r: 0 }, rocks: [{ c: 1, r: 1 }] },
+];
 
 // ── Simulation ───────────────────────────────────────────────────────────────
-type Outcome = { type: "win" } | { type: "edge" } | { type: "short" };
+type Outcome = { type: "win" } | { type: "edge" } | { type: "rock" } | { type: "short" };
 
 interface SimResult {
   trail: Cell[]; // cells visited in order, including the start cell
   outcome: Outcome;
 }
 
-/** Deterministically walk the arrow plan from the fixed start cell. */
-function simulate(steps: Dir[]): SimResult {
-  let { c, r } = START;
+/** Deterministically walk the arrow plan from this level's start cell. */
+function simulate(level: Level, steps: Dir[]): SimResult {
+  let { c, r } = level.start;
   const trail: Cell[] = [{ c, r }];
   for (const d of steps) {
     const nc = c + DX[d];
@@ -54,10 +80,13 @@ function simulate(steps: Dir[]): SimResult {
     if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
       return { trail, outcome: { type: "edge" } };
     }
+    if (level.rocks.some((k) => k.c === nc && k.r === nr)) {
+      return { trail, outcome: { type: "rock" } };
+    }
     c = nc;
     r = nr;
     trail.push({ c, r });
-    if (c === GOAL.c && r === GOAL.r) return { trail, outcome: { type: "win" } };
+    if (c === level.goal.c && r === level.goal.r) return { trail, outcome: { type: "win" } };
   }
   return { trail, outcome: { type: "short" } };
 }
@@ -70,7 +99,7 @@ const VH = PAD * 2 + ROWS * TILE;
 const cx = (c: number): number => PAD + c * TILE + TILE / 2;
 const cy = (r: number): number => PAD + r * TILE + TILE / 2;
 
-type Phase = "idle" | "running" | "won" | "bonk";
+type Phase = "idle" | "running" | "won" | "bonk" | "done";
 
 interface Step {
   id: number;
@@ -134,9 +163,11 @@ function useBlips(): { blip: () => void; chime: () => void } {
 }
 
 export default function WalkThePath({ onComplete }: ActivityProps) {
+  const [level, setLevel] = useState<number>(0);
   const [steps, setSteps] = useState<Step[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [pos, setPos] = useState<Cell>(START);
+  const lvl = LEVELS[level];
+  const [pos, setPos] = useState<Cell>(LEVELS[0].start);
   const [litTrail, setLitTrail] = useState<Cell[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,42 +184,58 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
 
   const running = phase === "running";
   const won = phase === "won";
+  const done = phase === "done";
   const bonking = phase === "bonk";
+  const celebrating = won || done;
+  // Once a round is won (or all done) the plan is frozen until the next slides in.
+  const locked = running || celebrating;
+
+  // Fresh round: park the chick at this level's start, clear the plan & trail.
+  useEffect(() => {
+    clearTimer();
+    setSteps([]);
+    setPhase("idle");
+    setPos(LEVELS[level].start);
+    setLitTrail([]);
+  }, [level, clearTimer]);
 
   const resetChick = useCallback(() => {
-    setPos(START);
+    setPos(LEVELS[level].start);
     setLitTrail([]);
-  }, []);
+  }, [level]);
 
   const addStep = useCallback(
     (dir: Dir) => {
-      if (running || won) return;
+      if (locked) return;
       blip();
       setSteps((s) => (s.length >= MAX_STEPS ? s : [...s, { id: nextId(), dir }]));
       setPhase("idle");
       resetChick();
     },
-    [running, won, resetChick, blip],
+    [locked, resetChick, blip],
   );
 
   const undoStep = useCallback(() => {
-    if (running || won) return;
+    if (locked) return;
     blip();
     setSteps((s) => s.slice(0, -1));
     setPhase("idle");
     resetChick();
-  }, [running, won, resetChick, blip]);
+  }, [locked, resetChick, blip]);
 
+  // Reset = back to round one, fresh start.
   const reset = useCallback(() => {
     clearTimer();
     reportedRef.current = false;
     setSteps([]);
     setPhase("idle");
-    resetChick();
-  }, [clearTimer, resetChick]);
+    setLevel(0);
+    setPos(LEVELS[0].start);
+    setLitTrail([]);
+  }, [clearTimer]);
 
   const go = useCallback(() => {
-    if (running || won) return;
+    if (locked) return;
     if (steps.length === 0) {
       // Empty plan is not a mistake — a tiny bonk nudge, then settle.
       setPhase("bonk");
@@ -196,7 +243,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
       return;
     }
 
-    const sim = simulate(steps.map((s) => s.dir));
+    const sim = simulate(lvl, steps.map((s) => s.dir));
     clearTimer();
     resetChick();
     setPhase("running");
@@ -208,21 +255,23 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
         const out = sim.outcome;
         if (out.type === "win") {
           setLitTrail(sim.trail);
-          setPhase("won");
           chime();
-          if (!reportedRef.current) {
-            reportedRef.current = true;
-            onComplete({ passed: true, stars: 3, detail: "The chick reached home! 🏠" });
+          const last = level >= LEVELS.length - 1;
+          if (last) {
+            setPhase("done");
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              onComplete({ passed: true, stars: 3, detail: "Home all three times! 🏠🏠🏠" });
+            }
+          } else {
+            // Win this round, then slide the next (harder) puzzle in.
+            setPhase("won");
+            timerRef.current = setTimeout(() => setLevel((l) => l + 1), 1150);
           }
         } else {
-          // Friendly bonk, then hop home — no harsh fail.
+          // Friendly bonk (edge, rock, or too-short), then hop home — no harsh fail,
+          // and never spam onComplete(passed:false).
           setPhase("bonk");
-          if (out.type === "edge") {
-            onComplete({
-              passed: false,
-              detail: "Whoops — the chick hopped off the grid. Try again! 🙈",
-            });
-          }
           timerRef.current = setTimeout(() => {
             resetChick();
             setPhase("idle");
@@ -238,17 +287,18 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
     setPos(sim.trail[0]);
     setLitTrail([sim.trail[0]]);
     timerRef.current = setTimeout(tick, STEP_MS);
-  }, [running, won, steps, clearTimer, resetChick, onComplete, chime]);
+  }, [locked, steps, lvl, level, clearTimer, resetChick, onComplete, chime]);
 
   const statusEmoji = useMemo<string>(() => {
+    if (done) return "🏆";
     if (won) return "🎉";
     if (bonking) return "🙈";
     if (running) return "🐾";
     return "🐥";
-  }, [won, bonking, running]);
+  }, [done, won, bonking, running]);
 
   // Pure-visual confetti burst spec (no logic): fixed angles/colours so it is
-  // deterministic and SSR-safe. Only renders while `won`.
+  // deterministic and SSR-safe. Only renders while celebrating.
   const confetti = useMemo(
     () =>
       Array.from({ length: 14 }).map((_, i) => {
@@ -269,31 +319,33 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
 
   return (
     <div className="flex w-full max-w-[430px] flex-col items-center gap-3 font-mono text-ink">
-      {/* ── Tiny visual status (emoji, not paragraphs) ── */}
+      {/* ── Tiny visual status + round dots (emoji, not paragraphs) ── */}
       <div
         className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "The chick reached home!"
-            : running
-              ? "The chick is hopping"
-              : bonking
-                ? "Bonk, try again"
-                : "Plan a path, then press Go"
+          done
+            ? "You solved all three rounds!"
+            : won
+              ? "Round solved! Next one coming up"
+              : running
+                ? "The chick is hopping"
+                : bonking
+                  ? "Bonk, try again"
+                  : `Round ${level + 1} of 3 — plan a path around to home, then press Go`
         }
         style={{
-          background: won ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span
           aria-hidden="true"
           style={{
             display: "inline-block",
-            animation: won
+            animation: celebrating
               ? "jcsteps-cheer 0.7s cubic-bezier(.34,1.56,.64,1)"
               : bonking
                 ? "jcsteps-wobble 0.5s ease-in-out"
@@ -304,7 +356,30 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
         >
           {statusEmoji}
         </span>
-        {won ? (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {LEVELS.map((_, i) => {
+            const solved = i < level || done;
+            const current = i === level && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 13,
+                  width: 13,
+                  background: solved ? ACCENT : current ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jcsteps-go-ready 1.5s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done ? (
           <span aria-hidden="true" className="text-2xl" style={{ letterSpacing: "0.05em" }}>
             {["⭐", "⭐", "⭐"].map((s, i) => (
               <span
@@ -323,7 +398,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             🐥→🏠
           </span>
         )}
-        {won && (
+        {done && (
           <span
             aria-hidden="true"
             className="text-2xl"
@@ -336,8 +411,8 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
 
       {/* ── The 4×4 grid ── */}
       <div className="panel relative w-full overflow-hidden rounded-2xl border border-line p-2">
-        {/* BIG win confetti burst — pure visual, overlays the grid */}
-        {won && (
+        {/* BIG win confetti burst — pure visual, overlays the grid (final win only) */}
+        {done && (
           <div
             className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
             aria-hidden="true"
@@ -363,7 +438,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
           className="block w-full select-none"
           style={{ touchAction: "none" }}
           role="img"
-          aria-label="A 4 by 4 grid with a chick and a home to reach"
+          aria-label="A 4 by 4 grid with a chick, a home to reach, and rocks to go around"
         >
           <defs>
             <radialGradient id="jc-glow" cx="50%" cy="50%" r="50%">
@@ -392,33 +467,79 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             );
           })}
 
+          {/* a soft flag marks where the chick started this round (helps plan) */}
+          <text
+            x={cx(lvl.start.c)}
+            y={cy(lvl.start.r) + TILE * 0.3}
+            fontSize={TILE * 0.24}
+            textAnchor="middle"
+            dominantBaseline="central"
+            opacity={0.45}
+            aria-hidden="true"
+          >
+            🚩
+          </text>
+
+          {/* rocks / obstacles — these block the path, forcing a detour */}
+          {lvl.rocks.map((k, i) => (
+            <g
+              key={`rock-${i}`}
+              style={{
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                animation: bonking ? "jcsteps-wobble 0.5s ease-in-out" : undefined,
+              }}
+            >
+              <rect
+                x={PAD + k.c * TILE + 2}
+                y={PAD + k.r * TILE + 2}
+                width={TILE - 4}
+                height={TILE - 4}
+                rx={12}
+                fill="rgba(120,140,170,0.16)"
+                stroke="rgba(120,140,170,0.4)"
+                strokeWidth={1.5}
+              />
+              <text
+                x={cx(k.c)}
+                y={cy(k.r) + 1}
+                fontSize={TILE * 0.5}
+                textAnchor="middle"
+                dominantBaseline="central"
+                aria-label="rock — go around it"
+              >
+                🪨
+              </text>
+            </g>
+          ))}
+
           {/* home / goal */}
           <circle
-            cx={cx(GOAL.c)}
-            cy={cy(GOAL.r)}
+            cx={cx(lvl.goal.c)}
+            cy={cy(lvl.goal.r)}
             r={TILE * 0.5}
             fill="url(#jc-glow)"
-            opacity={won ? 1 : 0.6}
+            opacity={celebrating ? 1 : 0.6}
             style={{
-              transformOrigin: `${cx(GOAL.c)}px ${cy(GOAL.r)}px`,
+              transformOrigin: `${cx(lvl.goal.c)}px ${cy(lvl.goal.r)}px`,
               transformBox: "view-box",
-              animation: won
+              animation: celebrating
                 ? "jcsteps-glow-burst 0.7s ease-out"
                 : "jcsteps-glow-pulse 2.4s ease-in-out infinite",
             }}
           />
           <g
             style={{
-              transformOrigin: `${cx(GOAL.c)}px ${cy(GOAL.r)}px`,
+              transformOrigin: `${cx(lvl.goal.c)}px ${cy(lvl.goal.r)}px`,
               transformBox: "fill-box",
-              animation: won
+              animation: celebrating
                 ? "jcsteps-bounce-in 0.8s cubic-bezier(.34,1.56,.64,1) infinite"
                 : "jcsteps-home-bob 2.8s ease-in-out infinite",
             }}
           >
             <text
-              x={cx(GOAL.c)}
-              y={cy(GOAL.r) + 1}
+              x={cx(lvl.goal.c)}
+              y={cy(lvl.goal.r) + 1}
               fontSize={TILE * 0.56}
               textAnchor="middle"
               dominantBaseline="central"
@@ -445,7 +566,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
                   ? "jcsteps-wobble 0.5s ease-in-out"
                   : running
                     ? "jcsteps-hop 0.46s ease-in-out infinite"
-                    : won
+                    : celebrating
                       ? "jcsteps-dance 0.7s ease-in-out infinite"
                       : "jcsteps-breathe 2.6s ease-in-out infinite",
               }}
@@ -455,7 +576,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
                 fill="#0b1220"
                 stroke={ACCENT}
                 strokeWidth={2}
-                style={won ? { filter: `drop-shadow(0 0 6px ${ACCENT})` } : undefined}
+                style={celebrating ? { filter: `drop-shadow(0 0 6px ${ACCENT})` } : undefined}
               />
               <text
                 x={0}
@@ -526,7 +647,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
                 e.preventDefault();
                 addStep(dir);
               }}
-              disabled={running || won}
+              disabled={locked}
               aria-label={`Add a step going ${DIR_WORD[dir]}`}
               className={`jcsteps-springy grid h-[76px] place-items-center rounded-2xl text-4xl active:scale-90 disabled:opacity-40 ${cellClass}`}
               style={{
@@ -551,7 +672,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             e.preventDefault();
             undoStep();
           }}
-          disabled={running || won || steps.length === 0}
+          disabled={locked || steps.length === 0}
           aria-label="Remove the last arrow"
           className="jcsteps-springy grid h-[72px] w-[72px] place-items-center rounded-2xl text-3xl active:scale-90 disabled:opacity-30"
           style={{
@@ -570,7 +691,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             e.preventDefault();
             go();
           }}
-          disabled={running || won}
+          disabled={locked}
           aria-label="Go — make the chick hop the path"
           className="jcsteps-springy flex h-[72px] flex-1 items-center justify-center gap-2 rounded-2xl text-3xl font-bold active:scale-95 disabled:opacity-50"
           style={{
@@ -580,7 +701,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             boxShadow: `0 6px 0 0 #0e8aa0`,
             transition: "transform 0.26s cubic-bezier(.34,1.56,.64,1)",
             animation:
-              steps.length > 0 && !running && !won
+              steps.length > 0 && !locked
                 ? "jcsteps-go-ready 1.3s ease-in-out infinite"
                 : undefined,
           }}
@@ -606,7 +727,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
             reset();
           }}
           disabled={running}
-          aria-label="Start over"
+          aria-label="Start over from round one"
           className="jcsteps-springy grid h-[72px] w-[72px] place-items-center rounded-2xl text-3xl active:scale-90 disabled:opacity-40"
           style={{
             touchAction: "none",
@@ -619,8 +740,8 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
         </button>
       </div>
 
-      {/* celebratory floaters when solved */}
-      {won && (
+      {/* celebratory floaters when all rounds solved */}
+      {done && (
         <div className="pointer-events-none flex justify-center gap-2 text-3xl">
           <span style={{ animation: "jcsteps-float 1.4s ease-in-out infinite" }} aria-hidden="true">
             ✨
@@ -716,7 +837,7 @@ export default function WalkThePath({ onComplete }: ActivityProps) {
           60% { transform: translateY(2px) scale(1.18); opacity: 1; }
           100% { transform: translateY(0) scale(1); opacity: 1; }
         }
-        /* GO button invites a tap when a plan is ready */
+        /* GO button + current-round dot invite a tap when a plan is ready */
         @keyframes jcsteps-go-ready {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.05); }

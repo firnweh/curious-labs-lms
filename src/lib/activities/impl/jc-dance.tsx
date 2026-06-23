@@ -4,18 +4,27 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ── Dance Routine 💃 ─────────────────────────────────────────────────────────
-   JUNIORS (Class 1-3, age ~6-8). Single learning goal: combine a SEQUENCE of
-   moves with a LOOP (repeat) to match a target routine — the first taste of a
-   loop living inside a sequence. A bear 🐻 stands on a stage. The TARGET shows a
-   row of move icons (👏 👏 🌀 ⬆️) plus a compact hint "👏×2, 🌀, ⬆️". The child
-   taps big move blocks — 👏 clap, 🌀 spin, ⬆️ jump — and a REPEAT ×2 block that
-   wraps the NEXT move into two copies. Blocks land in a sequence strip (with
-   Undo). Press PLAY ▶ and the bear performs each move with a little animation.
-   Match the target → confetti + onComplete({passed:true,stars:3}) once. Mismatch
-   → a gentle "🤔 not quite", fix and retry. NO READING needed — all emoji. */
+   JUNIORS (Class 1-3, age ~6-8) CODING lab — now a real PROBLEM, not a copy task.
+   Learning goal: combine a SEQUENCE of moves with a LOOP (repeat) to match a
+   target routine, and — the new depth — work out HOW MANY repeats and HOW MANY
+   loops the dance needs. A bear 🐻 on a stage performs the moves you plan.
+
+   THREE rounds, each a fresh, harder count:
+     • Round 1: 👏👏 🌀 ⬆️   → one loop of ×2  (the gentle warm-up)
+     • Round 2: 🌀🌀🌀 👏     → one loop of ×3  (so a memorised "×2" no longer works)
+     • Round 3: 👏👏 🌀🌀🌀    → TWO loops (×2 then ×3) — the twist: a child who
+       learned "wrap one move" in rounds 1-2 must reason that loops COMPOSE; a
+       single loop can't make this dance, so brute-copy / pattern-match fails.
+
+   The REPEAT block is now a COUNTER you tap to choose ×2 → ×3 → ×4 → off, so the
+   loop size is a genuine decision (not a fixed shortcut). Build the dance, press
+   PLAY ▶, the bear performs it, and you SEE whether it matched — predict → run →
+   reveal. Match → that round is won and the next, harder one slides in. Match all
+   three → confetti + ⭐⭐⭐ + onComplete once. Mismatch → gentle 🤔 wobble, fix and
+   retry (never a scold, always winnable). NO READING needed — all emoji & colour. */
 
 const ACCENT = "#22d3ee";
-const STEP_MS = 620;
+const STEP_MS = 560;
 
 /** A dance move — a big emoji glyph plus an aria word. No reading required. */
 type MoveId = "clap" | "spin" | "jump";
@@ -31,16 +40,24 @@ const JUMP: Move = { id: "jump", glyph: "⬆️", word: "jump", color: "#34d399"
 const PALETTE: readonly Move[] = [CLAP, SPIN, JUMP];
 const MOVE_BY_ID: Record<MoveId, Move> = { clap: CLAP, spin: SPIN, jump: JUMP };
 
-/** The target routine the bear must perform, in order: 👏 👏 🌀 ⬆️. */
-const TARGET: readonly MoveId[] = ["clap", "clap", "spin", "jump"];
+/** The three target routines, escalating. Each is the flat list of moves the
+ *  bear must perform, hand-authored (deterministic) so each round is a fresh
+ *  count: one ×2 loop, then one ×3 loop, then TWO composed loops. */
+const LEVELS: ReadonlyArray<readonly MoveId[]> = [
+  ["clap", "clap", "spin", "jump"], // 👏👏 🌀 ⬆️  — one loop ×2
+  ["spin", "spin", "spin", "clap"], // 🌀🌀🌀 👏    — one loop ×3
+  ["clap", "clap", "spin", "spin", "spin"], // 👏👏 🌀🌀🌀 — two loops (×2, ×3)
+];
 const MAX_BLOCKS = 8;
+/** Repeat counts the loop block cycles through (and the "off"/×1 state). */
+const REPEAT_CYCLE: readonly number[] = [1, 2, 3, 4];
 
-/** One block placed in the sequence strip. `repeat` means the next move runs twice. */
+/** One block placed in the sequence strip. `count` is how many times its move
+ *  runs in a row (1 = a plain move, 2+ = a loop). */
 interface Block {
   uid: number;
   move: MoveId;
-  /** True when this block was added via the REPEAT ×2 wrapper. */
-  repeat: boolean;
+  count: number;
 }
 let UID = 1;
 const nextId = (): number => UID++;
@@ -49,8 +66,7 @@ const nextId = (): number => UID++;
 function expand(blocks: Block[]): MoveId[] {
   const out: MoveId[] = [];
   for (const b of blocks) {
-    out.push(b.move);
-    if (b.repeat) out.push(b.move);
+    for (let i = 0; i < b.count; i++) out.push(b.move);
   }
   return out;
 }
@@ -58,16 +74,28 @@ function expand(blocks: Block[]): MoveId[] {
 const sameRoutine = (a: MoveId[], b: readonly MoveId[]): boolean =>
   a.length === b.length && a.every((m, i) => m === b[i]);
 
+/** Group a flat move list into runs for a compact target preview: 👏×2, 🌀, ⬆️.
+ *  Lets the target SHOW its structure without spelling out a 1:1 copy hint. */
+interface Run {
+  move: MoveId;
+  count: number;
+}
+function runs(moves: readonly MoveId[]): Run[] {
+  const out: Run[] = [];
+  for (const m of moves) {
+    const last = out[out.length - 1];
+    if (last && last.move === m) last.count += 1;
+    else out.push({ move: m, count: 1 });
+  }
+  return out;
+}
+
 /** Pre-computed confetti particles for the win burst — purely decorative. */
 interface Confetti {
   glyph: string;
-  /** Horizontal end offset in px (outward fling). */
   dx: number;
-  /** Vertical end offset in px. */
   dy: number;
-  /** End rotation in degrees. */
   rot: number;
-  /** Stagger delay in seconds. */
   delay: number;
 }
 const CONFETTI: readonly Confetti[] = [
@@ -111,17 +139,20 @@ function beep(freq: number, ms: number): void {
   }
 }
 
-type Phase = "build" | "playing" | "won" | "miss";
+type Phase = "build" | "playing" | "won" | "miss" | "done";
 
 export default function DanceRoutine({ onComplete }: ActivityProps) {
+  const [level, setLevel] = useState<number>(0);
   const [blocks, setBlocks] = useState<Block[]>([]);
-  /** True while the REPEAT ×2 wrapper is armed — the next tapped move doubles. */
-  const [armed, setArmed] = useState<boolean>(false);
+  /** The repeat count armed for the NEXT tapped move. 1 = plain move (no loop). */
+  const [repeat, setRepeat] = useState<number>(1);
   const [phase, setPhase] = useState<Phase>("build");
   /** Index into the expanded routine currently being performed (-1 = none). */
   const [active, setActive] = useState<number>(-1);
   /** The move glyph the bear is showing right now (null = resting). */
   const [pose, setPose] = useState<MoveId | null>(null);
+
+  const target = LEVELS[level];
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportedRef = useRef<boolean>(false);
@@ -137,59 +168,89 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
   const playing = phase === "playing";
   const won = phase === "won";
   const missed = phase === "miss";
+  const done = phase === "done";
+  const celebrating = won || done;
+  const locked = playing || celebrating; // controls disabled while running / winning
 
   const routine = useMemo<MoveId[]>(() => expand(blocks), [blocks]);
+  const targetRuns = useMemo<Run[]>(() => runs(target), [target]);
 
   const restBear = useCallback(() => {
     setActive(-1);
     setPose(null);
   }, []);
 
+  // Fresh round: clear the plan, disarm the loop, rest the bear.
+  useEffect(() => {
+    clearTimer();
+    setBlocks([]);
+    setRepeat(1);
+    setPhase("build");
+    setActive(-1);
+    setPose(null);
+  }, [level, clearTimer]);
+
   const addMove = useCallback(
     (move: MoveId) => {
-      if (playing || won) return;
+      if (locked) return;
       beep(520, 90);
       setBlocks((b) =>
-        b.length >= MAX_BLOCKS ? b : [...b, { uid: nextId(), move, repeat: armed }],
+        b.length >= MAX_BLOCKS ? b : [...b, { uid: nextId(), move, count: repeat }],
       );
-      setArmed(false);
+      setRepeat(1);
       setPhase("build");
       restBear();
     },
-    [playing, won, armed, restBear],
+    [locked, repeat, restBear],
   );
 
-  const toggleRepeat = useCallback(() => {
-    if (playing || won) return;
+  /** Cycle the loop counter: 1(off) → 2 → 3 → 4 → 1. Choosing the count is the
+   *  problem — different rounds need different repeats. */
+  const cycleRepeat = useCallback(() => {
+    if (locked) return;
     beep(660, 80);
-    setArmed((a) => !a);
-  }, [playing, won]);
+    setRepeat((r) => {
+      const idx = REPEAT_CYCLE.indexOf(r);
+      return REPEAT_CYCLE[(idx + 1) % REPEAT_CYCLE.length];
+    });
+  }, [locked]);
 
   const undo = useCallback(() => {
-    if (playing || won) return;
+    if (locked) return;
     beep(380, 70);
     setBlocks((b) => b.slice(0, -1));
-    setArmed(false);
+    setRepeat(1);
     setPhase("build");
     restBear();
-  }, [playing, won, restBear]);
+  }, [locked, restBear]);
 
+  const clearPlan = useCallback(() => {
+    if (locked) return;
+    beep(440, 80);
+    setBlocks([]);
+    setRepeat(1);
+    setPhase("build");
+    restBear();
+  }, [locked, restBear]);
+
+  /** Full restart back to round one. */
   const reset = useCallback(() => {
     clearTimer();
     reportedRef.current = false;
     beep(440, 80);
+    setLevel(0);
     setBlocks([]);
-    setArmed(false);
+    setRepeat(1);
     setPhase("build");
     restBear();
   }, [clearTimer, restBear]);
 
   const play = useCallback(() => {
-    if (playing || won) return;
+    if (locked) return;
     beep(580, 90);
     const moves = routine;
     if (moves.length === 0) {
-      // Empty isn't a "mistake" — a soft wobble nudge, then settle.
+      // Empty isn't a "mistake" — a soft wobble nudge, then settle. No onComplete.
       setPhase("miss");
       timerRef.current = setTimeout(() => setPhase("build"), 560);
       return;
@@ -201,21 +262,28 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
     let i = 0;
     const tick = (): void => {
       if (i >= moves.length) {
-        const matched = sameRoutine(moves, TARGET);
+        const matched = sameRoutine(moves, target);
         restBear();
         if (matched) {
-          setPhase("won");
+          const last = level >= LEVELS.length - 1;
           beep(784, 140);
           setTimeout(() => beep(988, 160), 150);
           setTimeout(() => beep(1175, 220), 320);
-          if (!reportedRef.current) {
-            reportedRef.current = true;
-            onComplete({ passed: true, stars: 3, detail: "The bear danced the routine! 💃" });
+          if (last) {
+            setPhase("done");
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              onComplete({ passed: true, stars: 3, detail: "The bear danced all three routines! 💃💃💃" });
+            }
+          } else {
+            // Win this round, then slide the next (harder) routine in.
+            setPhase("won");
+            timerRef.current = setTimeout(() => setLevel((l) => l + 1), 1250);
           }
         } else {
+          // Gentle, never a scold: a soft wobble, then back to building. No onComplete(false).
           setPhase("miss");
           beep(240, 220);
-          onComplete({ passed: false, detail: "So close — fix the dance and try again! 🤔" });
           timerRef.current = setTimeout(() => setPhase("build"), 720);
         }
         return;
@@ -228,10 +296,10 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
       timerRef.current = setTimeout(tick, STEP_MS);
     };
     timerRef.current = setTimeout(tick, 220);
-  }, [playing, won, routine, clearTimer, restBear, onComplete]);
+  }, [locked, routine, target, level, clearTimer, restBear, onComplete]);
 
   // Bear status glyph (no reading): cheering, confused, dancing, or ready.
-  const statusEmoji = won ? "🎉" : missed ? "🤔" : playing ? "🎵" : "💃";
+  const statusEmoji = done ? "🏆" : won ? "🎉" : missed ? "🤔" : playing ? "🎵" : "💃";
   const poseAnim =
     pose === "spin"
       ? "jcdance-spin 0.6s ease-in-out"
@@ -239,7 +307,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
         ? "jcdance-jump 0.6s cubic-bezier(.34,1.56,.64,1)"
         : pose === "clap"
           ? "jcdance-clap 0.6s ease-in-out"
-          : won
+          : celebrating
             ? "jcdance-party 0.6s cubic-bezier(.34,1.56,.64,1) infinite"
             : missed
               ? "jcdance-wobble 0.5s ease-in-out"
@@ -250,33 +318,58 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
     <div className="flex w-full flex-col items-center gap-3">
       <style>{KEYFRAMES}</style>
 
-      {/* ── Tiny visual status (emoji, not sentences) ── */}
+      {/* ── Tiny visual status (emoji, not sentences) + round dots ── */}
       <div
         className="flex items-center gap-2 rounded-full px-4 py-1.5 text-2xl"
         role="status"
         aria-live="polite"
         aria-label={
-          won
-            ? "You did it!"
-            : playing
-              ? "The bear is dancing"
-              : missed
-                ? "Not quite, try again"
-                : "Build the dance, then press play"
+          done
+            ? "You did all three routines!"
+            : won
+              ? "Routine matched! Next one coming up"
+              : playing
+                ? "The bear is dancing"
+                : missed
+                  ? "Not quite, try again"
+                  : `Round ${level + 1} of 3 — build the dance, then press play`
         }
         style={{
-          background: won ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
-          border: `2px solid ${won ? ACCENT : "var(--color-line, #33405c)"}`,
-          boxShadow: won ? `0 0 18px ${ACCENT}66` : undefined,
+          background: celebrating ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
+          border: `2px solid ${celebrating ? ACCENT : "var(--color-line, #33405c)"}`,
+          boxShadow: celebrating ? `0 0 18px ${ACCENT}66` : undefined,
         }}
       >
         <span
           aria-hidden="true"
-          style={won ? { animation: "jcdance-party 0.6s cubic-bezier(.34,1.56,.64,1) infinite", display: "inline-block" } : undefined}
+          style={celebrating ? { animation: "jcdance-party 0.6s cubic-bezier(.34,1.56,.64,1) infinite", display: "inline-block" } : undefined}
         >
           {statusEmoji}
         </span>
-        {won ? (
+
+        {/* round progress: solved ● / current ◉ / upcoming ○ */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+          {LEVELS.map((_, i) => {
+            const solved = i < level || done;
+            const current = i === level && !done;
+            return (
+              <span
+                key={i}
+                className="grid place-items-center rounded-full"
+                style={{
+                  height: 13,
+                  width: 13,
+                  background: solved ? ACCENT : current ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || current ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                  boxShadow: current ? `0 0 8px ${ACCENT}88` : undefined,
+                  animation: current ? "jcdance-bob 1.6s ease-in-out infinite" : undefined,
+                }}
+              />
+            );
+          })}
+        </span>
+
+        {done ? (
           <span aria-hidden="true" className="inline-flex">
             {[0, 1, 2].map((s) => (
               <span
@@ -295,24 +388,26 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
             🐻🎶
           </span>
         )}
-        {won && (
+        {done && (
           <span aria-hidden="true" style={{ display: "inline-block", animation: "jcdance-float 1.4s ease-in-out infinite" }}>
             ✨
           </span>
         )}
       </div>
 
-      {/* ── TARGET routine: the dance to copy, + compact loop hint ── */}
+      {/* ── TARGET routine: the dance to copy, + compact grouped preview ──
+           The grouped preview (👏×2, 🌀, ⬆️) SHOWS the structure but changes
+           every round, so the child must read the counts, not memorise one. */}
       <div
         className="flex w-full max-w-[430px] flex-col items-center gap-1 rounded-2xl px-3 py-2"
         style={{ background: "rgba(34,211,238,0.06)", border: `2px solid ${ACCENT}55` }}
-        aria-label="The target dance: clap, clap, spin, jump"
+        aria-label={`The target dance for round ${level + 1}`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
           <span aria-hidden="true" className="text-2xl">
             🎯
           </span>
-          {TARGET.map((m, i) => (
+          {target.map((m, i) => (
             <span
               key={i}
               aria-hidden="true"
@@ -323,16 +418,19 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
             </span>
           ))}
         </div>
-        {/* compact hint surfaces the loop: 👏×2, 🌀, ⬆️ */}
-        <div aria-hidden="true" className="flex items-center gap-1 text-base opacity-80">
-          <span>👏</span>
-          <span style={{ color: ACCENT }} className="text-sm font-bold">
-            ×2
-          </span>
-          <span className="opacity-50">,</span>
-          <span>🌀</span>
-          <span className="opacity-50">,</span>
-          <span>⬆️</span>
+        {/* grouped hint surfaces the loops as run-counts: e.g. 👏×2 , 🌀×3 */}
+        <div aria-hidden="true" className="flex flex-wrap items-center justify-center gap-1 text-base opacity-85">
+          {targetRuns.map((r, i) => (
+            <span key={i} className="flex items-center gap-0.5">
+              <span>{MOVE_BY_ID[r.move].glyph}</span>
+              {r.count > 1 && (
+                <span style={{ color: ACCENT }} className="text-sm font-bold">
+                  ×{r.count}
+                </span>
+              )}
+              {i < targetRuns.length - 1 && <span className="opacity-50">,</span>}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -349,7 +447,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
           className="select-none text-7xl"
           style={{ animation: poseAnim, transformOrigin: "center bottom" }}
         >
-          {pose === "spin" ? "🐻" : pose === "jump" ? "🐻" : "🐻"}
+          🐻
         </div>
         {/* little move bubble floats above the bear while it performs */}
         {pose && (
@@ -373,7 +471,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
           className="absolute bottom-0 h-3 w-full"
           style={{ background: `${ACCENT}33` }}
         />
-        {won && (
+        {celebrating && (
           <>
             {/* confetti burst — particles fling outward from the bear */}
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -404,7 +502,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
                 style={{ animation: "jcdance-float 1.4s ease-in-out 0.2s infinite" }}
                 aria-hidden="true"
               >
-                🎉
+                {done ? "🏆" : "🎉"}
               </span>
               <span
                 style={{ animation: "jcdance-float 1.4s ease-in-out 0.4s infinite" }}
@@ -430,17 +528,18 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
         ) : (
           blocks.map((b, i) => {
             const m = MOVE_BY_ID[b.move];
+            const loop = b.count > 1;
             const isActive = playing && active >= 0;
             return (
               <span
                 key={b.uid}
-                aria-label={`${b.repeat ? "twice " : ""}${m.word}`}
+                aria-label={`${loop ? `${b.count} times ` : ""}${m.word}`}
                 className="relative grid h-11 place-items-center rounded-xl text-2xl"
                 style={{
-                  minWidth: b.repeat ? 64 : 44,
+                  minWidth: loop ? 64 : 44,
                   padding: "0 6px",
                   background: "rgba(34,211,238,0.10)",
-                  border: `1.5px solid ${b.repeat ? ACCENT : `${ACCENT}88`}`,
+                  border: `1.5px solid ${loop ? ACCENT : `${ACCENT}88`}`,
                   boxShadow: isActive && i === 0 ? `0 0 10px ${ACCENT}` : undefined,
                   transformOrigin: "center bottom",
                   /* snap into the slot with a springy drop on mount */
@@ -448,13 +547,13 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
                 }}
               >
                 <span aria-hidden="true">{m.glyph}</span>
-                {b.repeat && (
+                {loop && (
                   <span
                     aria-hidden="true"
                     className="ml-0.5 text-xs font-bold"
                     style={{ color: ACCENT }}
                   >
-                    ×2
+                    ×{b.count}
                   </span>
                 )}
               </span>
@@ -463,69 +562,107 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
         )}
       </div>
 
-      {/* ── Move palette: 3 big move blocks ── */}
+      {/* ── Move palette: 3 big move blocks (the armed loop count rides along) ── */}
       <div className="grid w-full max-w-[430px] grid-cols-3 gap-2">
-        {PALETTE.map((m, mi) => (
-          <button
-            key={m.id}
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              addMove(m.id);
-            }}
-            disabled={playing || won}
-            aria-label={`Add ${m.word}${armed ? " twice" : ""}`}
-            className="grid h-[76px] place-items-center rounded-2xl text-4xl active:scale-90 disabled:opacity-40"
-            style={{
-              touchAction: "none",
-              background: `${m.color}22`,
-              border: `3px solid ${m.color}`,
-              boxShadow: `0 6px 0 0 ${m.color}aa`,
-              /* springy, toy-like overshoot on tap */
-              transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1)",
-            }}
-          >
-            <span
-              aria-hidden="true"
-              style={{ display: "inline-block", animation: `jcdance-bob 2.8s ease-in-out ${mi * 0.35}s infinite` }}
+        {PALETTE.map((m, mi) => {
+          const armed = repeat > 1;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                addMove(m.id);
+              }}
+              disabled={locked}
+              aria-label={`Add ${m.word}${armed ? ` ${repeat} times` : ""}`}
+              className="relative grid h-[76px] place-items-center rounded-2xl text-4xl active:scale-90 disabled:opacity-40"
+              style={{
+                touchAction: "none",
+                background: `${m.color}22`,
+                border: `3px solid ${m.color}`,
+                boxShadow: `0 6px 0 0 ${m.color}aa`,
+                /* springy, toy-like overshoot on tap */
+                transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1)",
+              }}
             >
-              {m.glyph}
-            </span>
-          </button>
-        ))}
+              <span
+                aria-hidden="true"
+                style={{ display: "inline-block", animation: `jcdance-bob 2.8s ease-in-out ${mi * 0.35}s infinite` }}
+              >
+                {m.glyph}
+              </span>
+              {/* when a loop is armed, every move shows the count it will get */}
+              {armed && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full text-xs font-black"
+                  style={{
+                    background: ACCENT,
+                    color: "#060810",
+                    boxShadow: `0 0 8px ${ACCENT}aa`,
+                    animation: "jcdance-pop 0.4s cubic-bezier(.34,1.56,.64,1) both",
+                  }}
+                >
+                  ×{repeat}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* ── REPEAT ×2 wrapper block (the loop) ── */}
+      {/* ── REPEAT counter block (the loop) — tap to choose ×2 / ×3 / ×4 / off ── */}
       <button
         type="button"
         onPointerDown={(e) => {
           e.preventDefault();
-          toggleRepeat();
+          cycleRepeat();
         }}
-        disabled={playing || won}
-        aria-pressed={armed}
-        aria-label="Repeat the next move two times"
+        disabled={locked}
+        aria-pressed={repeat > 1}
+        aria-label={
+          repeat > 1
+            ? `Loop is set to repeat the next move ${repeat} times — tap to change`
+            : "Tap to make the next move repeat"
+        }
         className="flex h-[72px] w-full max-w-[430px] items-center justify-center gap-2 rounded-2xl text-3xl font-bold active:scale-95 disabled:opacity-40"
         style={{
           touchAction: "none",
-          background: armed ? ACCENT : "rgba(34,211,238,0.12)",
-          color: armed ? "#060810" : ACCENT,
+          background: repeat > 1 ? ACCENT : "rgba(34,211,238,0.12)",
+          color: repeat > 1 ? "#060810" : ACCENT,
           border: `3px solid ${ACCENT}`,
-          boxShadow: armed ? `0 4px 0 0 #0e8aa0` : `0 6px 0 0 #0e8aa0`,
-          transform: armed ? "translateY(2px)" : undefined,
+          boxShadow: repeat > 1 ? `0 4px 0 0 #0e8aa0` : `0 6px 0 0 #0e8aa0`,
+          transform: repeat > 1 ? "translateY(2px)" : undefined,
           transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1)",
         }}
       >
         <span
           aria-hidden="true"
-          style={{ display: "inline-block", animation: armed ? "jcdance-spin 1.1s linear infinite" : undefined }}
+          style={{ display: "inline-block", animation: repeat > 1 ? "jcdance-spin 1.1s linear infinite" : undefined }}
         >
           🔁
         </span>
-        <span aria-hidden="true" className="text-2xl font-extrabold">
-          ×2
+        {/* how many: dots show the loop size at a glance, no reading needed */}
+        <span aria-hidden="true" className="inline-flex items-center gap-1">
+          {REPEAT_CYCLE.filter((n) => n > 1).map((n) => (
+            <span
+              key={n}
+              className="grid place-items-center rounded-full"
+              style={{
+                height: 12,
+                width: 12,
+                background: repeat >= n ? (repeat > 1 ? "#060810" : ACCENT) : "transparent",
+                border: `2px solid ${repeat > 1 ? "#060810" : ACCENT}`,
+                opacity: repeat >= n ? 1 : 0.35,
+              }}
+            />
+          ))}
         </span>
-        {armed && (
+        <span aria-hidden="true" className="text-2xl font-extrabold">
+          {repeat > 1 ? `×${repeat}` : "×?"}
+        </span>
+        {repeat > 1 && (
           <span aria-hidden="true" className="text-2xl">
             👇
           </span>
@@ -540,7 +677,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
             e.preventDefault();
             undo();
           }}
-          disabled={playing || won || blocks.length === 0}
+          disabled={locked || blocks.length === 0}
           aria-label="Remove the last block"
           className="grid h-[68px] w-[68px] place-items-center rounded-2xl text-2xl active:scale-90 disabled:opacity-30"
           style={{
@@ -559,7 +696,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
             e.preventDefault();
             play();
           }}
-          disabled={playing || won}
+          disabled={locked}
           aria-label="Play — make the bear dance"
           className="flex h-[68px] flex-1 items-center justify-center gap-2 rounded-2xl text-2xl font-bold active:scale-95 disabled:opacity-50"
           style={{
@@ -568,6 +705,7 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
             color: "#060810",
             boxShadow: "0 6px 0 0 #0e8aa0",
             transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1)",
+            animation: !locked && blocks.length > 0 ? "jcdance-ready 1.5s ease-in-out infinite" : undefined,
           }}
         >
           <span
@@ -585,10 +723,29 @@ export default function DanceRoutine({ onComplete }: ActivityProps) {
           type="button"
           onPointerDown={(e) => {
             e.preventDefault();
+            clearPlan();
+          }}
+          disabled={locked || blocks.length === 0}
+          aria-label="Clear the dance"
+          className="grid h-[68px] w-[68px] place-items-center rounded-2xl text-2xl active:scale-90 disabled:opacity-30"
+          style={{
+            touchAction: "none",
+            background: "rgba(255,255,255,0.05)",
+            border: "2px solid var(--color-line, #33405c)",
+            transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1)",
+          }}
+        >
+          <span aria-hidden="true">🧹</span>
+        </button>
+
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.preventDefault();
             reset();
           }}
           disabled={playing}
-          aria-label="Start over"
+          aria-label="Start over from round one"
           className="grid h-[68px] w-[68px] place-items-center rounded-2xl text-2xl active:scale-90 disabled:opacity-40"
           style={{
             touchAction: "none",
@@ -665,6 +822,11 @@ const KEYFRAMES = `
   0%,100% { transform: translateY(0); opacity: 0.85; }
   50% { transform: translateY(-12px); opacity: 1; }
 }
+/* PLAY button gently pulses when a dance is ready to run */
+@keyframes jcdance-ready {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
 /* a placed block springs/drops into its slot */
 @keyframes jcdance-snap {
   0% { transform: translateY(-14px) scale(0.6); opacity: 0; }
@@ -688,6 +850,6 @@ const KEYFRAMES = `
 }
 @media (prefers-reduced-motion: reduce) {
   /* stop looping idle/celebration loops; allow one-shot entrances to settle */
-  [style*="animation"] { animation: none !important; }
+  [style*="infinite"] { animation: none !important; }
 }
 `;

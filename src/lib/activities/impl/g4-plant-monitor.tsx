@@ -10,11 +10,22 @@ import { useCallback, useMemo, useRef, useState } from "react";
    the rule:  IF reading < L → RED + BUZZER, ELSE IF reading < H → YELLOW, ELSE GREEN.
 
    They drag a watering can (moisture rises) and a sun (moisture dries out) to feel
-   the live reading move, then set the LOW and HIGH threshold sliders. Highlighted
-   valid bands around 300 and 600 make it always solvable. Pressing TEST steps a
-   fixed 3-state check — DRY (180), OK (450), WET (720) — lighting the LED the rule
-   selects and sounding the buzzer only when DRY. A checklist verifies each state lit
-   the right colour and the buzzer fired only when dry. WIN → onComplete once.
+   the live reading move, then set the LOW and HIGH threshold sliders. Pressing TEST
+   runs every soil sample in the round through the rule, lighting the LED it selects
+   and sounding the buzzer only when DRY. A checklist verifies each sample lit the
+   right colour and the buzzer fired only when dry.
+
+   UPGRADE — three escalating rounds turn this into a real reasoning task, not a
+   "drop the slider in the glowing band" toy:
+     • Round 1  (learn): 3 well-spaced samples; the safe bands are shown.
+     • Round 2  (read it): 4 samples, one sits NEAR a boundary; bands hidden, so the
+       learner must read the numbers and reason where the lines belong — not aim at
+       a highlight.
+     • Round 3  (twist): the samples are CLUSTERED with a tight gap, and a sneaky
+       "soggy-then-drying" sample sits just one step from the dry line. Aiming for
+       the middle of the range fails; the lines must thread a narrow window.
+   Solve all three → ⭐⭐⭐, onComplete once. Wrong attempts → a kind, specific
+   reason and a gentle retry; never scolds, always winnable, fully deterministic.
    ──────────────────────────────────────────────────────────────────────────── */
 
 const ACCENT = "#34d399";
@@ -39,9 +50,9 @@ function zoneFor(reading: number, low: number, high: number): Zone {
   return "wet";
 }
 
-// ── The fixed 3-state test. Each reading is deterministic. ───────────────────
-interface TestState {
-  id: Zone;
+// ── A single soil sample to grade. Each reading is deterministic. ────────────
+interface Sample {
+  id: string;
   label: string;
   emoji: string;
   reading: number;
@@ -49,22 +60,71 @@ interface TestState {
   want: Zone;
 }
 
-const STATES: readonly TestState[] = [
-  { id: "dry", label: "Bone dry", emoji: "🏜️", reading: 180, want: "dry" },
-  { id: "ok", label: "Just right", emoji: "🌱", reading: 450, want: "ok" },
-  { id: "wet", label: "Nicely wet", emoji: "💧", reading: 720, want: "wet" },
+interface Round {
+  title: string;
+  blurb: string;
+  showBands: boolean;
+  samples: readonly Sample[];
+}
+
+/* Each round is solvable by SOME (low, high) pair, but the window narrows.
+   The valid LOW window is (maxDryReading, minOkReading]; the valid HIGH window is
+   (maxOkReading, minWetReading]. We compute and reveal those windows only in R1. */
+const ROUNDS: readonly Round[] = [
+  {
+    title: "Round 1 — Learn the rule",
+    blurb: "Three soil samples, nicely spread out. The green bands show a safe spot for each line.",
+    showBands: true,
+    samples: [
+      { id: "r1a", label: "Bone dry", emoji: "🏜️", reading: 180, want: "dry" },
+      { id: "r1b", label: "Just right", emoji: "🌱", reading: 450, want: "ok" },
+      { id: "r1c", label: "Nicely wet", emoji: "💧", reading: 720, want: "wet" },
+    ],
+  },
+  {
+    title: "Round 2 — Read the numbers",
+    blurb: "Four samples now, and one sits close to a line. No bands this time — read each number and reason where the lines go.",
+    showBands: false,
+    samples: [
+      { id: "r2a", label: "Cracked dry", emoji: "🏜️", reading: 150, want: "dry" },
+      { id: "r2b", label: "A touch dry", emoji: "🌵", reading: 360, want: "dry" },
+      { id: "r2c", label: "Just right", emoji: "🌱", reading: 430, want: "ok" },
+      { id: "r2d", label: "Soaked", emoji: "💧", reading: 780, want: "wet" },
+    ],
+  },
+  {
+    title: "Round 3 — The tight squeeze",
+    blurb: "These samples are bunched up. Aiming for the middle won't work — thread both lines through a narrow gap.",
+    showBands: false,
+    samples: [
+      { id: "r3a", label: "Dusty", emoji: "🏜️", reading: 410, want: "dry" },
+      { id: "r3b", label: "Drying out", emoji: "🌵", reading: 470, want: "dry" },
+      { id: "r3c", label: "Just right", emoji: "🌱", reading: 540, want: "ok" },
+      { id: "r3d", label: "Good drink", emoji: "💧", reading: 600, want: "wet" },
+      { id: "r3e", label: "Puddle", emoji: "🌊", reading: 690, want: "wet" },
+    ],
+  },
 ];
 
-// Valid threshold bands that make every test map correctly:
-//   LOW must split 180 (dry) from 450 (ok)  → 181 ≤ LOW ≤ 450
-//   HIGH must split 450 (ok) from 720 (wet) → 451 ≤ HIGH ≤ 720
-// We highlight a comfortably-inside band around 300 and 600 so it's easy to hit.
-const LOW_BAND_LO = 250;
-const LOW_BAND_HI = 350;
-const HIGH_BAND_LO = 550;
-const HIGH_BAND_HI = 650;
+const ROUND_COUNT = ROUNDS.length;
 
-const START_LOW = 120; // a wrong-ish start: would mislabel the dry soil
+/** Valid threshold windows for a round, derived from its samples (deterministic). */
+function windowsFor(round: Round): {
+  lowLo: number; lowHi: number; highLo: number; highHi: number;
+} {
+  let maxDry = -1, minOk = SENSOR_MAX + 1, maxOk = -1, minWet = SENSOR_MAX + 1;
+  for (const s of round.samples) {
+    if (s.want === "dry") maxDry = Math.max(maxDry, s.reading);
+    if (s.want === "ok") { minOk = Math.min(minOk, s.reading); maxOk = Math.max(maxOk, s.reading); }
+    if (s.want === "wet") minWet = Math.min(minWet, s.reading);
+  }
+  // LOW must be > every dry reading and ≤ every ok reading.
+  // HIGH must be > every ok reading and ≤ every wet reading.
+  return { lowLo: maxDry + 1, lowHi: minOk, highLo: maxOk + 1, highHi: minWet };
+}
+
+// Per-round starting thresholds: deliberately wrong so the learner must adjust.
+const START_LOW = 120;
 const START_HIGH = 880;
 
 const MOISTURE_START = 500;
@@ -74,27 +134,31 @@ const DRY_STEP = 110;
 type Mark = "pass" | "fail" | "pending";
 
 export default function PlantWateringReminder({ onComplete }: ActivityProps) {
+  const [roundIdx, setRoundIdx] = useState<number>(0);
   const [low, setLow] = useState<number>(START_LOW);
   const [high, setHigh] = useState<number>(START_HIGH);
   const [moisture, setMoisture] = useState<number>(MOISTURE_START);
-  const [marks, setMarks] = useState<Record<Zone, Mark>>({
-    dry: "pending",
-    ok: "pending",
-    wet: "pending",
-  });
+  const [marks, setMarks] = useState<Record<string, Mark>>({});
   const [buzzerMark, setBuzzerMark] = useState<Mark>("pending");
   const [checked, setChecked] = useState<boolean>(false);
+  const [solvedRounds, setSolvedRounds] = useState<number>(0); // rounds cleared on FIRST test
+  const [usedRetryThisRound, setUsedRetryThisRound] = useState<boolean>(false);
   const [won, setWon] = useState<boolean>(false);
   const [hintShown, setHintShown] = useState<boolean>(false);
 
   const reportedRef = useRef<boolean>(false);
 
+  const round = ROUNDS[roundIdx];
+  const samples = round.samples;
+  const windows = useMemo(() => windowsFor(round), [round]);
+
   // Keep LOW strictly below HIGH so the three zones never collapse.
   const setLowSafe = useCallback(
     (v: number): void => {
       if (won) return;
-      setLow(() => clamp(v, 0, SENSOR_MAX));
-      setHigh((h) => Math.max(h, clamp(v, 0, SENSOR_MAX) + 1));
+      const cv = clamp(v, 0, SENSOR_MAX);
+      setLow(cv);
+      setHigh((h) => Math.max(h, cv + 1));
       setChecked(false);
     },
     [won],
@@ -102,8 +166,9 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
   const setHighSafe = useCallback(
     (v: number): void => {
       if (won) return;
-      setHigh(() => clamp(v, 0, SENSOR_MAX));
-      setLow((l) => Math.min(l, clamp(v, 0, SENSOR_MAX) - 1));
+      const cv = clamp(v, 0, SENSOR_MAX);
+      setHigh(cv);
+      setLow((l) => Math.min(l, cv - 1));
       setChecked(false);
     },
     [won],
@@ -125,13 +190,26 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
     setMoisture((m) => clamp(m - DRY_STEP, 0, SENSOR_MAX));
   }, [won]);
 
-  // ── TEST: run the fixed 3-state check deterministically. ───────────────────
+  // Advance to the next round, resetting the working thresholds.
+  const goToRound = useCallback((idx: number): void => {
+    setRoundIdx(idx);
+    setLow(START_LOW);
+    setHigh(START_HIGH);
+    setMoisture(MOISTURE_START);
+    setMarks({});
+    setBuzzerMark("pending");
+    setChecked(false);
+    setUsedRetryThisRound(false);
+    setHintShown(false);
+  }, []);
+
+  // ── TEST: run every sample in this round through the rule deterministically. ─
   const runTest = useCallback((): void => {
     if (won) return;
-    const nextMarks: Record<Zone, Mark> = { dry: "pending", ok: "pending", wet: "pending" };
+    const nextMarks: Record<string, Mark> = {};
     let allZonesOk = true;
     let buzzerOk = true;
-    for (const s of STATES) {
+    for (const s of samples) {
       const got = zoneFor(s.reading, low, high);
       const colourOk = got === s.want;
       nextMarks[s.id] = colourOk ? "pass" : "fail";
@@ -145,37 +223,47 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
     setBuzzerMark(buzzerOk ? "pass" : "fail");
     setChecked(true);
 
-    if (allZonesOk && buzzerOk && !reportedRef.current) {
+    const roundCleared = allZonesOk && buzzerOk;
+    if (!roundCleared) {
+      setUsedRetryThisRound(true);
+      return; // gentle retry — no onComplete(false) spam
+    }
+
+    // Round cleared. Count it as a "clean" solve only if no wrong test was needed.
+    const newSolved = usedRetryThisRound ? solvedRounds : solvedRounds + 1;
+    setSolvedRounds(newSolved);
+
+    if (roundIdx < ROUND_COUNT - 1) {
+      // Brief beat on the win, then slide the next, harder round in.
+      goToRound(roundIdx + 1);
+      return;
+    }
+
+    // Final round cleared → the game is won.
+    if (!reportedRef.current) {
       reportedRef.current = true;
       setWon(true);
+      // 3★ = every round solved on the first test; 2★ = one stumble; 1★ otherwise.
+      const stars = newSolved >= ROUND_COUNT ? 3 : newSolved >= ROUND_COUNT - 1 ? 2 : 1;
       onComplete({
         passed: true,
-        stars: 3,
-        detail: `Thresholds L=${low}, H=${high} sort every reading: RED+buzzer when dry, YELLOW when ok, GREEN when wet. 🪴✨`,
-      });
-    } else if (!allZonesOk || !buzzerOk) {
-      onComplete({
-        passed: false,
-        detail: "Almost! Slide each threshold into its green band so all three readings light the right LED.",
+        stars,
+        detail: `Built a soil-alert rule that sorted every sample across ${ROUND_COUNT} rounds (${newSolved}/${ROUND_COUNT} clean): RED+buzzer when dry, YELLOW when ok, GREEN when wet. 🪴✨`,
       });
     }
-  }, [won, low, high, onComplete]);
+  }, [won, samples, low, high, usedRetryThisRound, solvedRounds, roundIdx, goToRound, onComplete]);
 
+  // Full restart, back to round 1.
   const reset = useCallback((): void => {
     reportedRef.current = false;
-    setLow(START_LOW);
-    setHigh(START_HIGH);
-    setMoisture(MOISTURE_START);
-    setMarks({ dry: "pending", ok: "pending", wet: "pending" });
-    setBuzzerMark("pending");
-    setChecked(false);
+    setSolvedRounds(0);
     setWon(false);
-    setHintShown(false);
-  }, []);
+    goToRound(0);
+  }, [goToRound]);
 
-  // Kind, specific reason for a failing test row (never scolds).
+  // Kind, specific reason for a failing sample (never scolds).
   const reasonFor = useCallback(
-    (s: TestState, got: Zone): string => {
+    (s: Sample, got: Zone): string => {
       return `${ZONE_NAME[got]} lit at reading ${s.reading}, but the soil was ${s.label.toLowerCase()} — that wants ${ZONE_NAME[s.want]}. ${
         s.want === "dry"
           ? "Raise your DRY line above this reading."
@@ -188,15 +276,15 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
   );
 
   const passCount = useMemo<number>(
-    () => STATES.reduce((n, s) => (marks[s.id] === "pass" ? n + 1 : n), 0),
-    [marks],
+    () => samples.reduce((n, s) => (marks[s.id] === "pass" ? n + 1 : n), 0),
+    [samples, marks],
   );
 
   const status = won
-    ? "Solved! Your plant gets the right alert at every moisture level. ⭐⭐⭐"
+    ? `Solved all ${ROUND_COUNT} rounds! Your plant gets the right alert at every moisture level. ⭐`
     : checked
-      ? `${passCount} of 3 readings lit the right LED${buzzerMark === "fail" ? " — and check the buzzer" : ""} — adjust and test again.`
-      : "Set the two threshold sliders, then press TEST to run all three readings.";
+      ? `${passCount} of ${samples.length} readings lit the right LED${buzzerMark === "fail" ? " — and check the buzzer" : ""} — adjust and test again.`
+      : "Set the two threshold sliders, then press TEST to run every reading.";
 
   // ── Gauge geometry (horizontal bar 0..1023). ───────────────────────────────
   const BAR_X = 16;
@@ -205,7 +293,20 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[440px] flex-col items-center gap-3 font-mono text-ink">
-      {/* ── Status pill ── */}
+      {/* ── Round + status pill ── */}
+      <div className="flex w-full items-center gap-2">
+        {ROUNDS.map((_, i) => (
+          <span
+            key={i}
+            aria-hidden="true"
+            className="h-1.5 flex-1 rounded-full transition"
+            style={{
+              background:
+                i < roundIdx || won ? ACCENT : i === roundIdx ? "rgba(52,211,153,0.5)" : "rgba(255,255,255,0.08)",
+            }}
+          />
+        ))}
+      </div>
       <div
         className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-1.5 text-center text-sm"
         role="status"
@@ -218,9 +319,19 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
         }}
       >
         <span aria-hidden="true">{won ? "🎉" : "🪴"}</span>
-        <span aria-hidden="true">{won ? "⭐⭐⭐ Your plant is happy" : "DRY → RED+buzz · OK → YELLOW · WET → GREEN"}</span>
+        <span aria-hidden="true">
+          {won ? "Your plant is happy" : `Round ${roundIdx + 1}/${ROUND_COUNT} · DRY→RED+buzz · OK→YELLOW · WET→GREEN`}
+        </span>
         {won && <span aria-hidden="true">✨</span>}
       </div>
+
+      {/* ── Round brief ── */}
+      {!won && (
+        <div className="w-full rounded-xl border border-line bg-panel/60 px-3 py-2 text-[11px] leading-relaxed">
+          <span className="font-display" style={{ color: ACCENT }}>{round.title}.</span>{" "}
+          <span className="text-ink-dim">{round.blurb}</span>
+        </div>
+      )}
 
       {/* ── Plant scene + signboard LEDs + buzzer ── */}
       <div className="panel relative w-full overflow-hidden rounded-2xl border border-line p-2">
@@ -321,20 +432,24 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
             </g>
           </g>
 
-          {/* ── Threshold map bar (0..1023) with both valid bands ── */}
+          {/* ── Threshold map bar (0..1023) ── */}
           <g aria-hidden="true">
             <rect x={BAR_X} y={178} width={BAR_W} height={16} rx={4} fill="rgba(255,255,255,0.04)" stroke="rgba(120,140,170,0.4)" strokeWidth={1.5} />
             {/* zone fills under the current thresholds */}
             <rect x={valToX(0)} y={179} width={valToX(low) - valToX(0)} height={14} fill={ZONE_COLOR.dry} opacity={0.18} />
             <rect x={valToX(low)} y={179} width={valToX(high) - valToX(low)} height={14} fill={ZONE_COLOR.ok} opacity={0.18} />
             <rect x={valToX(high)} y={179} width={valToX(SENSOR_MAX) - valToX(high)} height={14} fill={ZONE_COLOR.wet} opacity={0.18} />
-            {/* highlighted valid bands */}
-            <rect x={valToX(LOW_BAND_LO)} y={196} width={valToX(LOW_BAND_HI) - valToX(LOW_BAND_LO)} height={5} rx={2} fill={ACCENT} opacity={0.5} />
-            <rect x={valToX(HIGH_BAND_LO)} y={196} width={valToX(HIGH_BAND_HI) - valToX(HIGH_BAND_LO)} height={5} rx={2} fill={ACCENT} opacity={0.5} />
-            {/* test-state ticks */}
-            {STATES.map((s) => (
+            {/* highlighted valid bands — round 1 only (the training round) */}
+            {round.showBands && (
+              <>
+                <rect x={valToX(windows.lowLo)} y={196} width={Math.max(2, valToX(windows.lowHi) - valToX(windows.lowLo))} height={5} rx={2} fill={ACCENT} opacity={0.5} />
+                <rect x={valToX(windows.highLo)} y={196} width={Math.max(2, valToX(windows.highHi) - valToX(windows.highLo))} height={5} rx={2} fill={ACCENT} opacity={0.5} />
+              </>
+            )}
+            {/* sample ticks */}
+            {samples.map((s) => (
               <g key={s.id}>
-                <line x1={valToX(s.reading)} y1={176} x2={valToX(s.reading)} y2={196} stroke="#cbd5e1" strokeWidth={1} opacity={0.5} />
+                <line x1={valToX(s.reading)} y1={176} x2={valToX(s.reading)} y2={196} stroke={ZONE_COLOR[s.want]} strokeWidth={1} opacity={0.6} />
                 <text x={valToX(s.reading)} y={208} fontSize={7} textAnchor="middle" fill="#6b7a90">{s.reading}</text>
               </g>
             ))}
@@ -418,10 +533,10 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
         <span className="text-ink-dim">ELSE →</span> <span style={{ color: ZONE_COLOR.wet }}>GREEN</span>
       </div>
 
-      {/* ── Test checklist (3 soil states) ── */}
+      {/* ── Test checklist (this round's soil samples) ── */}
       <div className="grid w-full grid-cols-3 gap-2">
-        {STATES.map((s) => {
-          const mk: Mark = marks[s.id];
+        {samples.map((s) => {
+          const mk: Mark = marks[s.id] ?? "pending";
           const litZone = checked ? zoneFor(s.reading, low, high) : null;
           const border = mk === "pass" ? ACCENT : mk === "fail" ? "#f87171" : "var(--color-line, #33405c)";
           return (
@@ -437,7 +552,7 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
               <span className="text-lg" aria-hidden="true">{s.emoji}</span>
               <span className="text-[10px] text-ink-dim">{s.label}</span>
               <span className="text-[10px] text-ink-faint" aria-hidden="true">{s.reading}</span>
-              {/* the LED that this row lit (after testing) */}
+              {/* the LED that this sample lit (after testing) */}
               <span
                 aria-hidden="true"
                 className="inline-block h-3 w-3 rounded-full"
@@ -469,15 +584,15 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
         </span>
       </div>
 
-      {/* ── Kind reasons for any failing test row ── */}
+      {/* ── Kind reasons for any failing sample ── */}
       {checked && !won && (
         <div className="w-full space-y-1" aria-live="polite">
-          {STATES.filter((s) => marks[s.id] === "fail").map((s) => (
+          {samples.filter((s) => marks[s.id] === "fail").map((s) => (
             <p key={s.id} className="text-[11px]" style={{ color: "#f87171" }}>
               {s.emoji} {reasonFor(s, zoneFor(s.reading, low, high))}
             </p>
           ))}
-          {marks.dry === "pass" && marks.ok === "pass" && marks.wet === "pass" && buzzerMark === "fail" && (
+          {samples.every((s) => marks[s.id] === "pass") && buzzerMark === "fail" && (
             <p className="text-[11px]" style={{ color: "#f87171" }}>
               🔔 Colours are right, but the buzzer must stay quiet unless the RED zone lights.
             </p>
@@ -485,10 +600,10 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
         </div>
       )}
 
-      {/* ── Hint reveal — reveals ONE boundary reading + its zone, never the answer ── */}
+      {/* ── Hint reveal — reveals the reasoning, not the exact answer ── */}
       {hintShown && !won && (
         <p className="w-full text-[11px]" style={{ color: ACCENT }} aria-live="polite">
-          💡 The dry-soil test reads 180 and must light RED, while the just-right test reads 450 and must light YELLOW — so your DRY line belongs somewhere between them (the green band shows where).
+          💡 Find the HIGHEST reading that should stay RED and the LOWEST that should be YELLOW — your DRY line goes between them. Do the same for YELLOW vs GREEN to place the WET line. The tighter the gap, the more careful you must be.
         </p>
       )}
 
@@ -497,7 +612,7 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
         <button
           type="button"
           onPointerDown={(e) => { e.preventDefault(); reset(); }}
-          aria-label="Start over"
+          aria-label="Start over from round 1"
           className="grid h-[54px] w-[56px] place-items-center rounded-2xl text-xl transition active:scale-90"
           style={{ touchAction: "none", background: "rgba(255,255,255,0.05)", border: "2px solid var(--color-line, #33405c)" }}
         >
@@ -517,7 +632,7 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
           type="button"
           onPointerDown={(e) => { e.preventDefault(); runTest(); }}
           disabled={won}
-          aria-label="Test the rule across all three soil readings"
+          aria-label="Test the rule across every soil reading in this round"
           className="flex h-[54px] flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold transition active:scale-95 disabled:opacity-50"
           style={{ touchAction: "none", background: ACCENT, color: "#04130d", boxShadow: "0 6px 0 0 #15916a" }}
         >
@@ -530,7 +645,7 @@ export default function PlantWateringReminder({ onComplete }: ActivityProps) {
       {won && (
         <div className="flex flex-col items-center gap-1">
           <div className="rounded-full px-4 py-1 text-xs font-bold" style={{ background: "rgba(52,211,153,0.18)", color: ACCENT, border: `2px solid ${ACCENT}` }}>
-            🌿 Your plant is happy
+            🌿 All {ROUND_COUNT} rounds solved — your plant is happy
           </div>
           <div className="pointer-events-none flex justify-center gap-2 text-2xl">
             <span style={{ animation: "g4plantmonitor-float 1.6s ease-in-out infinite" }} aria-hidden="true">✨</span>

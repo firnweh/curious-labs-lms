@@ -1,78 +1,198 @@
 "use client";
 import type { ActivityProps } from "@/lib/activities/types";
-import { useCallback, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
-/*  Multi-Zone Fire Alarm — sensors, thresholds + wiring per zone      */
-/*  LEARNING GOAL: a multi-zone alarm needs one sensor per area, each  */
-/*  wired to its OWN light + tone, with a threshold tuned high enough  */
-/*  to ignore warm-but-safe readings yet low enough to catch a fire,   */
-/*  so the panel can tell exactly WHERE the fire is.                   */
+/*  Multi-Zone Fire Alarm 🚨 — EXPLORER (Class 4-6)                     */
+/*                                                                     */
+/*  A real engineering problem, not "drag into the green zone".        */
+/*  Each room has its OWN sensor with a TRIGGER LINE you must set.     */
+/*  You are given each room's recent SENSOR LOG: the highest a         */
+/*  warm-but-SAFE reading reached (oven, heater, dryer…) and the       */
+/*  lowest a REAL fire reached. The trigger line must sit ABOVE every  */
+/*  safe reading (so no false alarms) yet AT-or-BELOW every fire (so   */
+/*  none slips through). Because every room runs hot differently, the  */
+/*  correct line is DIFFERENT per room — you must reason about each.   */
+/*                                                                     */
+/*  You ALSO wire each sensor to its own zone light. Cross-wired       */
+/*  sensors light the wrong room, so the panel can't say WHERE.        */
+/*                                                                     */
+/*  3 escalating rounds (2 → 3 → 4 zones). Round 3 twist: one room's   */
+/*  safe oven spikes HIGHER than another room's real fire — so a       */
+/*  single "one line fits all" guess is impossible. Star score rewards */
+/*  solving with few wasted drills (plan before you run).              */
 /* ------------------------------------------------------------------ */
 
 const ACCENT = "#34d399";
 const DANGER = "#f87171";
 const WARM = "#fb923c";
+const STEP_MS = 640;
 
-type ZoneId = "A" | "B";
 type Tone = "low" | "high";
-type Phase = "setup" | "drill" | "won";
-
-interface Zone {
-  id: ZoneId;
-  name: string;
-  emoji: string;
-  correctTone: Tone;
-}
-
-const ZONES: readonly Zone[] = [
-  { id: "A", name: "Kitchen", emoji: "🍳", correctTone: "low" },
-  { id: "B", name: "Storeroom", emoji: "📦", correctTone: "high" },
-] as const;
+type Phase = "setup" | "drill" | "roundwon" | "won";
 
 const TONE_LABEL: Record<Tone, string> = { low: "LOW beep", high: "HIGH beep" };
 
-/* Deterministic 6-event drill. `peak` is the flame intensity that zone
- * reaches (0–100). A reading counts as a real fire when it is at-or-above
- * the learner's threshold. Warm-but-safe decoys peak around 47–50, real
- * fires peak around 84–92. Any threshold in the green band catches every
- * fire and ignores every decoy — so the puzzle is always winnable. */
-interface DrillEvent {
-  zone: ZoneId;
-  peak: number;
-  fire: boolean; // ground truth: is this an actual fire?
+interface Zone {
+  id: string; // panel letter A,B,C,D
+  name: string;
+  emoji: string;
+  tone: Tone;
+  /** highest a warm-but-SAFE appliance reading reached recently */
+  safeMax: number;
+  /** lowest a REAL fire reached recently */
+  fireMin: number;
 }
 
-const SEQUENCE: readonly DrillEvent[] = [
-  { zone: "A", peak: 88, fire: true },
-  { zone: "B", peak: 50, fire: false }, // warm storeroom — safe
-  { zone: "B", peak: 92, fire: true },
-  { zone: "A", peak: 47, fire: false }, // warm kitchen — safe
-  { zone: "A", peak: 84, fire: true },
-  { zone: "B", peak: 90, fire: true },
-] as const;
+/* A drill event: a reading in a zone. `fire` is ground truth. The `peak`
+ * is chosen to fall inside that zone's safe range (decoy) or fire range. */
+interface DrillEvent {
+  zone: string;
+  peak: number;
+  fire: boolean;
+}
 
-const SAFE_BAND_LO = 56; // any threshold in [56,79] is correct
-const SAFE_BAND_HI = 79;
+interface Round {
+  building: string;
+  zones: readonly Zone[];
+  sequence: readonly DrillEvent[];
+}
+
+/* ---- Three hand-authored, deterministic, escalating buildings ---- */
+/* For each zone the SAFE band of valid trigger lines is (safeMax, fireMin].
+ * All sequences only use peaks inside safe range (<=safeMax) for decoys and
+ * inside fire range (>=fireMin) for fires, so a correct line per zone always
+ * locates every fire and ignores every decoy. */
+const ROUNDS: readonly Round[] = [
+  {
+    building: "Bakery",
+    zones: [
+      { id: "A", name: "Kitchen", emoji: "🍳", tone: "low", safeMax: 55, fireMin: 70 },
+      { id: "B", name: "Storeroom", emoji: "📦", tone: "high", safeMax: 40, fireMin: 60 },
+    ],
+    sequence: [
+      { zone: "A", peak: 88, fire: true },
+      { zone: "B", peak: 38, fire: false },
+      { zone: "B", peak: 92, fire: true },
+      { zone: "A", peak: 52, fire: false },
+      { zone: "A", peak: 74, fire: true },
+      { zone: "B", peak: 81, fire: true },
+    ],
+  },
+  {
+    building: "School",
+    zones: [
+      { id: "A", name: "Canteen", emoji: "🍲", tone: "low", safeMax: 60, fireMin: 75 },
+      { id: "B", name: "Library", emoji: "📚", tone: "high", safeMax: 30, fireMin: 50 },
+      { id: "C", name: "Lab", emoji: "⚗️", tone: "high", safeMax: 48, fireMin: 64 },
+    ],
+    sequence: [
+      { zone: "B", peak: 27, fire: false },
+      { zone: "A", peak: 84, fire: true },
+      { zone: "C", peak: 45, fire: false },
+      { zone: "B", peak: 55, fire: true },
+      { zone: "A", peak: 58, fire: false },
+      { zone: "C", peak: 70, fire: true },
+      { zone: "B", peak: 88, fire: true },
+      { zone: "A", peak: 78, fire: true },
+    ],
+  },
+  {
+    building: "Workshop",
+    // TWIST: the Furnace room's SAFE peak (78) is HIGHER than the Office's
+    // real FIRE minimum (44). A single global trigger line cannot work —
+    // you MUST tune each zone separately from its own log.
+    zones: [
+      { id: "A", name: "Office", emoji: "💻", tone: "low", safeMax: 32, fireMin: 44 },
+      { id: "B", name: "Paint store", emoji: "🪣", tone: "high", safeMax: 50, fireMin: 66 },
+      { id: "C", name: "Furnace", emoji: "🔩", tone: "high", safeMax: 78, fireMin: 90 },
+      { id: "D", name: "Wood shop", emoji: "🪵", tone: "low", safeMax: 40, fireMin: 58 },
+    ],
+    sequence: [
+      { zone: "C", peak: 76, fire: false }, // furnace runs HOT but safe
+      { zone: "A", peak: 46, fire: true }, // office fire is LOWER than furnace's safe peak!
+      { zone: "D", peak: 38, fire: false },
+      { zone: "B", peak: 48, fire: false },
+      { zone: "C", peak: 95, fire: true },
+      { zone: "A", peak: 30, fire: false },
+      { zone: "D", peak: 64, fire: true },
+      { zone: "B", peak: 70, fire: true },
+    ],
+  },
+] as const;
 
 type ResultMark = "pending" | "correct" | "missed" | "false" | "miswire";
 
 interface EventResult {
   mark: ResultMark;
-  litZone: ZoneId | null;
+  litZone: string | null;
 }
 
+/* default trigger line for a zone before the learner tunes it (deliberately
+ * too low so decoys would false-alarm — forces real tuning). */
+const START_THRESH = 20;
+
+function freshThresh(zones: readonly Zone[]): Record<string, number> {
+  const o: Record<string, number> = {};
+  for (const z of zones) o[z.id] = START_THRESH;
+  return o;
+}
+/* Start every sensor cross-wired to the NEXT zone (forces rewiring). */
+function freshWiring(zones: readonly Zone[]): Record<string, string> {
+  const o: Record<string, string> = {};
+  zones.forEach((z, i) => {
+    o[z.id] = zones[(i + 1) % zones.length].id;
+  });
+  return o;
+}
+
+function evaluate(
+  ev: DrillEvent,
+  th: Record<string, number>,
+  wire: Record<string, string>,
+): EventResult {
+  const triggered = ev.peak >= th[ev.zone];
+  if (ev.fire) {
+    if (!triggered) return { mark: "missed", litZone: null };
+    const lit = wire[ev.zone];
+    return lit === ev.zone
+      ? { mark: "correct", litZone: lit }
+      : { mark: "miswire", litZone: lit };
+  }
+  if (triggered) return { mark: "false", litZone: wire[ev.zone] };
+  return { mark: "correct", litZone: null };
+}
+
+const CONFETTI = Array.from({ length: 14 }, (_, i) => {
+  const angle = (i / 14) * Math.PI * 2;
+  const reach = 70 + (i % 4) * 18;
+  return {
+    emoji: ["✨", "🎉", "⭐", "💫", "🟢", "🚨"][i % 6],
+    dx: Math.round(Math.cos(angle) * reach),
+    dy: Math.round(Math.sin(angle) * reach * 0.7) + 36,
+    spin: (i % 2 === 0 ? 1 : -1) * (180 + (i % 5) * 90),
+    delay: (i % 7) * 0.05,
+    dur: 1.1 + (i % 4) * 0.18,
+  };
+});
+
 export default function FireZoneAlarm({ onComplete }: ActivityProps) {
-  // Threshold per zone (0–100). Start too low so warm decoys would false-alarm.
-  const [thresh, setThresh] = useState<Record<ZoneId, number>>({ A: 35, B: 35 });
-  // Wiring: which zone-light+tone each sensor drives. Start cross-wired.
-  const [wiring, setWiring] = useState<Record<ZoneId, ZoneId>>({ A: "B", B: "A" });
-  const [phase, setPhase] = useState<Phase>("setup");
-  const [step, setStep] = useState<number>(-1); // index into SEQUENCE during drill
-  const [results, setResults] = useState<EventResult[]>(
-    SEQUENCE.map(() => ({ mark: "pending", litZone: null })),
+  const [round, setRound] = useState<number>(0);
+  const rd = ROUNDS[round];
+
+  const [thresh, setThresh] = useState<Record<string, number>>(() =>
+    freshThresh(ROUNDS[0].zones),
   );
-  const [tries, setTries] = useState<number>(0);
+  const [wiring, setWiring] = useState<Record<string, string>>(() =>
+    freshWiring(ROUNDS[0].zones),
+  );
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [step, setStep] = useState<number>(-1);
+  const [results, setResults] = useState<EventResult[]>(() =>
+    ROUNDS[0].sequence.map(() => ({ mark: "pending", litZone: null })),
+  );
+  const [wastedDrills, setWastedDrills] = useState<number>(0);
 
   const doneRef = useRef<boolean>(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,87 +203,82 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
       timerRef.current = null;
     }
   }, []);
+  useEffect(() => () => stopTimer(), [stopTimer]);
 
-  /** Evaluate one event with the CURRENT settings. Pure + deterministic. */
-  const evaluate = useCallback(
-    (
-      ev: DrillEvent,
-      th: Record<ZoneId, number>,
-      wire: Record<ZoneId, ZoneId>,
-    ): EventResult => {
-      const triggered = ev.peak >= th[ev.zone];
-      if (ev.fire) {
-        if (!triggered) return { mark: "missed", litZone: null };
-        const lit = wire[ev.zone]; // sensor of ev.zone lights this panel zone
-        return lit === ev.zone
-          ? { mark: "correct", litZone: lit }
-          : { mark: "miswire", litZone: lit };
-      }
-      // not a real fire — a trigger here is a FALSE alarm
-      if (triggered) return { mark: "false", litZone: wire[ev.zone] };
-      return { mark: "correct", litZone: null };
-    },
-    [],
-  );
+  // Fresh round setup: reset trigger lines + wiring + tracker for this building.
+  useEffect(() => {
+    stopTimer();
+    setThresh(freshThresh(ROUNDS[round].zones));
+    setWiring(freshWiring(ROUNDS[round].zones));
+    setPhase("setup");
+    setStep(-1);
+    setResults(ROUNDS[round].sequence.map(() => ({ mark: "pending", litZone: null })));
+  }, [round, stopTimer]);
+
+  const inDrill = phase === "drill";
 
   const finishDrill = useCallback(
     (marks: EventResult[]) => {
       stopTimer();
-      const allGood = marks.every((r) => r.mark === "correct");
-      const realFiresLocated = marks.every(
-        (r, i) => !SEQUENCE[i].fire || r.mark === "correct",
-      );
-      const noFalse = marks.every((r) => r.mark !== "false");
-      if (allGood && realFiresLocated && noFalse) {
-        setPhase("won");
-        if (!doneRef.current) {
-          doneRef.current = true;
-          onComplete({
-            passed: true,
-            stars: 3,
-            detail: "All 6 zones located, no false alarms — building safe!",
-          });
+      const ok =
+        marks.every((r) => r.mark === "correct") &&
+        marks.every((r) => r.mark !== "false") &&
+        marks.every((r, i) => !rd.sequence[i].fire || r.mark === "correct");
+
+      if (ok) {
+        const last = round >= ROUNDS.length - 1;
+        if (last) {
+          setPhase("won");
+          if (!doneRef.current) {
+            doneRef.current = true;
+            // Optimization goal: clean run (0 wasted drills) = 3 stars.
+            const stars: 1 | 2 | 3 =
+              wastedDrills <= 1 ? 3 : wastedDrills <= 4 ? 2 : 1;
+            onComplete({
+              passed: true,
+              stars,
+              detail:
+                stars === 3
+                  ? "Every zone tuned and located across all 3 buildings — flawless!"
+                  : stars === 2
+                    ? "All buildings safe! A little fine-tuning got you there."
+                    : "All buildings safe — lots of test drills, but you solved it!",
+            });
+          }
+        } else {
+          setPhase("roundwon");
+          timerRef.current = setTimeout(() => setRound((r) => r + 1), 1300);
         }
       } else {
+        // Wrong: count a wasted drill, give a targeted nudge, let them retry.
+        // No onComplete(passed:false) spam — gentle retry only.
+        setWastedDrills((w) => w + 1);
         setPhase("setup");
         setStep(-1);
-        const miss = marks.some((r) => r.mark === "missed");
-        const fls = marks.some((r) => r.mark === "false");
-        const mw = marks.some((r) => r.mark === "miswire");
-        const detail = miss
-          ? "A real fire slipped through — lower a trigger line a little."
-          : fls
-            ? "A warm-but-safe reading set off a false alarm — raise that trigger line."
-            : mw
-              ? "The right zone lit the wrong panel light — check your wiring."
-              : "Almost! Adjust a setting and run the drill again.";
-        onComplete({ passed: false, detail });
       }
     },
-    [onComplete, stopTimer],
+    [onComplete, rd, round, stopTimer, wastedDrills],
   );
 
-  /** Play the 6-event sequence one beat at a time so kids see each locate. */
   const runStep = useCallback(
     (i: number, acc: EventResult[]) => {
-      if (i >= SEQUENCE.length) {
+      if (i >= rd.sequence.length) {
         finishDrill(acc);
         return;
       }
       setStep(i);
-      const res = evaluate(SEQUENCE[i], thresh, wiring);
+      const res = evaluate(rd.sequence[i], thresh, wiring);
       const next = acc.slice();
       next[i] = res;
       setResults(next);
-      timerRef.current = setTimeout(() => runStep(i + 1, next), 720);
+      timerRef.current = setTimeout(() => runStep(i + 1, next), STEP_MS);
     },
-    [evaluate, finishDrill, thresh, wiring],
+    [finishDrill, rd, thresh, wiring],
   );
 
   const handleStart = useCallback(() => {
     stopTimer();
-    setTries((t) => t + 1);
-    const cleared: EventResult[] = SEQUENCE.map(() => ({
+    const cleared: EventResult[] = rd.sequence.map(() => ({
       mark: "pending",
       litZone: null,
     }));
@@ -171,96 +286,157 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
     setPhase("drill");
     setStep(-1);
     timerRef.current = setTimeout(() => runStep(0, cleared), 350);
-  }, [runStep, stopTimer]);
+  }, [rd, runStep, stopTimer]);
 
   const handleReset = useCallback(() => {
     stopTimer();
-    setThresh({ A: 35, B: 35 });
-    setWiring({ A: "B", B: "A" });
+    doneRef.current = false;
+    setWastedDrills(0);
+    setRound(0);
+    // round-effect resets thresh/wiring/results/phase for round 0
+    setThresh(freshThresh(ROUNDS[0].zones));
+    setWiring(freshWiring(ROUNDS[0].zones));
     setPhase("setup");
     setStep(-1);
-    setResults(SEQUENCE.map(() => ({ mark: "pending", litZone: null })));
-    // doneRef stays true after a win so we never double-complete.
+    setResults(ROUNDS[0].sequence.map(() => ({ mark: "pending", litZone: null })));
   }, [stopTimer]);
 
   const setZoneThresh = useCallback(
-    (z: ZoneId, v: number) => {
-      if (phase === "drill") return;
+    (z: string, v: number) => {
+      if (inDrill) return;
       setThresh((prev) => ({ ...prev, [z]: v }));
-      if (phase === "won") setPhase("setup");
     },
-    [phase],
+    [inDrill],
   );
 
-  const toggleWire = useCallback(
-    (sensor: ZoneId) => {
-      if (phase === "drill") return;
-      setWiring((prev) => ({
-        ...prev,
-        [sensor]: prev[sensor] === "A" ? "B" : "A",
-      }));
-      if (phase === "won") setPhase("setup");
+  const cycleWire = useCallback(
+    (sensor: string) => {
+      if (inDrill) return;
+      setWiring((prev) => {
+        const ids = rd.zones.map((z) => z.id);
+        const cur = ids.indexOf(prev[sensor]);
+        const nextId = ids[(cur + 1) % ids.length];
+        return { ...prev, [sensor]: nextId };
+      });
     },
-    [phase],
+    [inDrill, rd],
   );
 
-  const wiringOk = wiring.A === "A" && wiring.B === "B";
-  const threshOk =
-    thresh.A >= SAFE_BAND_LO &&
-    thresh.A <= SAFE_BAND_HI &&
-    thresh.B >= SAFE_BAND_LO &&
-    thresh.B <= SAFE_BAND_HI;
-
-  const activeEvent = step >= 0 && step < SEQUENCE.length ? SEQUENCE[step] : null;
+  const activeEvent =
+    step >= 0 && step < rd.sequence.length ? rd.sequence[step] : null;
   const activeRes = step >= 0 ? results[step] : null;
+  const litZoneNow = activeRes?.litZone ?? null;
+  const celebrating = phase === "won";
 
-  const status = useMemo(() => {
-    if (phase === "won") return "Building Safe — every zone located correctly! 🎉";
+  // Targeted hint after a failed drill (deterministic, from last results).
+  const failHint = useMemo<string | null>(() => {
+    if (phase !== "setup" || step !== -1) return null;
+    if (results.every((r) => r.mark === "pending")) return null;
+    const miss = results.findIndex((r) => r.mark === "missed");
+    if (miss >= 0)
+      return `A real fire in Zone ${rd.sequence[miss].zone} slipped through — its trigger line is too HIGH. Lower it below ${rd.sequence[miss].peak}.`;
+    const fls = results.findIndex((r) => r.mark === "false");
+    if (fls >= 0)
+      return `A safe reading set off Zone ${rd.sequence[fls].zone} — its trigger line is too LOW. Raise it above ${rd.sequence[fls].peak}.`;
+    const mw = results.findIndex((r) => r.mark === "miswire");
+    if (mw >= 0)
+      return `Right room caught fire, wrong light lit — fix Sensor ${rd.sequence[mw].zone}'s wiring.`;
+    return null;
+  }, [phase, step, results, rd]);
+
+  const status = useMemo<string>(() => {
+    if (phase === "won") return "All buildings safe — every zone tuned and located! 🎉";
+    if (phase === "roundwon")
+      return `${rd.building} secured! Next building loading…`;
     if (phase === "drill") {
       if (activeEvent && activeRes) {
         const verb =
           activeRes.mark === "correct" && activeRes.litZone
-            ? `FIRE IN ZONE ${activeEvent.zone}`
+            ? `🔥 FIRE found in Zone ${activeEvent.zone}`
             : activeRes.mark === "correct"
-              ? "all clear (safe reading)"
+              ? "all clear (safe reading ignored)"
               : activeRes.mark === "missed"
-                ? "missed a real fire!"
+                ? "❌ missed a real fire!"
                 : activeRes.mark === "false"
-                  ? "false alarm!"
-                  : "wrong zone lit!";
-        return `Drill ${step + 1}/6 — ${verb}`;
+                  ? "❌ false alarm!"
+                  : "❌ wrong zone lit!";
+        return `Drill ${step + 1}/${rd.sequence.length} — ${verb}`;
       }
       return "Running drill…";
     }
-    return "Tune both triggers, wire each sensor to its own zone, then start the drill.";
-  }, [phase, step, activeEvent, activeRes]);
+    if (failHint) return failHint;
+    return "Read each room's log. Set its trigger ABOVE the safe peak but AT/BELOW the fire peak. Wire each sensor to its own zone.";
+  }, [phase, step, activeEvent, activeRes, rd, failHint]);
 
-  const litZoneNow = activeRes?.litZone ?? null;
-  const inDrill = phase === "drill";
+  const nz = rd.zones.length;
+  const planXW = nz <= 2 ? 156 : nz === 3 ? 104 : 78;
 
   return (
-    <div className="flex w-full max-w-[440px] flex-col gap-3 font-mono text-ink">
+    <div className="flex w-full max-w-[460px] flex-col gap-3 font-mono text-ink">
       <style>{`
-        @keyframes g5firezonealarm-flameflicker {
+        @keyframes g5fza-flicker {
           0%,100% { transform: scaleY(1) translateY(0); opacity: 1; }
           50% { transform: scaleY(1.18) translateY(-1px); opacity: .85; }
         }
-        @keyframes g5firezonealarm-sound {
+        @keyframes g5fza-sound {
           0%,100% { transform: scaleX(.4); opacity: .5; }
           50% { transform: scaleX(1); opacity: 1; }
         }
-        @keyframes g5firezonealarm-pop {
+        @keyframes g5fza-pop {
           0% { transform: scale(.6); opacity: 0; }
           60% { transform: scale(1.08); opacity: 1; }
           100% { transform: scale(1); opacity: 1; }
         }
+        @keyframes g5fza-confetti {
+          0% { transform: translate(0,0) rotate(0deg) scale(.4); opacity: 0; }
+          12% { opacity: 1; }
+          100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(1); opacity: 0; }
+        }
+        @keyframes g5fza-starpop {
+          0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+          60% { transform: scale(1.4) rotate(8deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-g5fza-loop] { animation: none !important; }
+        }
       `}</style>
+
+      {/* ---- HEADER: building + round dots ---- */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold" style={{ color: ACCENT }}>
+          🏢 {rd.building}
+          <span className="ml-1 text-[11px] font-normal text-ink-faint">
+            · {nz} zones
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1.5" aria-hidden>
+          {ROUNDS.map((_, i) => {
+            const solved = i < round || celebrating;
+            const cur = i === round && !celebrating;
+            return (
+              <span
+                key={i}
+                className="grid h-3.5 w-3.5 place-items-center rounded-full"
+                style={{
+                  background: solved
+                    ? ACCENT
+                    : cur
+                      ? `${ACCENT}40`
+                      : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${solved || cur ? ACCENT : "rgba(120,140,170,0.35)"}`,
+                }}
+              />
+            );
+          })}
+        </span>
+      </div>
 
       {/* ---------------- FLOOR PLAN ---------------- */}
       <div
         className="panel relative overflow-hidden rounded-xl p-2"
         style={
-          phase === "won"
+          celebrating
             ? { boxShadow: `0 0 0 1px ${ACCENT}, 0 0 24px -4px ${ACCENT}` }
             : undefined
         }
@@ -269,9 +445,8 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
           viewBox="0 0 320 150"
           className="block h-auto w-full"
           role="img"
-          aria-label="Building floor plan with Zone A kitchen and Zone B storeroom"
+          aria-label={`${rd.building} floor plan with ${nz} zones`}
         >
-          {/* outer wall */}
           <rect
             x={4}
             y={4}
@@ -282,26 +457,32 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
             stroke="#1b2433"
             strokeWidth={2}
           />
-          {/* dividing wall */}
-          <line x1={160} y1={8} x2={160} y2={142} stroke="#1b2433" strokeWidth={3} />
-
-          {ZONES.map((z, zi) => {
-            const x0 = zi === 0 ? 4 : 160;
-            const cx = x0 + 78;
-            const isFire =
-              activeEvent?.zone === z.id && activeRes?.mark !== "pending";
+          {rd.zones.map((z, zi) => {
+            const cellW = 312 / nz;
+            const x0 = 4 + zi * cellW;
+            const cx = x0 + cellW / 2;
+            const isHere = activeEvent?.zone === z.id && activeRes?.mark !== "pending";
             const burning =
-              isFire &&
+              isHere &&
               (activeRes?.mark === "correct" || activeRes?.mark === "miswire") &&
               activeEvent?.fire === true;
             const litHere = litZoneNow === z.id;
             return (
               <g key={z.id}>
-                {/* zone fill — flashes green when correctly located */}
+                {zi > 0 && (
+                  <line
+                    x1={x0}
+                    y1={8}
+                    x2={x0}
+                    y2={142}
+                    stroke="#1b2433"
+                    strokeWidth={3}
+                  />
+                )}
                 <rect
-                  x={x0 + 6}
+                  x={x0 + 3}
                   y={10}
-                  width={148}
+                  width={cellW - 6}
                   height={130}
                   rx={6}
                   fill={
@@ -313,42 +494,35 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
                   }
                   style={{ transition: "fill .2s ease" }}
                 />
-                <text x={cx} y={26} fill="#9aa6b2" fontSize={9} textAnchor="middle">
-                  ZONE {z.id} · {z.name.toUpperCase()}
+                <text x={cx} y={26} fill="#9aa6b2" fontSize={8} textAnchor="middle">
+                  {z.id} · {z.name.toUpperCase()}
                 </text>
-                {/* room emoji */}
-                <text x={cx} y={70} fontSize={30} textAnchor="middle">
+                <text x={cx} y={70} fontSize={nz >= 4 ? 22 : 28} textAnchor="middle">
                   {z.emoji}
                 </text>
-                {/* flame sensor dot */}
                 <circle
-                  cx={x0 + 24}
-                  cy={120}
-                  r={6}
-                  fill={isFire ? WARM : "#243042"}
+                  cx={x0 + 14}
+                  cy={122}
+                  r={5}
+                  fill={isHere ? WARM : "#243042"}
                   stroke={ACCENT}
-                  strokeWidth={1.2}
+                  strokeWidth={1.1}
                 />
-                <text x={x0 + 24} y={138} fill="#67748a" fontSize={7} textAnchor="middle">
-                  sensor
-                </text>
-                {/* live flame when this event burns in this zone */}
                 {burning && (
                   <text
                     x={cx}
-                    y={106}
-                    fontSize={22}
+                    y={108}
+                    fontSize={20}
                     textAnchor="middle"
                     style={{
-                      transformOrigin: `${cx}px 100px`,
-                      animation:
-                        "g5firezonealarm-flameflicker .5s ease-in-out infinite",
+                      transformOrigin: `${cx}px 102px`,
+                      animation: "g5fza-flicker .5s ease-in-out infinite",
                     }}
+                    data-g5fza-loop=""
                   >
                     🔥
                   </text>
                 )}
-                {/* FIRE callout */}
                 {litHere &&
                   activeRes?.mark === "correct" &&
                   activeEvent?.fire === true && (
@@ -356,21 +530,20 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
                       x={cx}
                       y={92}
                       fill={ACCENT}
-                      fontSize={9}
+                      fontSize={8}
                       fontWeight={700}
                       textAnchor="middle"
-                      style={{ animation: "g5firezonealarm-pop .3s ease-out" }}
+                      style={{ animation: "g5fza-pop .3s ease-out" }}
                     >
-                      FIRE IN ZONE {z.id}
+                      FIRE · {z.id}
                     </text>
                   )}
               </g>
             );
           })}
 
-          {/* green shield when won */}
-          {phase === "won" && (
-            <g style={{ animation: "g5firezonealarm-pop .4s ease-out" }}>
+          {celebrating && (
+            <g style={{ animation: "g5fza-pop .4s ease-out" }}>
               <rect
                 x={108}
                 y={56}
@@ -392,7 +565,7 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
                 fontWeight={700}
                 textAnchor="middle"
               >
-                BUILDING SAFE
+                ALL SAFE
               </text>
             </g>
           )}
@@ -403,16 +576,16 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
       <div
         role="status"
         aria-live="polite"
-        className="rounded-lg border border-line bg-panel/60 px-3 py-2 text-center text-xs"
+        className="rounded-lg border border-line bg-panel/60 px-3 py-2 text-center text-xs leading-snug"
         style={{
-          color:
-            phase === "won"
-              ? ACCENT
-              : activeRes?.mark === "missed" ||
-                  activeRes?.mark === "false" ||
-                  activeRes?.mark === "miswire"
-                ? DANGER
-                : "var(--color-ink-dim, #9aa6b2)",
+          color: celebrating
+            ? ACCENT
+            : activeRes?.mark === "missed" ||
+                activeRes?.mark === "false" ||
+                activeRes?.mark === "miswire" ||
+                (phase === "setup" && failHint)
+              ? DANGER
+              : "var(--color-ink-dim, #9aa6b2)",
         }}
       >
         {status}
@@ -438,117 +611,103 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
                 border: `1px solid ${isNow ? ACCENT : "#1b2433"}`,
               }}
             >
-              {SEQUENCE[i].zone}
+              {rd.sequence[i].zone}
             </span>
           );
         })}
       </div>
 
-      {/* ---------------- THRESHOLD SLIDERS ---------------- */}
-      <div className="panel flex flex-col gap-2.5 rounded-xl p-3">
+      {/* ---------------- ZONE TUNING CARDS (log + slider + wiring) ---------------- */}
+      <div className="panel flex flex-col gap-2 rounded-xl p-3">
         <p className="text-[11px] uppercase tracking-tech text-ink-faint">
-          1 · Set each trigger line
+          Tune each zone from its sensor log
         </p>
-        {ZONES.map((z) => {
+        {rd.zones.map((z) => {
           const t = thresh[z.id];
-          const tooLow = t < SAFE_BAND_LO;
-          const tooHigh = t > SAFE_BAND_HI;
-          const okColor = tooLow ? WARM : tooHigh ? DANGER : ACCENT;
+          // CORRECT band is (safeMax, fireMin]. We DON'T paint it on the bar —
+          // the learner must read the log numbers and reason. We only colour
+          // the current value once it is provably right/wrong vs the log.
+          const tooLow = t <= z.safeMax; // would false-alarm on a known safe peak
+          const tooHigh = t > z.fireMin; // would miss a known fire
+          const valColor = tooLow ? DANGER : tooHigh ? DANGER : ACCENT;
+          const target = wiring[z.id];
+          const wireOk = target === z.id;
+          const tgtZone = rd.zones.find((x) => x.id === target);
+          const tone = tgtZone?.tone ?? "low";
           return (
-            <label key={z.id} className="flex flex-col gap-1 text-xs">
-              <span className="flex items-center justify-between">
-                <span className="text-ink-dim">
-                  {z.emoji} Zone {z.id} trigger
+            <div
+              key={z.id}
+              className="flex flex-col gap-1.5 rounded-lg border border-line bg-panel/60 p-2.5"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-ink">
+                  {z.emoji} Zone {z.id} · {z.name}
                 </span>
-                <span className="tabular-nums" style={{ color: okColor }}>
-                  {t}
-                  {tooLow ? " · false alarms" : tooHigh ? " · misses fire" : " · ✓"}
+                <span className="tabular-nums" style={{ color: valColor }}>
+                  line {t}
                 </span>
-              </span>
-              {/* mini bar showing the safe band */}
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-panel-2">
-                <span
-                  className="absolute inset-y-0"
-                  style={{
-                    left: `${SAFE_BAND_LO}%`,
-                    width: `${SAFE_BAND_HI - SAFE_BAND_LO}%`,
-                    background: `${ACCENT}40`,
-                  }}
-                />
               </div>
+
+              {/* The LOG — this is the data to reason from (no answer given). */}
+              <div className="flex items-center gap-2 text-[10px]">
+                <span
+                  className="rounded px-1.5 py-0.5"
+                  style={{ background: `${WARM}22`, color: WARM }}
+                >
+                  warm-safe peaked {z.safeMax}
+                </span>
+                <span
+                  className="rounded px-1.5 py-0.5"
+                  style={{ background: `${DANGER}22`, color: DANGER }}
+                >
+                  real fire from {z.fireMin}
+                </span>
+              </div>
+
+              {/* slider — NO green safe-band painted on it on purpose */}
               <input
                 type="range"
-                min={20}
+                min={10}
                 max={100}
                 step={1}
                 value={t}
                 disabled={inDrill}
                 onChange={(e) => setZoneThresh(z.id, Number(e.target.value))}
-                aria-label={`Zone ${z.id} flame trigger threshold, currently ${t}`}
+                aria-label={`Zone ${z.id} ${z.name} trigger line, currently ${t}. Safe readings peak at ${z.safeMax}, real fires start at ${z.fireMin}.`}
                 className="h-2 w-full cursor-pointer appearance-none rounded-full bg-panel-2 disabled:opacity-50"
-                style={{ accentColor: okColor }}
+                style={{ accentColor: valColor }}
               />
-            </label>
-          );
-        })}
-      </div>
 
-      {/* ---------------- WIRING PANEL ---------------- */}
-      <div className="panel flex flex-col gap-2 rounded-xl p-3">
-        <p className="text-[11px] uppercase tracking-tech text-ink-faint">
-          2 · Wire each sensor to its own zone light + tone
-        </p>
-        {ZONES.map((z) => {
-          const target = wiring[z.id];
-          const ok = target === z.id;
-          const tone = ZONES.find((x) => x.id === target)?.correctTone ?? "low";
-          return (
-            <div
-              key={z.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-line bg-panel/60 p-2"
-            >
-              <span className="flex items-center gap-1.5 text-xs text-ink">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: ACCENT }}
-                  aria-hidden
-                />
-                Sensor {z.id}
-              </span>
-              <span aria-hidden className="text-ink-faint">
-                →
-              </span>
+              {/* wiring button */}
               <button
                 type="button"
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  toggleWire(z.id);
+                  cycleWire(z.id);
                 }}
                 disabled={inDrill}
-                aria-label={`Sensor ${z.id} is wired to Zone ${target} light and ${TONE_LABEL[tone]}. Tap to change.`}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                aria-label={`Sensor ${z.id} is wired to Zone ${target} light and ${TONE_LABEL[tone]}. Tap to change which zone it lights.`}
+                className="flex items-center justify-between gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition disabled:opacity-50"
                 style={{
-                  background: ok ? `${ACCENT}22` : `${DANGER}1f`,
-                  color: ok ? ACCENT : DANGER,
-                  border: `1px solid ${ok ? ACCENT : DANGER}`,
+                  background: wireOk ? `${ACCENT}1f` : `${DANGER}1a`,
+                  color: wireOk ? ACCENT : DANGER,
+                  border: `1px solid ${wireOk ? ACCENT : DANGER}`,
                   touchAction: "manipulation",
                 }}
               >
                 <span>
-                  Light {target} · {TONE_LABEL[tone]}
+                  Sensor {z.id} → Light {target} · {TONE_LABEL[tone]}
                 </span>
-                {/* animated sound icon */}
                 <span className="flex items-end gap-[2px]" aria-hidden>
                   {[0, 1, 2].map((b) => (
                     <span
                       key={b}
                       className="inline-block w-[3px] rounded-sm"
+                      data-g5fza-loop=""
                       style={{
                         height: tone === "high" ? 12 - b * 3 : 6 + b * 2,
-                        background: ok ? ACCENT : DANGER,
-                        animation: `g5firezonealarm-sound ${
-                          0.5 + b * 0.12
-                        }s ease-in-out infinite`,
+                        background: wireOk ? ACCENT : DANGER,
+                        animation: `g5fza-sound ${0.5 + b * 0.12}s ease-in-out infinite`,
                       }}
                     />
                   ))}
@@ -557,53 +716,79 @@ export default function FireZoneAlarm({ onComplete }: ActivityProps) {
             </div>
           );
         })}
-        {!inDrill && phase !== "won" && (
-          <p className="text-[11px] leading-tight text-ink-faint">
-            {wiringOk
-              ? threshOk
-                ? "Wiring and triggers look right — start the drill! ✓"
-                : "Wiring's good. Now make sure both triggers sit in the green band."
-              : "Each sensor should drive its OWN zone — tap a button to re-route it."}
-          </p>
-        )}
       </div>
 
       {/* ---------------- CONTROLS ---------------- */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-ink-faint">Drills: {tries}</span>
+        <span className="text-[11px] text-ink-faint">
+          Test drills used: {wastedDrills}
+        </span>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={handleReset}
             className="rounded-lg border border-line bg-panel/60 px-4 py-2 text-sm font-medium text-ink-dim"
-            aria-label="Reset thresholds and wiring"
+            aria-label="Start over from the first building"
           >
             Reset
           </button>
           <button
             type="button"
             onClick={handleStart}
-            disabled={inDrill}
+            disabled={inDrill || phase === "roundwon" || celebrating}
             className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
             style={{ background: ACCENT, color: "#05070d" }}
-            aria-label="Start the fire drill sequence"
+            aria-label="Run the fire drill"
           >
-            {inDrill ? "Drill running…" : "Start Drill 🚨"}
+            {inDrill ? "Drill running…" : "Run Drill 🚨"}
           </button>
         </div>
       </div>
 
       {/* ---------------- WIN CELEBRATION ---------------- */}
-      {phase === "won" && (
+      {celebrating && (
         <div
-          className="rounded-xl border p-3 text-center"
+          className="relative rounded-xl border p-3 text-center"
           style={{ borderColor: ACCENT, background: `${ACCENT}14` }}
         >
-          <div className="text-2xl" aria-hidden>
-            ✨🎉 ⭐⭐⭐
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0"
+            aria-hidden
+          >
+            {CONFETTI.map((p, i) => (
+              <span
+                key={i}
+                className="absolute text-base"
+                style={
+                  {
+                    left: 0,
+                    top: 0,
+                    "--dx": `${p.dx}px`,
+                    "--dy": `${p.dy}px`,
+                    "--spin": `${p.spin}deg`,
+                    animation: `g5fza-confetti ${p.dur}s cubic-bezier(.2,.6,.3,1) ${p.delay}s infinite`,
+                  } as CSSProperties
+                }
+              >
+                {p.emoji}
+              </span>
+            ))}
           </div>
-          <p className="mt-1 text-sm font-semibold" style={{ color: ACCENT }}>
-            Building Safe! Every zone located, zero false alarms.
+          <div className="relative z-10 text-2xl" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="inline-block"
+                style={{
+                  animation: `g5fza-starpop .55s cubic-bezier(.34,1.56,.64,1) ${0.15 + i * 0.28}s both`,
+                }}
+              >
+                ⭐
+              </span>
+            ))}
+          </div>
+          <p className="relative z-10 mt-1 text-sm font-semibold" style={{ color: ACCENT }}>
+            All 3 buildings safe! Every zone tuned and located.
           </p>
         </div>
       )}

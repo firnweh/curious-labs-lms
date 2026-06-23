@@ -114,6 +114,10 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
   const [firedIdx, setFiredIdx] = useState<number | null>(null);
   const [won, setWon] = useState<boolean>(false);
   const [hint, setHint] = useState<string>("");
+  // How many full-stack tests the learner ran before all 6 passed.
+  // Solving it by reasoning (few tests) earns more stars than trial-and-error.
+  const [tests, setTests] = useState<number>(0);
+  const [stars, setStars] = useState<1 | 2 | 3>(3);
 
   const reportedRef = useRef<boolean>(false);
 
@@ -202,18 +206,28 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
     [won],
   );
 
-  const finishWin = useCallback((): void => {
-    setWon(true);
-    setHint("");
-    if (!reportedRef.current) {
-      reportedRef.current = true;
-      onComplete({
-        passed: true,
-        stars: 3,
-        detail: "All 6 visitors got the right reply. Your rule-based bot is ready! ✨",
-      });
-    }
-  }, [onComplete]);
+  const finishWin = useCallback(
+    (earned: 1 | 2 | 3): void => {
+      setWon(true);
+      setStars(earned);
+      setHint("");
+      if (!reportedRef.current) {
+        reportedRef.current = true;
+        const tail =
+          earned === 3
+            ? "Solved it like an engineer — barely any test runs. ⭐⭐⭐"
+            : earned === 2
+              ? "Solved it! Next time, reason it out in fewer tests for 3 stars."
+              : "Solved it — lots of trial and error. Plan the keywords first next time!";
+        onComplete({
+          passed: true,
+          stars: earned,
+          detail: `All 6 visitors got the right reply. ${tail}`,
+        });
+      }
+    },
+    [onComplete],
+  );
 
   const testChat = useCallback((): void => {
     if (won) return;
@@ -223,8 +237,16 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
     const focus = firstBad === -1 ? 0 : firstBad;
     setFiredIdx(fireIndex(program, MESSAGES[focus].text));
 
+    // Count every full test (counts the winning run too, so test #1 win = 3 stars).
+    const usedTests = tests + 1;
+    setTests(usedTests);
+
     if (allPass) {
-      finishWin();
+      // Optimization goal: reward reasoning over brute-forcing.
+      // ≤2 tests → 3★ (the trap can be reasoned out in one or two runs),
+      // ≤4 → 2★, otherwise still a win at 1★. A clean 3★ is always reachable.
+      const earned: 1 | 2 | 3 = usedTests <= 2 ? 3 : usedTests <= 4 ? 2 : 1;
+      finishWin(earned);
       return;
     }
 
@@ -250,7 +272,7 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
     }
     setHint(msg);
     onComplete({ passed: false, detail: msg });
-  }, [won, outcomes, program, allPass, allFilled, finishWin, onComplete]);
+  }, [won, outcomes, program, allPass, allFilled, tests, finishWin, onComplete]);
 
   const reset = useCallback((): void => {
     setSlots(startSlots());
@@ -259,17 +281,23 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
     setFiredIdx(null);
     setWon(false);
     setHint("");
+    setTests(0);
+    setStars(3);
   }, []);
 
   const passCount = outcomes.filter((o) => o.got === o.want).length;
 
   const status = useMemo<string>(() => {
-    if (won) return "Bot is ready! Every visitor got the reply you intended.";
+    if (won) {
+      return stars === 3
+        ? "Bot is ready! You solved it in ≤2 tests — ⭐⭐⭐ engineer-level."
+        : `Bot is ready! ${stars} stars — try again to solve it in ≤2 tests for all 3.`;
+    }
     if (hint) return hint;
     if (!allFilled) return "Drag a keyword tile onto each rule card.";
     if (chat.length > 0) return `${passCount} of 6 replies correct. Adjust a card and test again.`;
     return "Cards are loaded. Press Test Chat to run the 6 visitors through your rules.";
-  }, [won, hint, allFilled, chat.length, passCount]);
+  }, [won, stars, hint, allFilled, chat.length, passCount]);
 
   return (
     <div className="flex w-full max-w-[440px] flex-col items-center gap-3 font-mono text-ink">
@@ -288,11 +316,14 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
         <span aria-hidden="true">🤖</span>
         {won ? (
           <span aria-hidden="true" className="text-lg">
-            ⭐⭐⭐
+            {"⭐".repeat(stars)}
+            <span className="text-ink-faint">{"☆".repeat(3 - stars)}</span>
           </span>
         ) : (
           <span aria-hidden="true" className="text-[12px] leading-tight text-ink-dim">
-            first matching rule wins
+            {tests === 0
+              ? "first matching rule wins"
+              : `test ${tests} · solve in ≤2 for ⭐⭐⭐`}
           </span>
         )}
         {won && <span aria-hidden="true">✨</span>}
@@ -499,7 +530,7 @@ export default function KeywordChatbot({ onComplete }: ActivityProps) {
               className="self-center rounded-full px-3 py-1 text-[11px] font-bold"
               style={{ background: "rgba(168,85,247,0.2)", color: ACCENT, boxShadow: `0 0 12px ${ACCENT}66` }}
             >
-              Bot is ready!
+              Bot is ready! {"⭐".repeat(stars)}
             </span>
           )}
         </div>

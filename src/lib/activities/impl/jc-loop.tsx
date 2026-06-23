@@ -4,23 +4,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ── Again & Again 🔂 ─────────────────────────────────────────────────────────
    JUNIORS (Class 1-3, age ~6-8). Concept: a LOOP repeats the same action a
-   chosen number of times — easier than tapping it by hand again and again.
-   A frog 🐸 must cross a row of lily pads 🪷 to reach a fly 🪰. ONE big block
-   says "HOP × n" with chunky – / + buttons to pick n (1-6). Press GO ▶ and the
-   frog hops EXACTLY n times, one pad per hop. n matches the pad count → frog
-   lands on the fly → big celebration. Wrong count → frog stops on the wrong
-   pad with a gentle 🙈 ribbit, then hops home — never a hard fail. Two rounds
-   with different pad counts. onComplete({passed:true,stars:3}) fires once.
-   NO READING REQUIRED — numbers, emoji and colour carry the whole idea. */
+   chosen number of times — but now as a real PROBLEM to plan, not a one-tap toy.
+   A frog 🐸 must cross lily pads 🪷 to reach a fly 🪰. ONE big block says
+   "HOP × n" with chunky – / + buttons to pick n (1-6). Press GO ▶ and the frog
+   hops EXACTLY n times, one pad per hop, landing on the fly → big celebration.
+
+   Across THREE escalating rounds the child must LOOK, COUNT the gap, and set the
+   loop to exactly that many hops:
+     • Round 1 — frog on the bank, 3 pads → set n = 3.
+     • Round 2 — a longer pond, 5 pads → set n = 5 (a fresh count).
+     • Round 3 — THE TWIST: the frog does NOT start on the bank. It already sits
+       partway across, so the winning n is the GAP between frog and fly, NOT the
+       total pad count. Counting "all the pads" overshoots — you must reason about
+       the remaining hops. This defeats guessing / pattern-matching.
+
+   Wrong count → frog stops on the wrong pad with a gentle 🙈 ribbit, then hops
+   back to its start — never a hard fail, never scolds. Win all three → ⭐⭐⭐,
+   onComplete fires EXACTLY ONCE. NO READING REQUIRED — numbers, emoji and colour
+   carry the whole idea. Touch-first, deterministic. */
 
 const ACCENT = "#22d3ee";
 const MIN_N = 1;
 const MAX_N = 6;
 const HOP_MS = 480;
 
-/** Two rounds: the number of pads to cross (so the winning n equals padCount). */
-const ROUNDS: readonly number[] = [3, 5];
-const TOTAL = ROUNDS.length;
+/** The three puzzles. `pads` = lily pads in the pond; `start` = the pad the frog
+ *  begins on (0 = the start bank). The winning loop count is the GAP the frog
+ *  must close to reach the fly:  win = pads - start.
+ *  Rounds: 3 → 5 → 6-pads-but-frog-starts-on-pad-2 (so the answer is 4, not 6). */
+const LEVELS: ReadonlyArray<{ pads: number; start: number }> = [
+  { pads: 3, start: 0 }, // gap 3 — learn the basic loop
+  { pads: 5, start: 0 }, // gap 5 — a bigger, fresh count
+  { pads: 6, start: 2 }, // twist: frog starts on pad 2 → count the GAP (4), not "6"
+];
+const TOTAL = LEVELS.length;
 
 /** Confetti particles for the win burst — pure decoration (transform/opacity). */
 type Particle = { e: string; x: number; y: number; d: number };
@@ -43,16 +60,19 @@ type Phase = "idle" | "hopping" | "miss" | "won";
 
 export default function AgainAndAgain({ onComplete }: ActivityProps) {
   const [round, setRound] = useState<number>(0);
+  const level = LEVELS[round];
+  const pads = level.pads;
+  const start = level.start; // pad the frog begins on (0 = bank)
+  const win = pads - start; // the gap the loop must close to land on the fly
+
   const [count, setCount] = useState<number>(1); // chosen n in the HOP × n block
-  const [frogPad, setFrogPad] = useState<number>(0); // 0 = start bank, 1..pads = on a pad
+  const [frogPad, setFrogPad] = useState<number>(start); // 0 = bank, 1..pads = on a pad
   const [phase, setPhase] = useState<Phase>("idle");
   const [allDone, setAllDone] = useState<boolean>(false);
 
   const reportedRef = useRef<boolean>(false);
   const audioRef = useRef<AudioContext | null>(null);
   const timers = useRef<number[]>([]);
-
-  const pads = ROUNDS[round];
 
   // ── tiny optional sounds (built on a tap gesture, never autoplay) ──────────
   const ac = useCallback((): AudioContext | null => {
@@ -105,6 +125,14 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
   }, []);
   useEffect(() => () => clearTimers(), [clearTimers]);
 
+  // Fresh round: park the frog on this level's starting pad, reset the loop.
+  useEffect(() => {
+    clearTimers();
+    setCount(1);
+    setFrogPad(LEVELS[round].start);
+    setPhase("idle");
+  }, [round, clearTimers]);
+
   const busy = phase === "hopping";
   const won = phase === "won";
 
@@ -113,10 +141,10 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
       if (busy || won) return;
       blip(delta > 0 ? 660 : 440);
       setCount((c) => Math.max(MIN_N, Math.min(MAX_N, c + delta)));
-      setFrogPad(0);
+      setFrogPad(start);
       setPhase("idle");
     },
-    [busy, won, blip],
+    [busy, won, blip, start],
   );
 
   const reset = useCallback(() => {
@@ -124,7 +152,7 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
     reportedRef.current = false;
     setRound(0);
     setCount(1);
-    setFrogPad(0);
+    setFrogPad(LEVELS[0].start);
     setPhase("idle");
     setAllDone(false);
   }, [clearTimers]);
@@ -134,21 +162,23 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
     clearTimers();
     blip(700, 0.12, "square");
     setPhase("hopping");
-    setFrogPad(0);
+    setFrogPad(start);
 
-    // hop one pad at a time, exactly `count` times
-    for (let i = 1; i <= count; i += 1) {
+    // hop one pad at a time, exactly `count` times, from the frog's start pad.
+    // never run off the far end of the pond (a spare landing reads clearly).
+    const landTarget = Math.min(start + count, pads + 1);
+    for (let i = start + 1; i <= landTarget; i += 1) {
       const id = window.setTimeout(() => {
         setFrogPad(i);
-        blip(520 + i * 40, 0.08, "sine");
-      }, i * HOP_MS);
+        blip(520 + (i - start) * 40, 0.08, "sine");
+      }, (i - start) * HOP_MS);
       timers.current.push(id);
     }
 
     // after the last hop, judge where the frog landed
     const judgeId = window.setTimeout(
       () => {
-        if (count === pads) {
+        if (count === win) {
           chime();
           setPhase("won");
           const last = round + 1 >= TOTAL;
@@ -156,27 +186,15 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
             const finishId = window.setTimeout(() => setAllDone(true), 900);
             timers.current.push(finishId);
           } else {
-            const nextId = window.setTimeout(() => {
-              setRound((r) => r + 1);
-              setCount(1);
-              setFrogPad(0);
-              setPhase("idle");
-            }, 1300);
+            const nextId = window.setTimeout(() => setRound((r) => r + 1), 1300);
             timers.current.push(nextId);
           }
         } else {
-          // gentle miss: ribbit + hop home, no scolding
+          // gentle miss: ribbit + hop back to start, no scolding, no onComplete.
           blip(220, 0.18, "sawtooth");
           setPhase("miss");
-          onComplete({
-            passed: false,
-            detail:
-              count < pads
-                ? "So close! A few more hops 🐸"
-                : "A little too many hops — try fewer 🐸",
-          });
           const homeId = window.setTimeout(() => {
-            setFrogPad(0);
+            setFrogPad(start);
             setPhase("idle");
           }, 900);
           timers.current.push(homeId);
@@ -185,9 +203,9 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
       count * HOP_MS + 240,
     );
     timers.current.push(judgeId);
-  }, [busy, won, count, pads, round, clearTimers, blip, chime, onComplete]);
+  }, [busy, won, count, win, pads, start, round, clearTimers, blip, chime]);
 
-  // report success exactly once when both rounds are cleared
+  // report success exactly once when all rounds are cleared
   useEffect(() => {
     if (allDone && !reportedRef.current) {
       reportedRef.current = true;
@@ -206,7 +224,7 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
     return "🔂";
   }, [allDone, won, missing, busy]);
 
-  // build the row: start bank + pads + the fly bank
+  // build the row of pads (1..pads)
   const lane = useMemo(() => Array.from({ length: pads }, (_, i) => i + 1), [pads]);
 
   return (
@@ -221,14 +239,14 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
           aria-live="polite"
           aria-label={
             allDone
-              ? "All done!"
+              ? "All done! You solved all three rounds"
               : won
                 ? "The frog reached the fly!"
                 : missing
                   ? "Not quite, try again"
                   : busy
                     ? "The frog is hopping"
-                    : "Pick how many hops, then press Go"
+                    : `Round ${round + 1} of ${TOTAL} — count the hops to the fly, then press Go`
           }
           style={{
             background: won || allDone ? "rgba(34,211,238,0.14)" : "rgba(255,255,255,0.04)",
@@ -256,16 +274,18 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
           )}
         </div>
         <div className="flex items-center gap-1.5" aria-label={`Round ${round + 1} of ${TOTAL}`}>
-          {ROUNDS.map((_, i) => {
+          {LEVELS.map((_, i) => {
             const filled = i < round || allDone;
+            const current = i === round && !allDone;
             return (
             <span
               key={i}
               className="block h-3 w-3 rounded-full transition-all"
               style={{
                 background: filled ? ACCENT : "transparent",
-                border: `2px solid ${filled ? ACCENT : "var(--color-line, #2a3340)"}`,
-                boxShadow: filled ? `0 0 8px ${ACCENT}` : "none",
+                border: `2px solid ${filled || current ? ACCENT : "var(--color-line, #2a3340)"}`,
+                boxShadow: filled || current ? `0 0 8px ${ACCENT}` : "none",
+                opacity: current && !filled ? 0.65 : 1,
                 animation: filled ? "jcloop-snap 0.45s cubic-bezier(.34,1.56,.64,1) both" : undefined,
               }}
             />
@@ -286,6 +306,9 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
           {lane.map((p) => {
             const here = frogPad === p;
             const isGoalPad = p === pads;
+            // a soft 🚩 marks the frog's starting pad this round, so the child can
+            // see WHERE the count begins (key to the round-3 gap twist).
+            const isStartPad = p === start && start > 0;
             return (
               <div
                 key={p}
@@ -309,6 +332,16 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
                     }}
                   >
                     🐸
+                  </span>
+                )}
+                {/* start-pad marker (only shows when the frog begins mid-pond) */}
+                {isStartPad && !here && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute text-base"
+                    style={{ top: 2, opacity: 0.55 }}
+                  >
+                    🚩
                   </span>
                 )}
                 <span
@@ -344,7 +377,7 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
           </div>
         </div>
 
-        {/* frog resting on the start bank when not on a pad */}
+        {/* frog resting on the start bank when this round starts on the bank */}
         {frogPad === 0 && (
           <div
             className="pointer-events-none absolute text-3xl"
@@ -543,7 +576,7 @@ export default function AgainAndAgain({ onComplete }: ActivityProps) {
         </button>
       </div>
 
-      {/* big celebration when both rounds are cleared */}
+      {/* big celebration when all rounds are cleared */}
       {allDone && (
         <div className="relative grid place-items-center gap-1 py-1 text-center">
           {/* falling confetti rain over the finish line */}
