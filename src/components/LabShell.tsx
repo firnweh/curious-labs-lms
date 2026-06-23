@@ -9,6 +9,7 @@ import { useProgress, snapshotStore, readStreak } from "@/lib/progress";
 import { BADGES, earnedBadgeIds, XP_PER_STAR, type Badge } from "@/lib/gamification";
 import type { ActivityResult } from "@/lib/activities/types";
 import { Stars, Difficulty, Tag, BackLink } from "@/components/ui";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 interface Reward {
   xpGained: number;
@@ -107,7 +108,35 @@ export function LabShell({ id }: { id: string }) {
             className="pointer-events-none absolute inset-x-0 top-0 h-px"
             style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}
           />
-          <Activity key={attempt} onComplete={handleComplete} />
+          <ErrorBoundary
+            resetKey={attempt}
+            fallback={() => (
+              <div className="grid place-items-center gap-3 px-4 py-16 text-center">
+                <span className="text-5xl" aria-hidden>🛠️</span>
+                <p className="font-display text-lg font-bold text-ink">This lab hit a snag</p>
+                <p className="max-w-sm text-sm text-ink-dim">
+                  Something glitched — it&apos;s not your fault. Give it another go, or pick a different lab.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={restart}
+                    className="rounded-xl px-4 py-2 text-sm font-medium"
+                    style={{ background: accent, color: "#05070d" }}
+                  >
+                    ↺ Try again
+                  </button>
+                  <Link
+                    href={`/subjects/${meta.subject}`}
+                    className="rounded-xl border border-line px-4 py-2 text-sm text-ink-dim transition-colors hover:text-ink"
+                  >
+                    Back to {subject.name}
+                  </Link>
+                </div>
+              </div>
+            )}
+          >
+            <Activity key={attempt} onComplete={handleComplete} />
+          </ErrorBoundary>
         </div>
 
         {/* sidebar */}

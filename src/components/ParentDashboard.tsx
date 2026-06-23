@@ -16,7 +16,11 @@ export function ParentDashboard({ name }: { name: string }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setChildren(await getLinkedChildren());
+    try {
+      setChildren(await getLinkedChildren());
+    } catch {
+      setChildren([]); // degrade gracefully on a network/backend blip
+    }
   }, []);
 
   useEffect(() => {

@@ -15,9 +15,13 @@ export function TeacherDashboard({ name }: { name: string }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const loadClasses = useCallback(async () => {
-    const c = await getTeacherClasses();
-    setClasses(c);
-    setActiveId((cur) => cur ?? c[0]?.id ?? null);
+    try {
+      const c = await getTeacherClasses();
+      setClasses(c);
+      setActiveId((cur) => cur ?? c[0]?.id ?? null);
+    } catch {
+      setClasses([]); // degrade to "no classes yet" instead of spinning forever
+    }
   }, []);
 
   useEffect(() => {
