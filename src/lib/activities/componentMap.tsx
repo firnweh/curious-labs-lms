@@ -23,6 +23,14 @@ export const ACTIVITY_COMPONENTS: Record<string, ActivityComponent> = {
   "code-maze": dynamic(() => import("./impl/code-maze"), { ssr: false, loading: LabLoading }),
   "code-loops": dynamic(() => import("./impl/code-loops"), { ssr: false, loading: LabLoading }),
   "robo-circuit": dynamic(() => import("./impl/robo-circuit"), { ssr: false, loading: LabLoading }),
+
+  // Circuit Lab guided challenges
+  "circ-light": dynamic(() => import("./impl/circ-light"), { ssr: false, loading: LabLoading }),
+  "circ-switch": dynamic(() => import("./impl/circ-switch"), { ssr: false, loading: LabLoading }),
+  "circ-parallel": dynamic(() => import("./impl/circ-parallel"), { ssr: false, loading: LabLoading }),
+  "circ-spin": dynamic(() => import("./impl/circ-spin"), { ssr: false, loading: LabLoading }),
+  "circ-buzz": dynamic(() => import("./impl/circ-buzz"), { ssr: false, loading: LabLoading }),
+  "circ-dim": dynamic(() => import("./impl/circ-dim"), { ssr: false, loading: LabLoading }),
   "robo-linebot": dynamic(() => import("./impl/robo-linebot"), { ssr: false, loading: LabLoading }),
   "ai-sorter": dynamic(() => import("./impl/ai-sorter"), { ssr: false, loading: LabLoading }),
   "ai-weights": dynamic(() => import("./impl/ai-weights"), { ssr: false, loading: LabLoading }),

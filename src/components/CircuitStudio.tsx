@@ -5,6 +5,7 @@ import type { CircuitDoc, PinRef, PartType, SimResult } from "@/lib/circuits/typ
 import { simulate } from "@/lib/circuits/engine";
 import { PART_DEFS, PART_ORDER, BOX_W, BOX_H } from "@/lib/circuits/parts";
 import { useCircuits } from "@/lib/circuits/store";
+import type { Challenge } from "@/lib/circuits/challenges";
 
 const VBW = 760;
 const VBH = 470;
@@ -40,19 +41,28 @@ function pinPos(doc: CircuitDoc, ref: PinRef) {
   };
 }
 
-export function CircuitStudio() {
+export function CircuitStudio({ challenge, onSolved }: { challenge?: Challenge; onSolved?: () => void } = {}) {
   const [doc, setDoc] = useState<CircuitDoc>({ components: [], wires: [] });
   const [sel, setSel] = useState<{ kind: "component" | "wire"; id: string } | null>(null);
   const [wireFrom, setWireFrom] = useState<PinRef | null>(null);
   const [running, setRunning] = useState(false);
   const [ghost, setGhost] = useState<{ type: PartType; x: number; y: number } | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [solved, setSolved] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const idRef = useRef(1);
   const dragRef = useRef<{ id: string; offX: number; offY: number; moved: boolean } | null>(null);
   const { circuits, save, remove } = useCircuits();
 
   const sim = useMemo(() => (running ? simulate(doc) : EMPTY), [doc, running]);
+
+  // live auto-grade for challenge mode
+  useEffect(() => {
+    if (challenge && running && !solved && challenge.check(doc, sim)) {
+      setSolved(true);
+      onSolved?.();
+    }
+  }, [sim, running, challenge, solved, doc, onSolved]);
 
   const toPoint = useCallback((clientX: number, clientY: number) => {
     const r = svgRef.current!.getBoundingClientRect();
@@ -164,7 +174,17 @@ export function CircuitStudio() {
   const bigBtn = "font-round font-semibold rounded-2xl transition active:scale-95";
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[210px_1fr_220px]">
+    <div className="space-y-3">
+      {challenge && (
+        <div className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3 ${solved ? "border-neon-green/70 bg-neon-green/10" : "border-neon-cyan/50 bg-neon-cyan/5"}`}>
+          <span className="text-2xl" aria-hidden>{solved ? "🎉" : "🎯"}</span>
+          <div className="font-round">
+            <p className="text-base font-bold text-ink">{solved ? "You did it! 🌟" : challenge.prompt}</p>
+            <p className="text-xs text-ink-dim">{solved ? "Challenge complete — great job!" : "Build it, then press ▶ Play to check."}</p>
+          </div>
+        </div>
+      )}
+      <div className="grid gap-4 lg:grid-cols-[210px_1fr_220px]">
       {/* ── toy shelf ── */}
       <aside className="panel h-fit rounded-3xl border-2 border-line p-3">
         <p className="mb-2 px-1 font-round text-base font-bold text-ink">🧰 Parts</p>
@@ -319,6 +339,7 @@ export function CircuitStudio() {
           </svg>
         </div>
       )}
+      </div>
     </div>
   );
 }
