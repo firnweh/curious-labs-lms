@@ -82,7 +82,7 @@ export function CosmicCarousel({
     // Cinematic studio-intro / video slides are long loops — hold them ~15s
     // (one full loop) so they're actually seen, instead of skipping at 3s.
     const slide = rootRef.current?.querySelectorAll<HTMLElement>(".cl-slide")[i];
-    const cinematic = !!slide?.querySelector(".hero-intro, .hero-video");
+    const cinematic = !!slide?.querySelector(".hero-intro, .hero-video, .draw-sky");
     const t = window.setTimeout(() => setI((cur) => (cur + 1) % n), cinematic ? 15000 : 3000);
     return () => window.clearTimeout(t);
   }, [i, paused, n, immersive]);

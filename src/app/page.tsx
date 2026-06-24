@@ -3,23 +3,26 @@
 import Link from "next/link";
 import MakerspaceStats from "@/components/MakerspaceStats";
 import { CosmosFX } from "@/components/CosmosFX";
-import { CinematicHero } from "@/components/CinematicHero";
+import { ConstellationFX } from "@/components/ConstellationFX";
+import { ReactorCore } from "@/components/ReactorCore";
 import { CosmicCarousel } from "@/components/CosmicCarousel";
 import { HeroIntro3D, HeroIntroRobotics, HeroIntroAI, HeroIntroWeb } from "@/components/HeroIntroLazy";
+import { TrackGalaxy } from "@/components/TrackGalaxy";
 import { StartQR } from "@/components/StartQR";
 
-// 7 slides: Home, the 4 studio-intro sections, Stats, and the launch CTA.
+// 8 slides: Home, the 4 studio-intro sections, the planet picker, Stats, the launch CTA.
 // Labels/sectors stay index-aligned with the children below.
-const SLIDE_LABELS = ["Home", "3D Modelling", "Robotics", "AI", "Web Dev", "Stats", "Get Started"];
-const SLIDE_SECTORS = ["LAUNCH PAD", "MODEL BAY", "ROBOTICS BAY", "NEURAL CORE", "WEB FORGE", "TELEMETRY", "DOCKING BAY"];
+const SLIDE_LABELS = ["Home", "3D Modelling", "Robotics", "AI", "Web Dev", "Worlds", "Stats", "Get Started"];
+const SLIDE_SECTORS = ["LAUNCH PAD", "MODEL BAY", "ROBOTICS BAY", "NEURAL CORE", "WEB FORGE", "STAR MAP", "TELEMETRY", "DOCKING BAY"];
 
 export default function Home() {
   return (
     <>
       <CosmosFX />
+      <ConstellationFX />
       <CosmicCarousel labels={SLIDE_LABELS} sectors={SLIDE_SECTORS}>
-        {/* 1 — Hero */}
-        <CinematicHero />
+        {/* 1 — Hero: "Reactor Core" — value + stats with the 4 studios orbiting */}
+        <ReactorCore />
 
         {/* 2–5 — Studio intro: one looping slide per section, transparent over the home cosmos */}
         <HeroIntro3D />
@@ -27,7 +30,10 @@ export default function Home() {
         <HeroIntroAI />
         <HeroIntroWeb />
 
-        {/* 6 — Makerspace stats (live from the registry) */}
+        {/* 6 — Choose your world: the 4 tracks as clickable planets */}
+        <TrackGalaxy />
+
+        {/* 7 — Makerspace stats (live from the registry) */}
         <MakerspaceStats />
 
         {/* 7 — Launch CTA */}
