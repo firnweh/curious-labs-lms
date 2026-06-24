@@ -2227,15 +2227,20 @@ function IntroStage({ from, to, children }) {
   );
 }
 
-function introSlide(from, to) {
+function introSlide(from, to, cta) {
   return (
     <div className="hero-intro" style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <IntroStage from={from} to={to}><IntroSceneSprites /></IntroStage>
+      {cta && (
+        <a href={cta.href} className="hero-intro-cta">
+          <span aria-hidden="true">{cta.emoji}</span> {cta.label} <span aria-hidden="true">→</span>
+        </a>
+      )}
     </div>
   );
 }
 
-export function HeroIntro3D()       { return introSlide(0, 15); }
-export function HeroIntroRobotics() { return introSlide(15, 30); }
-export function HeroIntroAI()       { return introSlide(30, 45); }
-export function HeroIntroWeb()      { return introSlide(45, 60); }
+export function HeroIntro3D()       { return introSlide(0, 15,  { emoji: '🧊', label: 'Start 3D Modelling', href: '/subjects/threed' }); }
+export function HeroIntroRobotics() { return introSlide(15, 30, { emoji: '🤖', label: 'Explore Robotics',  href: '/subjects/robotics' }); }
+export function HeroIntroAI()       { return introSlide(30, 45, { emoji: '🧠', label: 'Explore AI',        href: '/subjects/ai' }); }
+export function HeroIntroWeb()      { return introSlide(45, 60, { emoji: '💻', label: 'Explore Web Dev',   href: '/subjects/coding' }); }

@@ -636,7 +636,9 @@ body.cl-carousel-page footer { display: none; }
 /* let the flex main shrink to the frame so the carousel fills exactly one screen */
 body.cl-carousel-page main { min-height: 0; padding-top: 0; }
 
-.cl-carousel { position: relative; z-index: 1; height: 100%; width: 100%; overflow: hidden; }
+/* Sit below the fixed 4rem header so slide content (top-aligned on overflow)
+   never tucks under it / bleeds off the top. */
+.cl-carousel { position: relative; z-index: 1; height: calc(100dvh - 4rem); margin-top: 4rem; width: 100%; overflow: hidden; }
 .cl-track { position: relative; z-index: 1; display: flex; height: 100%; width: 100%; will-change: transform;
   transition: transform .85s cubic-bezier(.76,0,.24,1); }
 .cl-slide { flex: 0 0 100%; height: 100%; overflow-y: auto; overflow-x: hidden;
@@ -666,6 +668,19 @@ body.cl-carousel-page main { min-height: 0; padding-top: 0; }
 .cl-slide-inner > .hero-video { height: 100%; }
 .cl-slide-inner > .hero-intro { height: 100%; }
 .cl-slide-inner > .singularity { padding: 0; background: none; }
+
+/* "Start this track" CTA overlaid on each studio-intro film */
+.hero-intro-cta {
+  position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); z-index: 40;
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: 14px 30px; border-radius: 16px; text-decoration: none;
+  font-family: var(--font-round), "Fredoka", system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+  color: #06210f; background: #34d399;
+  box-shadow: 0 10px 30px -6px rgba(52, 211, 153, 0.6);
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
+}
+.hero-intro-cta:hover { transform: translateX(-50%) translateY(-3px); box-shadow: 0 14px 38px -6px rgba(52, 211, 153, 0.85); }
+.hero-intro-cta:active { transform: translateX(-50%) scale(0.96); }
 
 /* immersive takeover: while a cinematic slide (the 3D hero video) is active,
    strip ALL chrome so it reads as a pure full-screen film. Navigation still
