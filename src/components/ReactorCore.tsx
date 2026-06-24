@@ -30,7 +30,9 @@ const STUDIOS = SUBJECTS.map((s) => ({
 }));
 
 export function ReactorCore() {
+  const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const pausedRef = useRef(false);
   const [stats, setStats] = useState({ labs: 0, studios: 0, grades: 0 });
@@ -70,6 +72,7 @@ export function ReactorCore() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const N = STUDIOS.length;
     let W = 0, H = 0, cx = 0, cy = 0, rx = 0, ry = 0;
+    let mobile = false; // below this width the studios stack instead of orbit
 
     const resize = () => {
       W = canvas.clientWidth;
@@ -79,11 +82,27 @@ export function ReactorCore() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       cx = W * 0.5;
       cy = H * 0.46;
-      rx = Math.min(W * 0.37, 400);
-      ry = Math.min(H * 0.32, 220);
+      // size the orbit to the viewport, then fit the centre panel INSIDE it so
+      // the studios never crowd the text — at any width or height.
+      rx = Math.max(150, Math.min(W * 0.5 - 76, 450));
+      ry = Math.max(118, Math.min(H * 0.42 - 54, 248));
+      const panelW = Math.max(240, Math.min(2 * (rx - 78), 560));
+      if (panelRef.current) panelRef.current.style.maxWidth = `${Math.round(panelW)}px`;
+      mobile = W < 600;
+      sectionRef.current?.classList.toggle("is-stacked", mobile);
+      if (mobile) {
+        // hand layout back to CSS (stacked); clear any orbit-driven inline styles
+        for (const node of nodeRefs.current) {
+          if (!node) continue;
+          node.style.left = node.style.top = node.style.transform = node.style.opacity = node.style.zIndex = "";
+        }
+      }
     };
     resize();
-    window.addEventListener("resize", resize);
+    // observe the canvas itself so we recompute AFTER layout settles (window
+    // 'resize' fires too early and leaves the orbit out of sync with the panel)
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
 
     const particles = Array.from({ length: 30 }, (_, i) => ({ a: (i / 30) * Math.PI * 2, s: 0.18 + (i % 6) * 0.035 }));
     let base = -Math.PI / 2; // Coding starts at the top
@@ -114,35 +133,38 @@ export function ReactorCore() {
       const pulse = 0.5 + 0.5 * Math.sin(tt * 1.6);
       ctx.clearRect(0, 0, W, H);
 
-      // energy beams: core → each studio (the core "powers" the studios)
-      for (let i = 0; i < N; i++) {
-        const ang = base + (i * Math.PI * 2) / N;
-        const x = cx + rx * Math.cos(ang), y = cy + ry * Math.sin(ang);
-        const depth = (Math.sin(ang) + 1) / 2;
-        ctx.strokeStyle = hexA(STUDIOS[i].accent, 0.05 + depth * 0.13);
+      // orbit visuals only when the studios actually orbit (desktop/tablet)
+      if (!mobile) {
+        // energy beams: core → each studio (the core "powers" the studios)
+        for (let i = 0; i < N; i++) {
+          const ang = base + (i * Math.PI * 2) / N;
+          const x = cx + rx * Math.cos(ang), y = cy + ry * Math.sin(ang);
+          const depth = (Math.sin(ang) + 1) / 2;
+          ctx.strokeStyle = hexA(STUDIOS[i].accent, 0.05 + depth * 0.13);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+
+        // orbit ellipse
+        ctx.strokeStyle = "rgba(125,170,235,0.16)";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(x, y);
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
-      }
 
-      // orbit ellipse
-      ctx.strokeStyle = "rgba(125,170,235,0.16)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // energy particles travelling the orbit
-      for (const p of particles) {
-        if (!pausedRef.current) p.a += dt * p.s;
-        const x = cx + rx * Math.cos(p.a), y = cy + ry * Math.sin(p.a);
-        const depth = (Math.sin(p.a) + 1) / 2;
-        ctx.fillStyle = `rgba(140,215,255,${(0.08 + depth * 0.4).toFixed(3)})`;
-        ctx.beginPath();
-        ctx.arc(x, y, 1.1 + depth * 1.3, 0, Math.PI * 2);
-        ctx.fill();
+        // energy particles travelling the orbit
+        for (const p of particles) {
+          if (!pausedRef.current) p.a += dt * p.s;
+          const x = cx + rx * Math.cos(p.a), y = cy + ry * Math.sin(p.a);
+          const depth = (Math.sin(p.a) + 1) / 2;
+          ctx.fillStyle = `rgba(140,215,255,${(0.08 + depth * 0.4).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 1.1 + depth * 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       // reactor core glow
@@ -180,16 +202,18 @@ export function ReactorCore() {
       ctx.arc(cx, cy, 3 + pulse * 1.6, 0, Math.PI * 2);
       ctx.fill();
 
-      // place studios + draw their electron glow
-      for (let i = 0; i < N; i++) {
-        const pos = place(i, base + (i * Math.PI * 2) / N);
-        const gg = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 28 + pos.depth * 16);
-        gg.addColorStop(0, hexA(STUDIOS[i].accent, 0.28 + pos.depth * 0.26));
-        gg.addColorStop(1, hexA(STUDIOS[i].accent, 0));
-        ctx.fillStyle = gg;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 28 + pos.depth * 16, 0, Math.PI * 2);
-        ctx.fill();
+      // place orbiting studios + draw their electron glow (desktop/tablet only)
+      if (!mobile) {
+        for (let i = 0; i < N; i++) {
+          const pos = place(i, base + (i * Math.PI * 2) / N);
+          const gg = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 28 + pos.depth * 16);
+          gg.addColorStop(0, hexA(STUDIOS[i].accent, 0.28 + pos.depth * 0.26));
+          gg.addColorStop(1, hexA(STUDIOS[i].accent, 0));
+          ctx.fillStyle = gg;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 28 + pos.depth * 16, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       if (!reduced) raf = requestAnimationFrame(draw);
@@ -198,18 +222,18 @@ export function ReactorCore() {
     draw();
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
+      ro.disconnect();
     };
   }, []);
 
   const pause = (v: boolean) => () => { pausedRef.current = v; };
 
   return (
-    <section className="reactor" id="home">
+    <section className="reactor" id="home" ref={sectionRef}>
       <canvas ref={canvasRef} className="reactor-canvas" aria-hidden />
 
       {/* central panel — value proposition + live stats, visible instantly */}
-      <div className="reactor-panel">
+      <div className="reactor-panel" ref={panelRef}>
         <span className="draw-sky-corner tl" aria-hidden />
         <span className="draw-sky-corner tr" aria-hidden />
         <span className="draw-sky-corner bl" aria-hidden />
@@ -224,7 +248,7 @@ export function ReactorCore() {
           <div className="draw-sky-stat"><b>{stats.studios}</b><i>STUDIOS</i></div>
           <div className="draw-sky-stat"><b>{stats.grades === GRADES_TOTAL ? "1–10" : stats.grades}</b><i>GRADES</i></div>
         </div>
-        <p className="draw-sky-hint"><span className="draw-sky-hint-point">⚛</span> Tap a studio orbiting the core to enter</p>
+        <p className="draw-sky-hint"><span className="draw-sky-hint-point">⚛</span> Tap a studio to dive in</p>
       </div>
 
       {/* the 4 studios orbiting the core */}

@@ -406,7 +406,22 @@ body {
 .reactor-studio:hover { filter: brightness(1.18); }
 .reactor-studio:hover .reactor-orb { box-shadow: 0 0 34px -2px currentColor, inset 0 0 18px -6px currentColor; }
 .reactor-browse { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; }
-@media (max-width: 640px) { .reactor-orb { width: 52px; height: 52px; font-size: 26px; } .reactor-studio-count { display: none; } }
+/* tighter orbs + no count on small screens that still orbit (≈600–760px) */
+@media (max-width: 760px) {
+  .reactor:not(.is-stacked) .reactor-orb { width: 54px; height: 54px; font-size: 26px; }
+  .reactor:not(.is-stacked) .reactor-studio-count { display: none; }
+}
+/* phones: drop the orbit, stack the panel over a tappable list of studios */
+.reactor.is-stacked { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 4.75rem 1rem 3rem; min-height: 92vh; }
+.reactor.is-stacked .reactor-panel { position: static; transform: none; animation: none; width: auto; max-width: 92vw; }
+.reactor.is-stacked .reactor-studio { position: static; transform: none; opacity: 1; z-index: auto;
+  flex-direction: row; align-items: center; gap: 12px; width: min(86vw, 330px); padding: 9px 16px;
+  border: 0.5px solid currentColor; border-radius: 14px; background: rgba(8,12,22,.55); }
+.reactor.is-stacked .reactor-orb { width: 42px; height: 42px; font-size: 22px; }
+.reactor.is-stacked .reactor-studio-name { font-size: 15px; }
+.reactor.is-stacked .reactor-studio-count { display: inline; margin-left: auto; }
+.reactor.is-stacked .reactor-browse { position: static; transform: none; margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) { .reactor-panel { animation: none; } }
 
 /* Floating astronaut buddy — drifts, glows, leans toward the cursor. */
