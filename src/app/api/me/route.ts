@@ -10,5 +10,7 @@ export async function GET(req: NextRequest) {
   const token = req.cookies.get(STUDENT_COOKIE)?.value;
   const session = verifyStudentSession(token, secret);
   if (!session) return NextResponse.json({ student: null });
-  return NextResponse.json({ student: { name: session.name, email: session.email } });
+  return NextResponse.json({
+    student: { name: session.name, email: session.email ?? null, school: session.schoolName ?? null, grade: session.grade ?? null },
+  });
 }
