@@ -393,8 +393,25 @@ body {
 .reactor { position: relative; width: 100%; min-height: 86vh; overflow: hidden; }
 .reactor-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .reactor-panel { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 5;
-  width: min(92vw, 560px); text-align: center; pointer-events: none; animation: reactorIn .9s cubic-bezier(.2,.8,.3,1) both; }
-@keyframes reactorIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.94); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+  width: min(92vw, 560px); text-align: center; pointer-events: none; perspective: 760px;
+  animation: reactorIn .8s cubic-bezier(.18, 1.8, .34, 1) .5s both; }
+/* 3D stage — tilts with the cursor; the layers below sit at different depths so
+   the welcome pops OUT toward you while the galaxy stays behind it. */
+.reactor-3d { transform-style: preserve-3d; transition: transform .3s cubic-bezier(.2,.8,.3,1); will-change: transform; }
+.reactor-float { animation: reactorFloat 5s ease-in-out infinite; transform-style: preserve-3d; }
+@keyframes reactorFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* per-line depth — headline floats highest and pops out the most */
+.reactor-3d .draw-sky-status { transform: translateZ(12px); }
+.reactor-3d .draw-sky-headline { transform: translateZ(62px);
+  filter: drop-shadow(0 6px 7px rgba(0,0,0,.6)) drop-shadow(0 30px 46px rgba(2,6,16,.72)); }
+.reactor-3d .draw-sky-stats { transform: translateZ(34px);
+  filter: drop-shadow(0 20px 30px rgba(2,6,16,.62)); }
+.reactor-3d .draw-sky-hint { transform: translateZ(18px); }
+/* soft dark vignette behind the text so it always reads over the core glow */
+.reactor-panel::before { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 134%; height: 168%; z-index: -1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(ellipse, rgba(5,8,16,.68) 0%, rgba(5,8,16,.40) 46%, transparent 72%); }
+@keyframes reactorIn { from { opacity: 0; transform: translate(-50%, -44%) scale(.55); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .reactor-studio { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none;
   pointer-events: auto; cursor: pointer; will-change: left, top, transform; transition: filter .2s ease; }
@@ -422,7 +439,7 @@ body {
 .reactor.is-stacked .reactor-studio-name { font-size: 15px; }
 .reactor.is-stacked .reactor-studio-count { display: inline; margin-left: auto; }
 .reactor.is-stacked .reactor-browse { position: static; transform: none; margin-top: 6px; }
-@media (prefers-reduced-motion: reduce) { .reactor-panel { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .reactor-panel, .reactor-float { animation: none; } }
 
 /* Floating astronaut buddy — drifts, glows, leans toward the cursor. */
 .space-mascot { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none;
