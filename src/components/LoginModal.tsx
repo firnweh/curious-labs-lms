@@ -1,30 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { signInWithPhoneNumber, RecaptchaVerifier, type ConfirmationResult } from "firebase/auth";
+import { firebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 
-/** Existing Curious Labs backend (NextAuth + the student-login endpoints). */
+/** Existing Curious Labs backend (verifies the Firebase token, sets the cookie). */
 const AUTH_BASE = "https://curiouslabs.online";
 
-type Mode = "class" | "account";
+type Step = "phone" | "otp" | "school";
 
 /**
- * Student login popup over the carousel. Opens on `?login=1` (from the
- * curiouslabs.online chooser) or the `cl:open-login` event. Two ways in:
- *  - Class code: school code + name + grade + section (joins via the school's
- *    class code — for schools already in Curious Labs).
- *  - Student account: email + password (a STUDENT User).
- * Both hit the existing backend, which sets a shared `.curiouslabs.online` cookie.
+ * Student login popup — mobile OTP via Firebase Phone Auth. Opens on `?login=1`
+ * or the `cl:open-login` event. Flow: enter mobile number → Firebase sends an
+ * OTP → enter the code → the backend verifies the Firebase token and sets the
+ * shared `.curiouslabs.online` cookie. A brand-new number does a one-time
+ * "join your school" step (class code + name + grade + section).
  */
 export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [mode, setMode] = useState<Mode>("class");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
   const [section, setSection] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const idTokenRef = useRef<string>("");
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -33,52 +38,98 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Tidy the reCAPTCHA when the modal closes so a reopen starts clean.
+  useEffect(() => {
+    if (open) return;
+    recaptchaRef.current?.clear();
+    recaptchaRef.current = null;
+    setStep("phone");
+    setOtp("");
+    setError("");
+    setBusy(false);
+  }, [open]);
+
   if (!open) return null;
 
-  const post = async (path: string, body: Record<string, string>) => {
+  const sendOtp = async () => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      setError("Enter your 10-digit mobile number.");
+      return;
+    }
+    if (!isFirebaseConfigured) {
+      setError("Mobile login isn't set up yet. Please try again later.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`${AUTH_BASE}${path}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setError(data.error || "Couldn't log in. Try again.");
-        setBusy(false);
-        return;
-      }
-      window.location.assign("/");
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = new RecaptchaVerifier(firebaseAuth(), "recaptcha-container", { size: "invisible" });
+      confirmationRef.current = await signInWithPhoneNumber(firebaseAuth(), "+91" + digits, recaptchaRef.current);
+      setStep("otp");
+      setBusy(false);
     } catch {
-      setError("Network error. Please try again.");
+      setError("Couldn't send the code. Check the number and try again.");
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = null;
       setBusy(false);
     }
   };
 
-  const joinByCode = () => {
+  const loginWithToken = async (body: Record<string, string>) => {
+    const res = await fetch(`${AUTH_BASE}/api/student/otp-login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      window.location.assign("/");
+      return;
+    }
+    if (data.needsOnboarding) {
+      setStep("school");
+      setError(data.error || "");
+      setBusy(false);
+      return;
+    }
+    setError(data.error || "Couldn't log in. Try again.");
+    setBusy(false);
+  };
+
+  const verifyOtp = async () => {
+    if (otp.replace(/\D/g, "").length !== 6 || !confirmationRef.current) {
+      setError("Enter the 6-digit code.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const cred = await confirmationRef.current.confirm(otp.trim());
+      idTokenRef.current = await cred.user.getIdToken();
+      await loginWithToken({ idToken: idTokenRef.current });
+    } catch {
+      setError("That code didn't match. Try again.");
+      setBusy(false);
+    }
+  };
+
+  const joinSchool = async () => {
     if (!code.trim() || !name.trim() || !grade || !section.trim()) {
       setError("Fill in the class code, your name, grade and section.");
       return;
     }
-    post("/api/student/classcode-login", { code, name, grade, section });
-  };
-  const loginByAccount = () => {
-    if (!email.trim() || !password) {
-      setError("Enter your email and password.");
-      return;
-    }
-    post("/api/student/login", { email, password });
+    setBusy(true);
+    setError("");
+    await loginWithToken({ idToken: idTokenRef.current, code, name, grade, section });
   };
 
   const field =
     "w-full rounded-2xl border-2 border-line bg-panel-2/70 px-4 py-3 text-center font-round text-ink outline-none transition focus:border-neon-cyan/60";
-  const tab = (m: Mode, label: string) =>
-    `flex-1 rounded-xl px-3 py-2 font-round text-sm font-bold transition ${
-      mode === m ? "bg-neon-cyan/15 text-neon-cyan" : "text-ink-faint hover:text-ink-dim"
-    }`;
+  const cta =
+    "w-full rounded-2xl bg-[#34d399] px-5 py-3 font-round text-base font-bold text-[#06210f] shadow-[0_6px_20px_-4px_rgba(52,211,153,.6)] transition active:scale-95 disabled:opacity-60";
 
   return (
     <div
@@ -93,16 +144,63 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           ✕
         </button>
 
-        <div className="text-4xl">👋</div>
-        <h2 className="mt-2 font-round text-2xl font-bold text-ink">Student login</h2>
+        <div className="text-4xl">{step === "school" ? "🏫" : "📱"}</div>
+        <h2 className="mt-2 font-round text-2xl font-bold text-ink">
+          {step === "school" ? "Join your school" : "Student login"}
+        </h2>
 
-        <div className="mt-4 flex gap-1 rounded-2xl border-2 border-line bg-panel-2/50 p-1">
-          <button onClick={() => { setMode("class"); setError(""); }} className={tab("class", "Class code")}>🏫 Class code</button>
-          <button onClick={() => { setMode("account"); setError(""); }} className={tab("account", "Account")}>📧 Account</button>
-        </div>
+        {step === "phone" && (
+          <div className="mt-5 space-y-2.5">
+            <p className="font-round text-sm text-ink-faint">We&apos;ll text you a one-time code.</p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-2xl border-2 border-line bg-panel-2/70 px-3 py-3 font-round text-ink">+91</span>
+              <input
+                autoFocus
+                inputMode="numeric"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onKeyDown={(e) => e.key === "Enter" && sendOtp()}
+                placeholder="Mobile number"
+                className={`${field} flex-1 tracking-[0.15em]`}
+              />
+            </div>
+            {error && <p className="font-round text-sm text-neon-red">{error}</p>}
+            <button onClick={sendOtp} disabled={busy} className={cta}>
+              {busy ? "Sending…" : "📲 Send code"}
+            </button>
+          </div>
+        )}
 
-        {mode === "class" ? (
-          <div className="mt-4 space-y-2.5">
+        {step === "otp" && (
+          <div className="mt-5 space-y-2.5">
+            <p className="font-round text-sm text-ink-faint">
+              Enter the code sent to <span className="font-bold text-ink">+91 {phone}</span>
+            </p>
+            <input
+              autoFocus
+              inputMode="numeric"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
+              placeholder="6-digit code"
+              className={`${field} text-2xl tracking-[0.4em]`}
+            />
+            {error && <p className="font-round text-sm text-neon-red">{error}</p>}
+            <button onClick={verifyOtp} disabled={busy} className={cta}>
+              {busy ? "Verifying…" : "🚀 Verify & enter"}
+            </button>
+            <button
+              onClick={() => { setStep("phone"); setOtp(""); setError(""); }}
+              className="font-round text-xs text-neon-cyan hover:underline"
+            >
+              ← change number
+            </button>
+          </div>
+        )}
+
+        {step === "school" && (
+          <div className="mt-5 space-y-2.5">
+            <p className="font-round text-sm text-ink-faint">First time here — join your school.</p>
             <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Class code" className={`${field} font-mono tracking-[0.2em]`} />
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={field} />
             <div className="flex gap-2.5">
@@ -115,17 +213,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
               <input value={section} onChange={(e) => setSection(e.target.value.toUpperCase())} placeholder="Sec" className={`${field} w-20`} maxLength={3} />
             </div>
             {error && <p className="font-round text-sm text-neon-red">{error}</p>}
-            <button onClick={joinByCode} disabled={busy} className="w-full rounded-2xl bg-[#34d399] px-5 py-3 font-round text-base font-bold text-[#06210f] shadow-[0_6px_20px_-4px_rgba(52,211,153,.6)] transition active:scale-95 disabled:opacity-60">
+            <button onClick={joinSchool} disabled={busy} className={cta}>
               {busy ? "Joining…" : "🚀 Join class"}
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-2.5">
-            <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={field} />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loginByAccount()} placeholder="Password" className={field} />
-            {error && <p className="font-round text-sm text-neon-red">{error}</p>}
-            <button onClick={loginByAccount} disabled={busy} className="w-full rounded-2xl bg-[#34d399] px-5 py-3 font-round text-base font-bold text-[#06210f] shadow-[0_6px_20px_-4px_rgba(52,211,153,.6)] transition active:scale-95 disabled:opacity-60">
-              {busy ? "Logging in…" : "🚀 Start learning"}
             </button>
           </div>
         )}
@@ -134,6 +223,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           Teacher or admin?{" "}
           <a href={`${AUTH_BASE}/login`} className="font-semibold text-neon-cyan hover:underline">Admin login →</a>
         </p>
+
+        <div id="recaptcha-container" />
       </div>
     </div>
   );
