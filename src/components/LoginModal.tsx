@@ -69,8 +69,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       confirmationRef.current = await signInWithPhoneNumber(firebaseAuth(), "+91" + digits, recaptchaRef.current);
       setStep("otp");
       setBusy(false);
-    } catch {
-      setError("Couldn't send the code. Check the number and try again.");
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code || (e as { message?: string })?.message || "unknown error";
+      setError(`Couldn't send the code — ${code}`);
       recaptchaRef.current?.clear();
       recaptchaRef.current = null;
       setBusy(false);
@@ -110,8 +111,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       const cred = await confirmationRef.current.confirm(otp.trim());
       idTokenRef.current = await cred.user.getIdToken();
       await loginWithToken({ idToken: idTokenRef.current });
-    } catch {
-      setError("That code didn't match. Try again.");
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code || "";
+      setError(code ? `Couldn't verify — ${code}` : "That code didn't match. Try again.");
       setBusy(false);
     }
   };
