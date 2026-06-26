@@ -8,10 +8,11 @@ import crypto from "crypto";
  */
 
 export interface StudentSession {
-  kind: "account" | "class";
+  kind: "account" | "class" | "phone";
   sub: string;
   name: string | null;
   email?: string | null;
+  phone?: string | null;
   role?: string;
   schoolId?: string;
   schoolName?: string;
