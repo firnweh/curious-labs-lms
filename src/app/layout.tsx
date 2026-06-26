@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono, Orbitron, Fredoka } from "next/font/google";
 import "./globals.css";
 import { Suspense } from "react";
@@ -7,6 +7,8 @@ import { LoginGate } from "@/components/LoginGate";
 import { TransitionProvider } from "@/components/SubjectTransition";
 import { SessionProvider } from "@/components/SessionProvider";
 import { SyncProvider } from "@/components/SyncProvider";
+import { LanguageProvider } from "@/lib/i18n";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 const display = Space_Grotesk({
   variable: "--font-display",
@@ -43,6 +45,10 @@ export const metadata: Metadata = {
     "Learn coding, robotics, AI and 3D modelling by doing. Browser experiments, zero installs.",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#060810",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -53,6 +59,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <div className="grid-bg" aria-hidden />
+        <ServiceWorkerRegister />
+        <LanguageProvider>
         <SessionProvider>
           <SyncProvider>
             <TransitionProvider>
@@ -72,6 +80,7 @@ export default function RootLayout({
             </TransitionProvider>
           </SyncProvider>
         </SessionProvider>
+        </LanguageProvider>
       </body>
     </html>
   );
