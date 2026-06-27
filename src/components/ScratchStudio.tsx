@@ -5,6 +5,7 @@ import * as Blockly from "blockly";
 import { javascriptGenerator } from "blockly/javascript";
 import { registerScratchBlocks, getScratchTheme, SCRATCH_TOOLBOX } from "@/lib/scratchBlocks";
 import { playSound, SOUND_NAMES } from "@/lib/scratchSound";
+import { PaintEditor } from "@/components/PaintEditor";
 
 type Sprite = { id: string; name: string; costumes: string[] };
 
@@ -217,6 +218,12 @@ export function ScratchStudio() {
   const [backdrop, setBackdrop] = useState("#ffffff");
   const [spriteMenu, setSpriteMenu] = useState(false);
   const [backdropMenu, setBackdropMenu] = useState(false);
+  const [paintTarget, setPaintTarget] = useState<null | "sprite" | "costume" | "backdrop">(null);
+  // Resizable layout: the code-editor ↔ stage split, as a % of the row width.
+  const [leftPct, setLeftPct] = useState(62);
+  const leftPctRef = useRef(62);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const draggingSplit = useRef(false);
   const [, setTick] = useState(0);
 
   spritesRef.current = sprites;
@@ -328,6 +335,32 @@ export function ScratchStudio() {
       const a = JSON.parse(localStorage.getItem("cl-scratch-done") || "[]");
       if (Array.isArray(a)) setCompleted(new Set(a as number[]));
     } catch { /* ignore */ }
+  }, []);
+
+  // Resizable split: restore saved size + drive the drag (editor ↔ stage).
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem("cl-split"));
+      if (v >= 30 && v <= 80) { leftPctRef.current = v; setLeftPct(v); }
+    } catch { /* ignore */ }
+    const onMove = (e: PointerEvent) => {
+      if (!draggingSplit.current || !splitRef.current) return;
+      const r = splitRef.current.getBoundingClientRect();
+      const pct = Math.max(30, Math.min(80, ((e.clientX - r.left) / r.width) * 100));
+      leftPctRef.current = pct;
+      setLeftPct(pct);
+      if (wsRef.current) Blockly.svgResize(wsRef.current);
+    };
+    const onUp = () => {
+      if (!draggingSplit.current) return;
+      draggingSplit.current = false;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try { localStorage.setItem("cl-split", String(Math.round(leftPctRef.current))); } catch { /* ignore */ }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
   }, []);
 
   function markComplete(advance = true) {
@@ -694,24 +727,32 @@ export function ScratchStudio() {
     addSprite(LIBRARY[Math.floor(Math.random() * LIBRARY.length)]);
     setSpriteMenu(false);
   }
+  // Create a brand-new sprite whose first costume is an image data-URL.
+  function createImageSprite(url: string) {
+    const id = "sp" + idSeq.current++;
+    const count = spritesRef.current.length;
+    const rt = freshRuntime();
+    rt.x = ((count % 4) - 1.5) * 70;
+    rt.y = Math.floor(count / 4) * -70;
+    runtimeRef.current.set(id, rt);
+    scriptsRef.current.set(id, { blocks: { languageVersion: 0, blocks: [] } });
+    syncSelectedScript();
+    wsRef.current?.clear();
+    setSprites((s) => [...s, { id, name: `Sprite ${count}`, costumes: [url] }]);
+    setSelectedId(id);
+  }
   function uploadSprite(file: File) {
     const reader = new FileReader();
-    reader.onload = () => {
-      const url = String(reader.result);
-      const id = "sp" + idSeq.current++;
-      const count = spritesRef.current.length;
-      const rt = freshRuntime();
-      rt.x = ((count % 4) - 1.5) * 70;
-      rt.y = Math.floor(count / 4) * -70;
-      runtimeRef.current.set(id, rt);
-      scriptsRef.current.set(id, { blocks: { languageVersion: 0, blocks: [] } });
-      syncSelectedScript();
-      wsRef.current?.clear();
-      setSprites((s) => [...s, { id, name: `Sprite ${count}`, costumes: [url] }]);
-      setSelectedId(id);
-    };
+    reader.onload = () => createImageSprite(String(reader.result));
     reader.readAsDataURL(file);
     setSpriteMenu(false);
+  }
+  // Paint editor result → route to the chosen target.
+  function handlePaintSave(dataUrl: string) {
+    if (paintTarget === "sprite") createImageSprite(dataUrl);
+    else if (paintTarget === "costume") addCostume(dataUrl);
+    else if (paintTarget === "backdrop") setBackdrop(`center / cover no-repeat url(${JSON.stringify(dataUrl)})`);
+    setPaintTarget(null);
   }
   function surpriseBackdrop() {
     setBackdrop(BACKDROPS[Math.floor(Math.random() * BACKDROPS.length)].css);
@@ -792,9 +833,9 @@ export function ScratchStudio() {
 
   return (
     <div>
-      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
+      <div ref={splitRef} className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
-      <div className="order-2 overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1">
+      <div className="order-2 w-full overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
         <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
           {([["code", "💻 Code"], ["costumes", "🎨 Costumes"], ["sounds", "🔊 Sounds"]] as const).map(([id, label]) => (
@@ -817,7 +858,10 @@ export function ScratchStudio() {
           <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px]">
             <div className="mb-3 flex items-center justify-between">
               <p className="font-mono text-xs tracking-tech text-[#575E75]">COSTUMES · {selectedSprite?.name}</p>
-              <button onClick={() => setCostumePicker((p) => !p)} className="rounded-full border border-[#9966FF]/60 px-3 py-1 font-mono text-xs text-[#9966FF] hover:bg-[#9966FF]/10">+ Add costume</button>
+              <div className="flex gap-2">
+                <button onClick={() => setCostumePicker((p) => !p)} className="rounded-full border border-[#9966FF]/60 px-3 py-1 font-mono text-xs text-[#9966FF] hover:bg-[#9966FF]/10">+ Add costume</button>
+                <button onClick={() => setPaintTarget("costume")} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] hover:bg-[#4C97FF]/10">🎨 Paint</button>
+              </div>
             </div>
             {costumePicker && (
               <div className="mb-3 grid grid-cols-8 gap-1.5 rounded-xl border border-[#E5E5E5] bg-[#F9F9F9] p-2">
@@ -832,7 +876,9 @@ export function ScratchStudio() {
                 return (
                   <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }}
                     className={`relative grid place-items-center gap-1 rounded-xl border p-3 transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
-                    <span className="text-3xl">{c}</span>
+                    {isImg(c)
+                      ? <span aria-hidden className="inline-block h-12 w-12 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} />
+                      : <span className="text-3xl">{c}</span>}
                     <span className="font-mono text-[10px] text-[#9AA0B3]">costume {i + 1}</span>
                     {(selectedSprite?.costumes.length || 1) > 1 && (
                       <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); removeCostume(i); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
@@ -862,8 +908,19 @@ export function ScratchStudio() {
         )}
       </div>
 
+      {/* Drag handle — resize editor ↔ stage */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        title="Drag to resize"
+        onPointerDown={(e) => { draggingSplit.current = true; document.body.style.userSelect = "none"; document.body.style.cursor = "col-resize"; e.preventDefault(); }}
+        className="order-3 hidden w-2.5 shrink-0 cursor-col-resize items-center justify-center self-stretch rounded-full bg-[#E5E5E5] transition-colors hover:bg-[#4C97FF]/50 lg:flex"
+      >
+        <span className="h-12 w-1 rounded-full bg-[#B8BECC]" />
+      </div>
+
       {/* ── Stage + sprites — RIGHT ── */}
-      <div className="order-1 flex flex-col gap-4 lg:order-2">
+      <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:min-w-0 lg:flex-1">
         <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -894,6 +951,7 @@ export function ScratchStudio() {
               <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-lg">
                 <button onClick={surpriseBackdrop} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
                 <button onClick={() => backdropFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
+                <button onClick={() => { setBackdropMenu(false); setPaintTarget("backdrop"); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎨 Paint</button>
               </div>
             )}
           </div>
@@ -941,6 +999,7 @@ export function ScratchStudio() {
                   <button onClick={() => { setSpriteMenu(false); setPicker(true); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🔍 Choose</button>
                   <button onClick={surpriseSprite} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
                   <button onClick={() => spriteFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
+                  <button onClick={() => { setSpriteMenu(false); setPaintTarget("sprite"); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎨 Paint</button>
                 </div>
               )}
               <input ref={spriteFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSprite(f); e.target.value = ""; }} />
@@ -991,6 +1050,10 @@ export function ScratchStudio() {
         </div>
       </div>
       </div>
+
+      {paintTarget && (
+        <PaintEditor mode={paintTarget} onSave={handlePaintSave} onClose={() => setPaintTarget(null)} />
+      )}
     </div>
   );
 }
