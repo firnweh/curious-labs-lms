@@ -832,10 +832,10 @@ export function ScratchStudio() {
   const selRt = runtimeRef.current.get(selectedId);
 
   return (
-    <div>
-      <div ref={splitRef} className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+    <div className="lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
+      <div ref={splitRef} className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
-      <div className="order-2 w-full overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
+      <div className="order-2 flex w-full flex-col overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
         <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
           {([["code", "💻 Code"], ["costumes", "🎨 Costumes"], ["sounds", "🔊 Sounds"]] as const).map(([id, label]) => (
@@ -851,11 +851,11 @@ export function ScratchStudio() {
         </div>
 
         {/* Code tab — Blockly stays mounted, just hidden off-tab */}
-        <div ref={blocklyDiv} className={`h-[440px] w-full sm:h-[600px] ${tab === "code" ? "" : "hidden"}`} />
+        <div ref={blocklyDiv} className={`h-[440px] w-full sm:h-[600px] lg:h-auto lg:min-h-0 lg:flex-1 ${tab === "code" ? "" : "hidden"}`} />
 
         {/* Costumes tab */}
         {tab === "costumes" && (
-          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px]">
+          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px] lg:h-auto lg:min-h-0 lg:flex-1">
             <div className="mb-3 flex items-center justify-between">
               <p className="font-mono text-xs tracking-tech text-[#575E75]">COSTUMES · {selectedSprite?.name}</p>
               <div className="flex gap-2">
@@ -893,7 +893,7 @@ export function ScratchStudio() {
 
         {/* Sounds tab */}
         {tab === "sounds" && (
-          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px]">
+          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px] lg:h-auto lg:min-h-0 lg:flex-1">
             <p className="mb-3 font-mono text-xs tracking-tech text-[#575E75]">SOUNDS · tap to preview</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {SOUND_NAMES.map((name) => (
@@ -920,7 +920,7 @@ export function ScratchStudio() {
       </div>
 
       {/* ── Stage + sprites — RIGHT ── */}
-      <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:min-w-0 lg:flex-1">
+      <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:h-full lg:min-w-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
         <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">

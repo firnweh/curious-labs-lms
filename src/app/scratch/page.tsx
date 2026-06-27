@@ -8,20 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function ScratchStudioPage() {
+  // Full-screen studio: the editor fills the viewport below the top bar.
   return (
-    <div className="mx-auto max-w-7xl px-5 py-8">
-      <header className="mb-6">
-        <p className="font-mono text-xs tracking-tech text-neon-violet">STUDIO · BUILD & PLAY</p>
-        <h1 className="mt-1 font-display text-3xl font-bold text-ink sm:text-4xl">Studio 🎮</h1>
-        <p className="mt-2 max-w-2xl text-ink-dim">
-          Snap together Motion, Looks, Sound and Control blocks to build games and animations.
-          Then hit the <span className="text-neon-green">🟢 green flag</span> to bring it to life.
-          Add sprites, drag them on stage, animate costumes, pick a backdrop, and make it yours.
-        </p>
-        <p className="mt-2 font-mono text-[11px] tracking-tech text-ink-faint">
-          CURIOUS<span className="text-neon-cyan">LABS</span> · POWERED BY PHYSICS WALLAH
-        </p>
-      </header>
+    <div className="px-2 py-2 sm:px-3 sm:py-3 lg:h-[calc(100svh_-_4rem)] lg:overflow-hidden">
       <ScratchStudio />
     </div>
   );
