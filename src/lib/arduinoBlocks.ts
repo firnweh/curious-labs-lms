@@ -163,19 +163,19 @@ export function arduinoTheme(): Blockly.Theme | undefined {
       gridColour: "#16233a",
     },
     blockStyles: {
-      struct_blocks: { colourPrimary: "#475569", colourSecondary: "#334155", colourTertiary: "#1e293b" },
-      pin_blocks: { colourPrimary: "#0ea5e9", colourSecondary: "#0284c7", colourTertiary: "#0369a1" },
-      out_blocks: { colourPrimary: "#22c55e", colourSecondary: "#16a34a", colourTertiary: "#15803d" },
-      in_blocks: { colourPrimary: "#a855f7", colourSecondary: "#9333ea", colourTertiary: "#7e22ce" },
-      ctrl_blocks: { colourPrimary: "#f59e0b", colourSecondary: "#d97706", colourTertiary: "#b45309" },
-      serial_blocks: { colourPrimary: "#14b8a6", colourSecondary: "#0d9488", colourTertiary: "#0f766e" },
-      comp_blocks: { colourPrimary: "#ec4899", colourSecondary: "#db2777", colourTertiary: "#be185d" },
-      sensor_blocks: { colourPrimary: "#ef4444", colourSecondary: "#dc2626", colourTertiary: "#b91c1c" },
-      wifi_blocks: { colourPrimary: "#6366f1", colourSecondary: "#4f46e5", colourTertiary: "#4338ca" },
-      logic_blocks: { colourPrimary: "#84cc16", colourSecondary: "#65a30d", colourTertiary: "#4d7c0f" },
-      math_blocks: { colourPrimary: "#84cc16", colourSecondary: "#65a30d", colourTertiary: "#4d7c0f" },
-      text_blocks: { colourPrimary: "#84cc16", colourSecondary: "#65a30d", colourTertiary: "#4d7c0f" },
-      variable_blocks: { colourPrimary: "#f97316", colourSecondary: "#ea580c", colourTertiary: "#c2410c" },
+      struct_blocks: { colourPrimary: "#566a82", colourSecondary: "#414f60", colourTertiary: "#2a3441" },
+      pin_blocks: { colourPrimary: "#3d92ba", colourSecondary: "#327897", colourTertiary: "#255470" },
+      out_blocks: { colourPrimary: "#46a06a", colourSecondary: "#3a8556", colourTertiary: "#2c6843" },
+      in_blocks: { colourPrimary: "#9262bd", colourSecondary: "#7849a3", colourTertiary: "#5d397e" },
+      ctrl_blocks: { colourPrimary: "#bd8f44", colourSecondary: "#977134", colourTertiary: "#6b5125" },
+      serial_blocks: { colourPrimary: "#3ba398", colourSecondary: "#2f877e", colourTertiary: "#23655e" },
+      comp_blocks: { colourPrimary: "#c25b8c", colourSecondary: "#a34973", colourTertiary: "#7c3857" },
+      sensor_blocks: { colourPrimary: "#c25b58", colourSecondary: "#a24846", colourTertiary: "#7c3634" },
+      wifi_blocks: { colourPrimary: "#6366bd", colourSecondary: "#4f52a0", colourTertiary: "#3c3f7b" },
+      logic_blocks: { colourPrimary: "#7da346", colourSecondary: "#67883a", colourTertiary: "#4f682d" },
+      math_blocks: { colourPrimary: "#7da346", colourSecondary: "#67883a", colourTertiary: "#4f682d" },
+      text_blocks: { colourPrimary: "#7da346", colourSecondary: "#67883a", colourTertiary: "#4f682d" },
+      variable_blocks: { colourPrimary: "#bf7b43", colourSecondary: "#9c6235", colourTertiary: "#714828" },
     },
     name: "arduinodark",
   } as unknown as Parameters<typeof Blockly.Theme.defineTheme>[1];
@@ -190,15 +190,15 @@ export function arduinoTheme(): Blockly.Theme | undefined {
 export const ARDUINO_TOOLBOX = {
   kind: "categoryToolbox",
   contents: [
-    { kind: "category", name: "⚙️ Structure", colour: "#475569", contents: [{ kind: "block", type: "arduino_sketch" }] },
+    { kind: "category", name: "⚙️ Structure", colour: "#566a82", contents: [{ kind: "block", type: "arduino_sketch" }] },
     {
-      kind: "category", name: "📌 Pins", colour: "#0ea5e9", contents: [
+      kind: "category", name: "📌 Pins", colour: "#3d92ba", contents: [
         { kind: "block", type: "arduino_pinmode" },
         { kind: "block", type: "arduino_highlow" },
       ],
     },
     {
-      kind: "category", name: "💡 Output", colour: "#22c55e", contents: [
+      kind: "category", name: "💡 Output", colour: "#46a06a", contents: [
         { kind: "block", type: "arduino_digitalwrite" },
         { kind: "block", type: "arduino_analogwrite", inputs: { VAL: num(128) } },
         { kind: "block", type: "arduino_tone", inputs: { FREQ: num(440) } },
@@ -206,14 +206,14 @@ export const ARDUINO_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🎛️ Input", colour: "#a855f7", contents: [
+      kind: "category", name: "🎛️ Input", colour: "#9262bd", contents: [
         { kind: "block", type: "arduino_digitalread" },
         { kind: "block", type: "arduino_analogread" },
         { kind: "block", type: "arduino_button" },
       ],
     },
     {
-      kind: "category", name: "🔁 Control", colour: "#f59e0b", contents: [
+      kind: "category", name: "🔁 Control", colour: "#bd8f44", contents: [
         { kind: "block", type: "arduino_delay", inputs: { MS: num(1000) } },
         { kind: "block", type: "controls_if" },
         { kind: "block", type: "controls_repeat_ext", inputs: { TIMES: num(10) } },
@@ -222,7 +222,7 @@ export const ARDUINO_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🧮 Logic & Math", colour: "#84cc16", contents: [
+      kind: "category", name: "🧮 Logic & Math", colour: "#7da346", contents: [
         { kind: "block", type: "logic_compare" },
         { kind: "block", type: "logic_operation" },
         { kind: "block", type: "logic_negate" },
@@ -233,13 +233,13 @@ export const ARDUINO_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🔌 Serial", colour: "#14b8a6", contents: [
+      kind: "category", name: "🔌 Serial", colour: "#3ba398", contents: [
         { kind: "block", type: "arduino_serial_begin" },
         { kind: "block", type: "arduino_serial_print", inputs: { TEXT: txt("Hello") } },
       ],
     },
     {
-      kind: "category", name: "🧩 Components", colour: "#ec4899", contents: [
+      kind: "category", name: "🧩 Components", colour: "#c25b8c", contents: [
         { kind: "block", type: "arduino_servo", inputs: { ANGLE: num(90) } },
         { kind: "block", type: "arduino_rgbled", inputs: { R: num(255), G: num(0), B: num(0) } },
         { kind: "block", type: "arduino_buzzer", inputs: { FREQ: num(440), DUR: num(200) } },
@@ -247,7 +247,7 @@ export const ARDUINO_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "📡 Sensors", colour: "#ef4444", contents: [
+      kind: "category", name: "📡 Sensors", colour: "#c25b58", contents: [
         { kind: "block", type: "sensor_ultrasonic" },
         { kind: "block", type: "sensor_pir" },
         { kind: "block", type: "sensor_ir" },
@@ -267,12 +267,12 @@ export const ARDUINO_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "📶 Wi-Fi", colour: "#6366f1", contents: [
+      kind: "category", name: "📶 Wi-Fi", colour: "#6366bd", contents: [
         { kind: "block", type: "esp_wifi_connect", inputs: { SSID: txt("MyWiFi"), PASS: txt("password") } },
       ],
     },
-    { kind: "category", name: "📦 Variables", colour: "#f97316", custom: "VARIABLE" },
-    { kind: "category", name: "🔤 Text", colour: "#84cc16", contents: [{ kind: "block", type: "text", fields: { TEXT: "" } }] },
+    { kind: "category", name: "📦 Variables", colour: "#bf7b43", custom: "VARIABLE" },
+    { kind: "category", name: "🔤 Text", colour: "#7da346", contents: [{ kind: "block", type: "text", fields: { TEXT: "" } }] },
   ],
 };
 
