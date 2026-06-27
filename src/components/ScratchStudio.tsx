@@ -211,7 +211,8 @@ export function ScratchStudio() {
   useEffect(() => {
     registerScratchBlocks();
     runtimeRef.current.set("sp0", freshRuntime());
-    const initial = exampleFor(gradeRef.current);
+    // Open empty, like a fresh Scratch project.
+    const initial = { blocks: { languageVersion: 0, blocks: [] } };
     scriptsRef.current.set("sp0", initial);
 
     if (!blocklyDiv.current) return;
@@ -704,128 +705,9 @@ export function ScratchStudio() {
 
   const selectedSprite = sprites.find((s) => s.id === selectedId);
   const selRt = runtimeRef.current.get(selectedId);
-  const mission = missionFor(grade);
 
   return (
     <div>
-      {/* ── Classwise mission ─────────────────────────────── */}
-      <div className="mb-4 panel relative overflow-hidden p-4">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-60"
-          style={{ background: "radial-gradient(120% 120% at 100% -20%, rgba(168,85,247,.18), transparent 45%), radial-gradient(120% 120% at -10% 120%, rgba(34,211,238,.16), transparent 45%)" }}
-          aria-hidden
-        />
-        {celebrate && (
-          <div
-            className="pointer-events-none absolute right-4 top-4 z-10 rounded-full border border-neon-green/60 bg-neon-green/20 px-4 py-1.5 font-mono text-xs font-bold tracking-tech text-neon-green"
-            style={{ animation: "reactorIn .5s cubic-bezier(.18,1.8,.34,1) both" }}
-          >
-            {completed.size >= 10 ? "🏆 All 10 complete!" : `🎉 Activity ${celebrate} complete!`}
-          </div>
-        )}
-        <div className="relative">
-          {/* Activity picker — difficulty filter + freely-choosable gallery */}
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="mr-1 font-mono text-[11px] tracking-tech text-ink-faint">ACTIVITIES</p>
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors ${filter === f.id ? "bg-neon-cyan font-bold text-base" : "border border-line text-ink-dim hover:text-ink"}`}
-              >
-                {f.label}
-              </button>
-            ))}
-            <button
-              onClick={() => setFreePlay(true)}
-              className={`ml-auto rounded-full px-3 py-1 font-mono text-[11px] transition-colors ${freePlay ? "bg-neon-violet font-bold text-base" : "border border-neon-violet/50 text-neon-violet hover:bg-neon-violet/10"}`}
-            >
-              🎮 Free Play
-            </button>
-            <span className="font-mono text-[10px] tracking-tech text-neon-green">{completed.size}/10 done</span>
-          </div>
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-            {MISSIONS.filter((m) => filter === "all" || levelOf(m) === filter).map((m) => {
-              const active = !freePlay && m.g === grade;
-              const done = completed.has(m.g);
-              const lv = LEVEL_META[levelOf(m)];
-              return (
-                <button
-                  key={m.g}
-                  onClick={() => { setFreePlay(false); setGrade(m.g); }}
-                  className={`relative flex w-28 shrink-0 flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors ${active ? "border-neon-cyan bg-neon-cyan/10" : "border-line hover:border-neon-cyan/40"}`}
-                >
-                  <span className="text-2xl">{m.emoji}</span>
-                  <span className="line-clamp-1 text-[11px] font-semibold text-ink">{m.title}</span>
-                  <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold" style={{ color: lv.color, background: `${lv.color}1f` }}>{lv.label}</span>
-                  {done && <span className="absolute right-1 top-1 text-xs text-neon-green">✓</span>}
-                </button>
-              );
-            })}
-          </div>
-          {freePlay ? (
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-neon-violet/30 bg-neon-violet/10 p-3">
-              <span className="text-2xl">🎮</span>
-              <div>
-                <p className="font-display font-bold text-ink">Free Play</p>
-                <p className="text-sm text-ink-dim">All blocks unlocked — build anything you imagine. No goals, no rules. Press 🟢 to run it.</p>
-              </div>
-            </div>
-          ) : (
-          <div className="mt-3 flex items-start gap-3">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-neon-amber/40 bg-neon-amber/10 text-2xl">
-              {mission.emoji}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-mono text-[11px] tracking-tech text-neon-amber">
-                🎯 CHALLENGE · {LEVEL_META[levelOf(mission)].label.toUpperCase()}
-                <span className="ml-2 align-middle text-neon-amber" title={`Difficulty ${mission.difficulty}/5`}>{"★".repeat(mission.difficulty)}</span>
-                <span className="align-middle text-ink-faint">{"☆".repeat(5 - mission.difficulty)}</span>
-              </p>
-              <h3 className="font-display text-lg font-bold text-ink">{mission.title}</h3>
-              <p className="text-sm text-ink-dim">{mission.goal}</p>
-              <p className="mt-1 text-xs text-ink-faint">💡 {mission.hint}</p>
-              {completed.has(grade) ? (
-                <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-neon-green/50 bg-neon-green/15 px-3 py-1 font-mono text-[11px] font-bold tracking-tech text-neon-green">
-                  ✓ Solved! Great job 🎉
-                </p>
-              ) : goalMet ? (
-                <p
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-neon-green/50 bg-neon-green/15 px-3 py-1 font-mono text-[11px] font-bold tracking-tech text-neon-green"
-                  style={{ animation: "reactorIn .4s cubic-bezier(.18,1.8,.34,1) both" }}
-                >
-                  🎯 Goal met — press 🟢 to win!
-                </p>
-              ) : null}
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                {mission.needs.map((n) => (
-                  <span
-                    key={n}
-                    className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
-                    style={{ color: NEED_COLOR[n] ?? "#9fb0d0", borderColor: `${NEED_COLOR[n] ?? "#9fb0d0"}55`, background: `${NEED_COLOR[n] ?? "#9fb0d0"}14` }}
-                  >
-                    {n}
-                  </span>
-                ))}
-                <button
-                  onClick={loadExample}
-                  className="ml-1 rounded-full border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 font-mono text-[11px] text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-                >
-                  ✨ Load example
-                </button>
-                <button
-                  onClick={() => markComplete()}
-                  className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${completed.has(grade) ? "border-neon-green/60 bg-neon-green/15 text-neon-green" : "border-neon-green/40 text-neon-green hover:bg-neon-green/10"}`}
-                >
-                  {completed.has(grade) ? "✓ Completed" : "✓ Mark complete"}
-                </button>
-              </div>
-            </div>
-          </div>
-          )}
-        </div>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
       <div className="order-2 overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1">
