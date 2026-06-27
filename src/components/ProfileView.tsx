@@ -38,9 +38,14 @@ export function ProfileView() {
               LEVEL {mounted ? level.index : 1} · {mounted ? cos.equipped.title.value.toUpperCase() : "MAKER"}
             </p>
             <h1 className="font-display text-3xl font-bold text-ink">{level.title}</h1>
-            <Link href="/base" className="mt-1 inline-block font-mono text-xs hover:underline" style={{ color: accent }}>
-              ✨ Customize my Base →
-            </Link>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              <Link href="/passport" className="inline-block font-mono text-xs hover:underline" style={{ color: accent }}>
+                🪪 My Skill Passport →
+              </Link>
+              <Link href="/base" className="inline-block font-mono text-xs hover:underline" style={{ color: accent }}>
+                ✨ Customize my Base →
+              </Link>
+            </div>
             <div className="mt-3">
               <div className="h-2.5 overflow-hidden rounded-full bg-line">
                 <div

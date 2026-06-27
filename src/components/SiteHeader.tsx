@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HeaderAuth } from "@/components/HeaderAuth";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 /**
  * Global site header — fixed on every page. Curious Labs logo on the left,
@@ -20,7 +21,34 @@ export function SiteHeader() {
           />
         </Link>
 
-        <HeaderAuth />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/scratch"
+            title="Sprite Studio"
+            className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-violet/50 hover:text-ink sm:inline-flex"
+          >
+            <span aria-hidden>🎮</span>
+            <span className="font-mono text-xs tracking-tech">Sprites</span>
+          </Link>
+          <Link
+            href="/code-studio"
+            title="Code Studio"
+            className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-amber/50 hover:text-ink sm:inline-flex"
+          >
+            <span aria-hidden>🧩</span>
+            <span className="font-mono text-xs tracking-tech">Studio</span>
+          </Link>
+          <Link
+            href="/passport"
+            title="My Skill Passport"
+            className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-cyan/50 hover:text-ink sm:inline-flex"
+          >
+            <span aria-hidden>🪪</span>
+            <span className="font-mono text-xs tracking-tech">Passport</span>
+          </Link>
+          <LanguageSwitcher />
+          <HeaderAuth />
+        </div>
       </div>
     </header>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 
 const AUTH_BASE = "https://curiouslabs.online";
 
@@ -11,6 +12,7 @@ const AUTH_BASE = "https://curiouslabs.online";
  *    for the cl:open-login event)
  */
 export function HeaderAuth() {
+  const { t } = useT();
   const [student, setStudent] = useState<{ name: string | null } | null>(null);
 
   useEffect(() => {
@@ -42,8 +44,8 @@ export function HeaderAuth() {
         </span>
         <button
           onClick={logout}
-          aria-label="Log out"
-          title="Log out"
+          aria-label={t("nav.logout")}
+          title={t("nav.logout")}
           className="grid h-9 w-9 place-items-center rounded-full border border-line text-ink-dim transition-colors hover:border-neon-violet/50 hover:text-neon-violet"
         >
           ⎋
@@ -58,7 +60,7 @@ export function HeaderAuth() {
       onClick={() => window.dispatchEvent(new Event("cl:open-login"))}
       className="rounded-full border border-neon-cyan/50 bg-neon-cyan/10 px-5 py-2 font-mono text-sm font-semibold tracking-tech text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20"
     >
-      Login
+      {t("nav.login")}
     </button>
   );
 }

@@ -135,7 +135,7 @@ export interface GameStats {
   earnedCount: number;
 }
 
-function computeStats(store: ProgressStore, streak: { current: number; best: number }): GameStats {
+export function computeStats(store: ProgressStore, streak: { current: number; best: number }): GameStats {
   const completedIds = Object.keys(store);
   const totalStars = completedIds.reduce((n, id) => n + (store[id]?.stars ?? 0), 0);
   const xp = totalStars * XP_PER_STAR;

@@ -6,6 +6,12 @@
       "runtimeExecutable": "/opt/homebrew/bin/npm",
       "runtimeArgs": ["run", "dev", "--", "-p", "3010"],
       "port": 3010
+    },
+    {
+      "name": "lms-prod",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": ["run", "start", "--", "-p", "3010"],
+      "port": 3010
     }
   ]
 }
