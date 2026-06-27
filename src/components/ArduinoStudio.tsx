@@ -10,6 +10,8 @@ import {
 } from "@/lib/arduinoBlocks";
 
 const BOARDS = [
+  { id: "pw_curious", label: "PW Curious Board" },
+  { id: "pw_curious_wifi", label: "Curious WiFi Board" },
   { id: "uno", label: "Arduino Uno" },
   { id: "nano", label: "Arduino Nano" },
   { id: "mega", label: "Arduino Mega" },
@@ -101,6 +103,7 @@ export function ArduinoStudio() {
   const [monBaud, setMonBaud] = useState(9600);
   const [serialOut, setSerialOut] = useState("");
   const [sendText, setSendText] = useState("");
+  const [monOpen, setMonOpen] = useState(false);
 
   const connect = async () => {
     const nav = navigator as Nav;
@@ -110,6 +113,7 @@ export function ArduinoStudio() {
       await port.open({ baudRate: monBaud });
       portRef.current = port;
       setConnected(true);
+      setMonOpen(true);
       setSerialOut("✓ Connected. Listening…\n");
       if (port.readable) {
         const dec = new TextDecoderStream();
@@ -191,24 +195,32 @@ export function ArduinoStudio() {
         </div>
       </div>
 
-      {/* Serial Monitor */}
+      {/* Serial Monitor (collapsible) */}
       <div className="overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
-        <div className="flex items-center justify-between gap-2 border-b border-line/60 px-3 py-2">
-          <span className="font-mono text-xs tracking-tech text-ink-dim">🖥️ Serial Monitor {connected && <span className="text-neon-green">● live</span>}</span>
-          <div className="flex items-center gap-2">
-            <select value={monBaud} onChange={(e) => setMonBaud(Number(e.target.value))} disabled={connected}
-              className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1 font-mono text-[11px] text-ink-dim focus:outline-none disabled:opacity-50">
-              {BAUDS.map((b) => (<option key={b} value={b}>{b} baud</option>))}
-            </select>
-            <button onClick={() => setSerialOut("")} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
-          </div>
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <button onClick={() => setMonOpen((o) => !o)} className="flex items-center gap-1.5 font-mono text-xs tracking-tech text-ink-dim transition hover:text-ink">
+            <span className="text-ink-faint">{monOpen ? "▾" : "▸"}</span>🖥️ Serial Monitor {connected && <span className="text-neon-green">● live</span>}
+          </button>
+          {monOpen && (
+            <div className="flex items-center gap-2">
+              <select value={monBaud} onChange={(e) => setMonBaud(Number(e.target.value))} disabled={connected}
+                className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1 font-mono text-[11px] text-ink-dim focus:outline-none disabled:opacity-50">
+                {BAUDS.map((b) => (<option key={b} value={b}>{b} baud</option>))}
+              </select>
+              <button onClick={() => setSerialOut("")} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+            </div>
+          )}
         </div>
-        <pre className="h-40 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-cyan-200">{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
-        <div className="flex items-center gap-2 border-t border-line/60 p-2">
-          <input value={sendText} onChange={(e) => setSendText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSerial()} disabled={!connected}
-            placeholder={connected ? "send to board…" : "connect a board to send"} className="flex-1 rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink placeholder:text-ink-faint focus:border-neon-cyan/60 focus:outline-none disabled:opacity-50" />
-          <button onClick={sendSerial} disabled={!connected} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink disabled:opacity-50">Send</button>
-        </div>
+        {monOpen && (
+          <>
+            <pre className="h-36 overflow-auto whitespace-pre-wrap break-words border-t border-line/60 p-3 font-mono text-[11px] leading-relaxed text-cyan-200">{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
+            <div className="flex items-center gap-2 border-t border-line/60 p-2">
+              <input value={sendText} onChange={(e) => setSendText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSerial()} disabled={!connected}
+                placeholder={connected ? "send to board…" : "connect a board to send"} className="flex-1 rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink placeholder:text-ink-faint focus:border-neon-cyan/60 focus:outline-none disabled:opacity-50" />
+              <button onClick={sendSerial} disabled={!connected} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink disabled:opacity-50">Send</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
