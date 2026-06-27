@@ -24,7 +24,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-3">
           <Link
             href="/scratch"
-            title="Sprite Studio"
+            title="Studio"
             className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-violet/50 hover:text-ink sm:inline-flex"
           >
             <span aria-hidden>🎮</span>
