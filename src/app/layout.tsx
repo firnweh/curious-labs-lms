@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono, Orbitron, Fredoka } from "next/font/google";
 import "./globals.css";
-import { Suspense } from "react";
-import { SiteHeader } from "@/components/SiteHeader";
-import { SiteFooter } from "@/components/SiteFooter";
-import { LoginGate } from "@/components/LoginGate";
+import { AppChrome } from "@/components/AppChrome";
 import { TransitionProvider } from "@/components/SubjectTransition";
 import { SessionProvider } from "@/components/SessionProvider";
 import { SyncProvider } from "@/components/SyncProvider";
@@ -65,12 +62,7 @@ export default function RootLayout({
         <SessionProvider>
           <SyncProvider>
             <TransitionProvider>
-              <SiteHeader />
-              <Suspense fallback={null}>
-                <LoginGate />
-              </Suspense>
-              <main className="flex-1 pt-16">{children}</main>
-              <SiteFooter />
+              <AppChrome>{children}</AppChrome>
             </TransitionProvider>
           </SyncProvider>
         </SessionProvider>

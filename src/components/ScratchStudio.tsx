@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import * as Blockly from "blockly";
 import { javascriptGenerator } from "blockly/javascript";
 import { registerScratchBlocks, getScratchTheme, SCRATCH_TOOLBOX } from "@/lib/scratchBlocks";
@@ -838,6 +839,9 @@ export function ScratchStudio() {
       <div className="order-2 flex w-full flex-col overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
         <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
+          <Link href="/" title="Leave the Studio" className="mr-1 flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">
+            ← Back
+          </Link>
           {([["code", "💻 Code"], ["costumes", "🎨 Costumes"], ["sounds", "🔊 Sounds"]] as const).map(([id, label]) => (
             <button
               key={id}

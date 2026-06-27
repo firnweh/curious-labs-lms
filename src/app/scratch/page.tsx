@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function ScratchStudioPage() {
   // Full-screen studio: the editor fills the viewport below the top bar.
   return (
-    <div className="px-2 py-2 sm:px-3 sm:py-3 lg:h-[calc(100svh_-_4rem)] lg:overflow-hidden">
+    <div className="px-2 py-2 sm:px-3 sm:py-3 lg:h-[100svh] lg:overflow-hidden">
       <ScratchStudio />
     </div>
   );
