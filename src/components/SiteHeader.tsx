@@ -31,12 +31,12 @@ export function SiteHeader() {
             <span className="font-mono text-xs tracking-tech">Studio</span>
           </Link>
           <Link
-            href="/arduino"
-            title="Chip Studio — program Arduino/ESP boards"
+            href="/maker"
+            title="Maker Lab — wire a circuit and program the chip"
             className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-cyan/50 hover:text-ink sm:inline-flex"
           >
-            <span aria-hidden>🔌</span>
-            <span className="font-mono text-xs tracking-tech">Chips</span>
+            <span aria-hidden>🔧</span>
+            <span className="font-mono text-xs tracking-tech">Maker</span>
           </Link>
           <Link
             href="/passport"
