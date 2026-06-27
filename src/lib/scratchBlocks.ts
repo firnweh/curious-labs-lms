@@ -38,6 +38,8 @@ const BLOCKS = [
   { type: "motion_goto", message0: "go to x %1 y %2", args0: [{ type: "input_value", name: "X", check: "Number" }, { type: "input_value", name: "Y", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_changex", message0: "change x by %1", args0: [{ type: "input_value", name: "DX", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_changey", message0: "change y by %1", args0: [{ type: "input_value", name: "DY", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  { type: "motion_setx", message0: "set x to %1", args0: [{ type: "input_value", name: "X", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  { type: "motion_sety", message0: "set y to %1", args0: [{ type: "input_value", name: "Y", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_glide", message0: "glide %1 secs to x %2 y %3", args0: [{ type: "input_value", name: "SECS", check: "Number" }, { type: "input_value", name: "X", check: "Number" }, { type: "input_value", name: "Y", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_bounce", message0: "if on edge, bounce", previousStatement: null, nextStatement: null, style: "motion_blocks" },
   // Looks
@@ -81,6 +83,8 @@ export function registerScratchBlocks() {
   G.forBlock["motion_goto"] = (b) => `s.goto(${val(b, "X")},${val(b, "Y")});\n`;
   G.forBlock["motion_changex"] = (b) => `s.changeX(${val(b, "DX")});\n`;
   G.forBlock["motion_changey"] = (b) => `s.changeY(${val(b, "DY")});\n`;
+  G.forBlock["motion_setx"] = (b) => `s.setX(${val(b, "X")});\n`;
+  G.forBlock["motion_sety"] = (b) => `s.setY(${val(b, "Y")});\n`;
   G.forBlock["motion_glide"] = (b) => `await s.glide(${val(b, "SECS")},${val(b, "X")},${val(b, "Y")});\n`;
   G.forBlock["motion_bounce"] = () => `s.bounce();\n`;
 
@@ -179,6 +183,8 @@ export const SCRATCH_TOOLBOX = {
         { kind: "block", type: "motion_goto", inputs: { X: num(0), Y: num(0) } },
         { kind: "block", type: "motion_changex", inputs: { DX: num(10) } },
         { kind: "block", type: "motion_changey", inputs: { DY: num(10) } },
+        { kind: "block", type: "motion_setx", inputs: { X: num(0) } },
+        { kind: "block", type: "motion_sety", inputs: { Y: num(0) } },
         { kind: "block", type: "motion_glide", inputs: { SECS: num(1), X: num(0), Y: num(0) } },
         { kind: "block", type: "motion_bounce" },
       ],

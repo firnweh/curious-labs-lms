@@ -4,9 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly";
 import { javascriptGenerator } from "blockly/javascript";
 import { registerScratchBlocks, getScratchTheme, scratchToolboxForGrade } from "@/lib/scratchBlocks";
-import { playSound } from "@/lib/scratchSound";
+import { playSound, SOUND_NAMES } from "@/lib/scratchSound";
 
 type Sprite = { id: string; name: string; costumes: string[] };
+
+const COSTUME_EMOJIS = ["😀", "😎", "😺", "🤖", "👾", "🚀", "🛸", "⭐", "🌟", "🔥", "💧", "🍎", "⚽", "🎈", "🌈", "🦄", "🐶", "🐱", "🐸", "🦋", "🎃", "👻", "💀", "🐢"];
+const BACKDROPS: { name: string; css: string }[] = [
+  { name: "White", css: "#ffffff" },
+  { name: "Sky", css: "linear-gradient(180deg,#bfe3ff,#eaf6ff)" },
+  { name: "Sunset", css: "linear-gradient(180deg,#ffd194,#ff9a9e)" },
+  { name: "Grass", css: "linear-gradient(180deg,#bdf0c0,#7ddf86)" },
+  { name: "Space", css: "radial-gradient(120% 120% at 50% 0%,#1b2447,#070d1a)" },
+  { name: "Candy", css: "linear-gradient(180deg,#fbc2eb,#a6c1ee)" },
+];
 type Runtime = {
   x: number; y: number; dir: number; size: number; visible: boolean;
   costumeIndex: number; bubble: string | null; bubbleType: "say" | "think";
@@ -54,18 +64,18 @@ const freshRuntime = (): Runtime => ({
 const txtv = (t: string) => ({ shadow: { type: "text", fields: { TEXT: t } } });
 const SCORE_ID = "scoreVar1";
 
-type Mission = { g: number; emoji: string; title: string; goal: string; hint: string; needs: string[] };
+type Mission = { g: number; emoji: string; title: string; goal: string; hint: string; needs: string[]; difficulty: number };
 const MISSIONS: Mission[] = [
-  { g: 1, emoji: "💬", title: "Say Hello", goal: "When the green flag is clicked, make your sprite say “Hi, I can code!”", hint: "Snap a Looks “say” block under the green-flag block.", needs: ["Events", "Looks"] },
-  { g: 2, emoji: "🏃", title: "Get Moving", goal: "When clicked, make your sprite zoom across the stage.", hint: "Use a Motion “move 120 steps” block.", needs: ["Events", "Motion"] },
-  { g: 3, emoji: "🔁", title: "Round & Round", goal: "Make your sprite move forever and bounce off the edges.", hint: "Put “move” + “if on edge bounce” inside a forever loop.", needs: ["Control", "Motion"] },
-  { g: 4, emoji: "🎬", title: "Bring it Alive", goal: "Animate your sprite by switching costumes in a loop.", hint: "forever → next costume → wait 0.25 secs.", needs: ["Looks", "Control"] },
-  { g: 5, emoji: "🎮", title: "You’re in Control", goal: "Move your sprite around with the arrow keys.", hint: "“when → key pressed” → change x by 10.", needs: ["Events", "Motion"] },
-  { g: 6, emoji: "🔊", title: "Make Some Noise", goal: "Press space to play a sound and jump a random number of steps.", hint: "Drop a “random” block into “move”.", needs: ["Sound", "Operators", "Events"] },
-  { g: 7, emoji: "➗", title: "Mathemagic", goal: "Make your sprite turn by a random angle each time it moves.", hint: "Put “random 15 to 45” inside the turn block.", needs: ["Operators", "Motion"] },
-  { g: 8, emoji: "🏆", title: "Keep Score", goal: "Make a variable “score” and add 1 to it when space is pressed.", hint: "Variables → Make a Variable → change score by 1.", needs: ["Variables", "Events"] },
-  { g: 9, emoji: "👾", title: "Mini Game", goal: "Move a hero with the arrows, score with space, and play a sound.", hint: "Combine key events, motion, a variable and sound.", needs: ["Events", "Variables", "Sound"] },
-  { g: 10, emoji: "🚀", title: "Your Own Game", goal: "Design your own game — sprites, controls, scoring and sound. Make it yours!", hint: "There are no rules — invent something fun.", needs: ["Everything"] },
+  { g: 1, emoji: "💬", title: "Say Hello", goal: "When the green flag is clicked, make your sprite greet the world: “Hi, I’m a coder!”", hint: "Snap a purple Looks “say” block under the green-flag block.", needs: ["Events", "Looks"], difficulty: 1 },
+  { g: 2, emoji: "🏎️", title: "Zoom Across", goal: "Make your sprite glide smoothly across the stage — and back again.", hint: "Use Motion “glide … to x …” blocks (try two, to send it back).", needs: ["Events", "Motion"], difficulty: 1 },
+  { g: 3, emoji: "🏀", title: "Bouncing Ball", goal: "Keep your sprite moving forever and bouncing off every edge.", hint: "Put “move” + “if on edge, bounce” inside a forever loop.", needs: ["Control", "Motion"], difficulty: 2 },
+  { g: 4, emoji: "🕺", title: "Dance Party", goal: "Make your sprite dance — switching costumes and grooving across the stage in a loop.", hint: "forever → next costume → move a little → turn → wait.", needs: ["Looks", "Control"], difficulty: 2 },
+  { g: 5, emoji: "🎮", title: "Drive It!", goal: "Steer your sprite all around the stage using the arrow keys.", hint: "One “when → key pressed → change x/y” for each arrow.", needs: ["Events", "Motion"], difficulty: 3 },
+  { g: 6, emoji: "🔊", title: "Sound Blaster", goal: "Press space to fire a sound and blast your sprite off in a random direction.", hint: "Drop a “random” block into the turn and move blocks.", needs: ["Sound", "Operators", "Events"], difficulty: 3 },
+  { g: 7, emoji: "🌀", title: "Spinner Art", goal: "Use random angles in a loop to make your sprite trace wild, hypnotic patterns.", hint: "forever → move → turn by “random 10 to 40” → tiny wait.", needs: ["Operators", "Motion", "Control"], difficulty: 4 },
+  { g: 8, emoji: "🏆", title: "Score Counter", goal: "Make a “score” variable and add a point every time space is pressed.", hint: "Variables → Make a Variable → change score by 1 → say score.", needs: ["Variables", "Events"], difficulty: 4 },
+  { g: 9, emoji: "👾", title: "Catch Game", goal: "Build a real mini-game: drive a hero with arrows, score with space, and play a sound on every catch.", hint: "Combine key events, motion, a score variable and sound.", needs: ["Events", "Variables", "Sound"], difficulty: 5 },
+  { g: 10, emoji: "🚀", title: "Your Own Game", goal: "Design your own game from scratch — sprites, controls, scoring and sound. Make it yours!", hint: "No rules. Add sprites, mix every block, and invent something fun.", needs: ["Everything"], difficulty: 5 },
 ];
 const missionFor = (g: number) => MISSIONS.find((m) => m.g === g) ?? MISSIONS[0];
 
@@ -75,16 +85,25 @@ const NEED_COLOR: Record<string, string> = {
 };
 
 function exampleFor(g: number): object {
-  const wf = (next?: object) => ({ type: "event_whenflag", x: 30, y: 30, ...(next ? { next: { block: next } } : {}) });
+  const wf = (next?: object | null) => ({ type: "event_whenflag", x: 30, y: 30, ...(next ? { next: { block: next } } : {}) });
   switch (g) {
     case 1:
       return { blocks: { languageVersion: 0, blocks: [wf({ type: "looks_sayfor", inputs: { TEXT: txtv("Hi, I can code!"), SECS: num(3) } })] } };
     case 2:
-      return { blocks: { languageVersion: 0, blocks: [wf({ type: "motion_move", inputs: { STEPS: num(120) } })] } };
+      return { blocks: { languageVersion: 0, blocks: [wf(chain([
+        { type: "motion_goto", inputs: { X: num(-150), Y: num(0) } },
+        { type: "motion_glide", inputs: { SECS: num(1.5), X: num(150), Y: num(0) } },
+        { type: "motion_glide", inputs: { SECS: num(1.5), X: num(-150), Y: num(0) } },
+      ])) ] } };
     case 3:
       return { blocks: { languageVersion: 0, blocks: [wf({ type: "control_forever", inputs: { DO: { block: chain([{ type: "motion_move", inputs: { STEPS: num(6) } }, { type: "motion_bounce" }]) } } })] } };
     case 4:
-      return { blocks: { languageVersion: 0, blocks: [wf({ type: "control_forever", inputs: { DO: { block: chain([{ type: "looks_nextcostume" }, { type: "control_wait", inputs: { SECS: num(0.25) } }]) } } })] } };
+      return { blocks: { languageVersion: 0, blocks: [wf({ type: "control_forever", inputs: { DO: { block: chain([
+        { type: "looks_nextcostume" },
+        { type: "motion_move", inputs: { STEPS: num(12) } },
+        { type: "motion_turnright", inputs: { DEG: num(15) } },
+        { type: "control_wait", inputs: { SECS: num(0.15) } },
+      ]) } } })] } };
     case 5:
       return { blocks: { languageVersion: 0, blocks: [
         { type: "event_whenkey", x: 30, y: 30, fields: { KEY: "right" }, next: { block: { type: "motion_changex", inputs: { DX: num(10) } } } },
@@ -94,13 +113,14 @@ function exampleFor(g: number): object {
       ] } };
     case 6:
       return { blocks: { languageVersion: 0, blocks: [
-        { type: "event_whenkey", x: 30, y: 30, fields: { KEY: "space" }, next: { block: { type: "sound_play", fields: { SOUND: "laser" }, next: { block: { type: "motion_move", inputs: { STEPS: { block: { type: "math_random_int", inputs: { FROM: num(10), TO: num(80) } } } } } } } } },
+        { type: "event_whenkey", x: 30, y: 30, fields: { KEY: "space" }, next: { block: { type: "sound_play", fields: { SOUND: "laser" }, next: { block: { type: "motion_turnright", inputs: { DEG: { block: { type: "math_random_int", inputs: { FROM: num(0), TO: num(360) } } } }, next: { block: { type: "motion_move", inputs: { STEPS: { block: { type: "math_random_int", inputs: { FROM: num(30), TO: num(120) } } } } } } } } } } },
       ] } };
     case 7:
       return { blocks: { languageVersion: 0, blocks: [wf({ type: "control_forever", inputs: { DO: { block: chain([
-        { type: "motion_move", inputs: { STEPS: num(20) } },
-        { type: "motion_turnright", inputs: { DEG: { block: { type: "math_random_int", inputs: { FROM: num(15), TO: num(45) } } } } },
-        { type: "control_wait", inputs: { SECS: num(0.1) } },
+        { type: "motion_move", inputs: { STEPS: num(18) } },
+        { type: "motion_turnright", inputs: { DEG: { block: { type: "math_random_int", inputs: { FROM: num(10), TO: num(40) } } } } },
+        { type: "motion_bounce" },
+        { type: "control_wait", inputs: { SECS: num(0.04) } },
       ]) } } })] } };
     case 8:
       return { variables: [{ name: "score", id: SCORE_ID }], blocks: { languageVersion: 0, blocks: [
@@ -143,6 +163,10 @@ export function ScratchStudio() {
   const stopRef = useRef(false);
   const sessionRef = useRef(false);
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  const xRef = useRef<HTMLSpanElement>(null);
+  const yRef = useRef<HTMLSpanElement>(null);
+  const sizeRef = useRef<HTMLSpanElement>(null);
+  const dirRef = useRef<HTMLSpanElement>(null);
   const rafRender = useRef(0);
   const idSeq = useRef(1);
   const gradeRef = useRef(1);
@@ -155,6 +179,9 @@ export function ScratchStudio() {
   const [celebrate, setCelebrate] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [tab, setTab] = useState<"code" | "costumes" | "sounds">("code");
+  const [costumePicker, setCostumePicker] = useState(false);
+  const [backdrop, setBackdrop] = useState("#ffffff");
   const [, setTick] = useState(0);
 
   spritesRef.current = sprites;
@@ -174,12 +201,30 @@ export function ScratchStudio() {
       theme: getScratchTheme(),
       renderer: "zelos",
       grid: { spacing: 28, length: 2, colour: "#16223c", snap: true },
-      zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 2, minScale: 0.35, pinch: true },
+      zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 2.5, minScale: 0.35, pinch: true },
       move: { scrollbars: true, drag: true, wheel: true },
       trashcan: true,
     });
     wsRef.current = ws;
     try { Blockly.serialization.workspaces.load(initial, ws); } catch { /* ignore */ }
+
+    // Scratch-style: click any block (or stack) to run it instantly on the selected sprite.
+    ws.addChangeListener((e) => {
+      if (e.type !== Blockly.Events.CLICK) return;
+      const ev = e as Blockly.Events.Click;
+      if (ev.targetType !== "block" || !ev.blockId) return;
+      const blk = ws.getBlockById(ev.blockId);
+      if (!blk) return;
+      const root = blk.getRootBlock();
+      javascriptGenerator.init(ws);
+      let code = javascriptGenerator.blockToCode(root);
+      code = (Array.isArray(code) ? code[0] : code) as string;
+      const defs = javascriptGenerator.finish("");
+      if (!code || !code.trim()) return;
+      stopRef.current = false;
+      sessionRef.current = true;
+      runStack(selectedIdRef.current, code, defs);
+    });
 
     const ro = new ResizeObserver(() => Blockly.svgResize(ws));
     ro.observe(blocklyDiv.current);
@@ -234,6 +279,7 @@ export function ScratchStudio() {
     ws.clear();
     try { Blockly.serialization.workspaces.load(ex, ws); } catch { /* ignore */ }
     scriptsRef.current.set(selectedIdRef.current, ex);
+    ws.scrollCenter();
   }, [grade]);
 
   // Restore saved activity completion.
@@ -264,6 +310,30 @@ export function ScratchStudio() {
     ws.clear();
     try { Blockly.serialization.workspaces.load(ex, ws); } catch { /* ignore */ }
     scriptsRef.current.set(selectedIdRef.current, ex);
+    ws.scrollCenter();
+  }
+
+  // Re-fit the Blockly workspace when the Code tab becomes visible again.
+  useEffect(() => {
+    if (tab === "code" && wsRef.current) {
+      const id = window.setTimeout(() => { if (wsRef.current) Blockly.svgResize(wsRef.current); }, 30);
+      return () => window.clearTimeout(id);
+    }
+  }, [tab]);
+
+  function addCostume(emoji: string) {
+    setSprites((s) => s.map((sp) => (sp.id === selectedIdRef.current ? { ...sp, costumes: [...sp.costumes, emoji] } : sp)));
+    setCostumePicker(false);
+  }
+  function removeCostume(i: number) {
+    setSprites((s) => s.map((sp) => {
+      if (sp.id !== selectedIdRef.current || sp.costumes.length <= 1) return sp;
+      const costumes = sp.costumes.filter((_, j) => j !== i);
+      const rt = runtimeRef.current.get(sp.id);
+      if (rt && rt.costumeIndex >= costumes.length) rt.costumeIndex = costumes.length - 1;
+      return { ...sp, costumes };
+    }));
+    setTick((t) => t + 1);
   }
 
   function drawStage(canvas: HTMLCanvasElement) {
@@ -310,6 +380,15 @@ export function ScratchStudio() {
       if (rt.bubble) drawBubble(ctx, cx + fs * 0.45, cy - fs * 0.5, rt.bubble, rt.bubbleType);
     }
     ctx.restore();
+
+    // Live sprite-info readout (Scratch-style x / y / size / direction).
+    const sr = runtimeRef.current.get(selectedIdRef.current);
+    if (sr) {
+      if (xRef.current) xRef.current.textContent = String(Math.round(sr.x));
+      if (yRef.current) yRef.current.textContent = String(Math.round(sr.y));
+      if (sizeRef.current) sizeRef.current.textContent = String(Math.round(sr.size));
+      if (dirRef.current) dirRef.current.textContent = String(Math.round(sr.dir));
+    }
   }
 
   function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, type: "say" | "think") {
@@ -362,6 +441,8 @@ export function ScratchStudio() {
       goto: (x: number, y: number) => { rt.x = x; rt.y = y; },
       changeX: (d: number) => { rt.x += d; },
       changeY: (d: number) => { rt.y += d; },
+      setX: (n: number) => { rt.x = n; },
+      setY: (n: number) => { rt.y = n; },
       bounce: () => {
         let b = false;
         if (rt.x > 240) { rt.x = 240; rt.dir = -rt.dir; b = true; } else if (rt.x < -240) { rt.x = -240; rt.dir = -rt.dir; b = true; }
@@ -650,7 +731,11 @@ export function ScratchStudio() {
               {mission.emoji}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-[11px] tracking-tech text-neon-amber">🎯 MISSION · CLASS {grade}</p>
+              <p className="font-mono text-[11px] tracking-tech text-neon-amber">
+                🎯 MISSION · CLASS {grade}
+                <span className="ml-2 align-middle text-neon-amber" title={`Difficulty ${mission.difficulty}/5`}>{"★".repeat(mission.difficulty)}</span>
+                <span className="align-middle text-ink-faint">{"☆".repeat(5 - mission.difficulty)}</span>
+              </p>
               <h3 className="font-display text-lg font-bold text-ink">{mission.title}</h3>
               <p className="text-sm text-ink-dim">{mission.goal}</p>
               <p className="mt-1 text-xs text-ink-faint">💡 {mission.hint}</p>
@@ -685,11 +770,71 @@ export function ScratchStudio() {
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
       <div className="order-2 overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1">
-        <div className="flex items-center justify-between border-b border-[#E5E5E5] bg-[#F9F9F9] px-4 py-2">
-          <p className="font-mono text-xs tracking-tech text-[#575E75]">SCRIPTS · <span className="font-semibold text-[#2E3856]">{selectedSprite?.name ?? "—"}</span></p>
-          <span className="font-mono text-[10px] tracking-tech text-[#9AA0B3]">{running ? "▶ running…" : "idle"}</span>
+        {/* Tab bar — Code / Costumes / Sounds */}
+        <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
+          {([["code", "💻 Code"], ["costumes", "🎨 Costumes"], ["sounds", "🔊 Sounds"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`rounded-lg px-3 py-1 font-mono text-xs transition-colors ${tab === id ? "bg-white text-[#2E3856] shadow-sm ring-1 ring-[#D9D9D9]" : "text-[#9AA0B3] hover:text-[#575E75]"}`}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="ml-auto pr-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">{running ? "▶ running…" : selectedSprite?.name ?? ""}</span>
         </div>
-        <div ref={blocklyDiv} className="h-[440px] w-full sm:h-[600px]" />
+
+        {/* Code tab — Blockly stays mounted, just hidden off-tab */}
+        <div ref={blocklyDiv} className={`h-[440px] w-full sm:h-[600px] ${tab === "code" ? "" : "hidden"}`} />
+
+        {/* Costumes tab */}
+        {tab === "costumes" && (
+          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px]">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="font-mono text-xs tracking-tech text-[#575E75]">COSTUMES · {selectedSprite?.name}</p>
+              <button onClick={() => setCostumePicker((p) => !p)} className="rounded-full border border-[#9966FF]/60 px-3 py-1 font-mono text-xs text-[#9966FF] hover:bg-[#9966FF]/10">+ Add costume</button>
+            </div>
+            {costumePicker && (
+              <div className="mb-3 grid grid-cols-8 gap-1.5 rounded-xl border border-[#E5E5E5] bg-[#F9F9F9] p-2">
+                {COSTUME_EMOJIS.map((em) => (
+                  <button key={em} onClick={() => addCostume(em)} className="grid aspect-square place-items-center rounded-lg border border-[#D9D9D9] bg-white text-xl hover:border-[#9966FF] hover:bg-[#9966FF]/10">{em}</button>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+              {selectedSprite?.costumes.map((c, i) => {
+                const on = (selRt?.costumeIndex ?? 0) % (selectedSprite?.costumes.length || 1) === i;
+                return (
+                  <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }}
+                    className={`relative grid place-items-center gap-1 rounded-xl border p-3 transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
+                    <span className="text-3xl">{c}</span>
+                    <span className="font-mono text-[10px] text-[#9AA0B3]">costume {i + 1}</span>
+                    {(selectedSprite?.costumes.length || 1) > 1 && (
+                      <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); removeCostume(i); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-4 font-mono text-[10px] text-[#9AA0B3]">Tip: use the “next costume” / “switch to costume” blocks to animate these.</p>
+          </div>
+        )}
+
+        {/* Sounds tab */}
+        {tab === "sounds" && (
+          <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px]">
+            <p className="mb-3 font-mono text-xs tracking-tech text-[#575E75]">SOUNDS · tap to preview</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {SOUND_NAMES.map((name) => (
+                <button key={name} onClick={() => playSound(name)} className="flex items-center justify-between rounded-xl border border-[#E5E5E5] bg-white px-3 py-2.5 text-left transition-colors hover:border-[#CF63CF]">
+                  <span className="font-mono text-sm text-[#2E3856]">{name}</span>
+                  <span className="text-[#CF63CF]">▶</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-4 font-mono text-[10px] text-[#9AA0B3]">Tip: use the “play sound” blocks in the 🔊 Sound category to trigger these.</p>
+          </div>
+        )}
       </div>
 
       {/* ── Stage + sprites — RIGHT ── */}
@@ -713,12 +858,41 @@ export function ScratchStudio() {
             onPointerMove={onCanvasMove}
             onPointerUp={onCanvasUp}
             onPointerCancel={onCanvasUp}
-            className="block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border border-[#D9D9D9] active:cursor-grabbing"
-            style={{ background: "#ffffff" }}
+            className={`block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border transition-shadow active:cursor-grabbing ${running ? "border-[#4CBB17] shadow-[0_0_0_3px_rgba(76,187,23,0.25)]" : "border-[#D9D9D9]"}`}
+            style={{ background: backdrop }}
           />
+          {/* Backdrop picker */}
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
+            {BACKDROPS.map((b) => (
+              <button
+                key={b.name}
+                onClick={() => setBackdrop(b.css)}
+                title={b.name}
+                className={`h-5 w-5 rounded-md border transition-transform hover:scale-110 ${backdrop === b.css ? "border-[#4C97FF] ring-1 ring-[#4C97FF]" : "border-[#D9D9D9]"}`}
+                style={{ background: b.css }}
+              />
+            ))}
+          </div>
           <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#9AA0B3]">
-            drag sprites on the stage · 🟢 run · space/arrows trigger key blocks
+            drag sprites · click a block to test it · 🟢 run · space/arrows for keys
           </p>
+        </div>
+
+        {/* Sprite info bar — Scratch-style live x / y / size / direction */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#575E75] shadow-sm">
+          <span className="max-w-[7rem] truncate font-semibold text-[#2E3856]">{selectedSprite?.name ?? "Sprite"}</span>
+          <span>x <b ref={xRef} className="font-mono text-[#2E3856]">0</b></span>
+          <span>y <b ref={yRef} className="font-mono text-[#2E3856]">0</b></span>
+          <span>size <b ref={sizeRef} className="font-mono text-[#2E3856]">100</b></span>
+          <span>dir <b ref={dirRef} className="font-mono text-[#2E3856]">90</b></span>
+          <button
+            onClick={() => { const r = runtimeRef.current.get(selectedIdRef.current); if (r) { r.visible = !r.visible; setTick((t) => t + 1); } }}
+            title="Show / hide sprite"
+            className="ml-auto rounded-md border border-[#D9D9D9] px-2 py-0.5 text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]"
+          >
+            {selRt?.visible === false ? "🚫 hidden" : "👁 shown"}
+          </button>
         </div>
 
         {/* Sprite panel */}
