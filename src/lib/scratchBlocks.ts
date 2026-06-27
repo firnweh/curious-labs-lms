@@ -42,6 +42,16 @@ const BLOCKS = [
   { type: "motion_sety", message0: "set y to %1", args0: [{ type: "input_value", name: "Y", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_glide", message0: "glide %1 secs to x %2 y %3", args0: [{ type: "input_value", name: "SECS", check: "Number" }, { type: "input_value", name: "X", check: "Number" }, { type: "input_value", name: "Y", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
   { type: "motion_bounce", message0: "if on edge, bounce", previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  { type: "motion_gotomenu", message0: "go to %1", args0: [{ type: "field_dropdown", name: "TO", options: [["random position", "random"], ["mouse-pointer", "mouse"]] }], previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  { type: "motion_glidetomenu", message0: "glide %1 secs to %2", args0: [{ type: "input_value", name: "SECS", check: "Number" }, { type: "field_dropdown", name: "TO", options: [["random position", "random"], ["mouse-pointer", "mouse"]] }], inputsInline: true, previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  { type: "motion_pointtowards", message0: "point towards %1", args0: [{ type: "field_dropdown", name: "TO", options: [["mouse-pointer", "mouse"]] }], previousStatement: null, nextStatement: null, style: "motion_blocks" },
+  // Sensing (reporters + booleans)
+  { type: "sensing_mousex", message0: "mouse x", output: "Number", style: "sensing_blocks" },
+  { type: "sensing_mousey", message0: "mouse y", output: "Number", style: "sensing_blocks" },
+  { type: "sensing_mousedown", message0: "mouse down?", output: "Boolean", style: "sensing_blocks" },
+  { type: "sensing_keypressed", message0: "key %1 pressed?", args0: [{ type: "field_dropdown", name: "KEY", options: [["space", "space"], ["↑ up", "up"], ["↓ down", "down"], ["← left", "left"], ["→ right", "right"], ["w", "w"], ["a", "a"], ["s", "s"], ["d", "d"]] }], output: "Boolean", style: "sensing_blocks" },
+  { type: "sensing_timer", message0: "timer", output: "Number", style: "sensing_blocks" },
+  { type: "sensing_resettimer", message0: "reset timer", previousStatement: null, nextStatement: null, style: "sensing_blocks" },
   // Looks
   { type: "looks_say", message0: "say %1", args0: [{ type: "input_value", name: "TEXT" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "looks_blocks" },
   { type: "looks_sayfor", message0: "say %1 for %2 secs", args0: [{ type: "input_value", name: "TEXT" }, { type: "input_value", name: "SECS", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "looks_blocks" },
@@ -87,6 +97,16 @@ export function registerScratchBlocks() {
   G.forBlock["motion_sety"] = (b) => `s.setY(${val(b, "Y")});\n`;
   G.forBlock["motion_glide"] = (b) => `await s.glide(${val(b, "SECS")},${val(b, "X")},${val(b, "Y")});\n`;
   G.forBlock["motion_bounce"] = () => `s.bounce();\n`;
+  G.forBlock["motion_gotomenu"] = (b) => `s.gotoTarget(${JSON.stringify(b.getFieldValue("TO"))});\n`;
+  G.forBlock["motion_glidetomenu"] = (b) => `await s.glideTarget(${val(b, "SECS")},${JSON.stringify(b.getFieldValue("TO"))});\n`;
+  G.forBlock["motion_pointtowards"] = (b) => `s.pointToward(${JSON.stringify(b.getFieldValue("TO"))});\n`;
+
+  G.forBlock["sensing_mousex"] = () => ["s.mouseX()", Order.ATOMIC];
+  G.forBlock["sensing_mousey"] = () => ["s.mouseY()", Order.ATOMIC];
+  G.forBlock["sensing_mousedown"] = () => ["s.mouseDown()", Order.ATOMIC];
+  G.forBlock["sensing_keypressed"] = (b) => [`s.keyDown(${JSON.stringify(b.getFieldValue("KEY"))})`, Order.ATOMIC];
+  G.forBlock["sensing_timer"] = () => ["s.timer()", Order.ATOMIC];
+  G.forBlock["sensing_resettimer"] = () => `s.resetTimer();\n`;
 
   G.forBlock["looks_say"] = (b) => `s.say(${str(b, "TEXT")});\n`;
   G.forBlock["looks_sayfor"] = (b) => `await s.sayFor(${str(b, "TEXT")},${val(b, "SECS")});\n`;
@@ -111,6 +131,30 @@ export function registerScratchBlocks() {
     `if(${G.valueToCode(b, "COND", Order.NONE) || "false"}){\n${G.statementToCode(b, "DO")}}\n`;
   G.forBlock["control_ifelse"] = (b) =>
     `if(${G.valueToCode(b, "COND", Order.NONE) || "false"}){\n${G.statementToCode(b, "DO")}} else {\n${G.statementToCode(b, "ELSE")}}\n`;
+
+  // My Blocks (custom procedures): emit ASYNC functions + awaited calls so that
+  // wait / glide / say-for work correctly inside a custom block.
+  type ProcGen = {
+    nameDB_: { getName(n: string, t: string): string };
+    definitions_: Record<string, string>;
+    statementToCode(b: Blockly.Block, n: string): string;
+  };
+  const procName = (b: Blockly.Block) =>
+    (G as unknown as ProcGen).nameDB_.getName(b.getFieldValue("NAME") || "myBlock", "PROCEDURE");
+  G.forBlock["procedures_defnoreturn"] = (b) => {
+    const g = G as unknown as ProcGen;
+    const name = procName(b);
+    const branch = g.statementToCode(b, "STACK");
+    const args = (b as unknown as { getVars(): string[] }).getVars().map((v) => g.nameDB_.getName(v, "VARIABLE"));
+    g.definitions_["%" + name] = `async function ${name}(${args.join(", ")}) {\n${branch}}`;
+    return null;
+  };
+  G.forBlock["procedures_callnoreturn"] = (b) => {
+    const name = procName(b);
+    const vars = (b as unknown as { arguments_?: string[] }).arguments_ || [];
+    const args = vars.map((_, i) => G.valueToCode(b, "ARG" + i, Order.NONE) || "null");
+    return `await ${name}(${args.join(", ")});\n`;
+  };
 }
 
 let themeSingleton: Blockly.Theme | null = null;
@@ -143,6 +187,8 @@ export function getScratchTheme(): Blockly.Theme | undefined {
       math_blocks: { colourPrimary: "#59C059", colourSecondary: "#46B946", colourTertiary: "#389438" },
       text_blocks: { colourPrimary: "#59C059", colourSecondary: "#46B946", colourTertiary: "#389438" },
       variable_blocks: { colourPrimary: "#FF8C1A", colourSecondary: "#FF8000", colourTertiary: "#DB6E00" },
+      sensing_blocks: { colourPrimary: "#5CB1D6", colourSecondary: "#47A8D1", colourTertiary: "#2E8EB8" },
+      procedure_blocks: { colourPrimary: "#FF6680", colourSecondary: "#FF4D6A", colourTertiary: "#FF3355" },
     },
     categoryStyles: {
       event_category: { colour: "#FFBF00" },
@@ -150,8 +196,10 @@ export function getScratchTheme(): Blockly.Theme | undefined {
       looks_category: { colour: "#9966FF" },
       sound_category: { colour: "#CF63CF" },
       control_category: { colour: "#FFAB19" },
+      sensing_category: { colour: "#5CB1D6" },
       operator_category: { colour: "#59C059" },
       variable_category: { colour: "#FF8C1A" },
+      procedure_category: { colour: "#FF6680" },
     },
     name: "scratchclassic",
   } as unknown as Parameters<typeof Blockly.Theme.defineTheme>[1];
@@ -186,6 +234,9 @@ export const SCRATCH_TOOLBOX = {
         { kind: "block", type: "motion_setx", inputs: { X: num(0) } },
         { kind: "block", type: "motion_sety", inputs: { Y: num(0) } },
         { kind: "block", type: "motion_glide", inputs: { SECS: num(1), X: num(0), Y: num(0) } },
+        { kind: "block", type: "motion_glidetomenu", inputs: { SECS: num(1) } },
+        { kind: "block", type: "motion_gotomenu" },
+        { kind: "block", type: "motion_pointtowards" },
         { kind: "block", type: "motion_bounce" },
       ],
     },
@@ -221,6 +272,17 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     {
+      kind: "category", name: "👀 Sensing", categorystyle: "sensing_category",
+      contents: [
+        { kind: "block", type: "sensing_mousex" },
+        { kind: "block", type: "sensing_mousey" },
+        { kind: "block", type: "sensing_mousedown" },
+        { kind: "block", type: "sensing_keypressed" },
+        { kind: "block", type: "sensing_timer" },
+        { kind: "block", type: "sensing_resettimer" },
+      ],
+    },
+    {
       kind: "category", name: "🧮 Operators", categorystyle: "operator_category",
       contents: [
         { kind: "block", type: "math_number", fields: { NUM: 0 } },
@@ -233,6 +295,7 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     { kind: "category", name: "📦 Variables", categorystyle: "variable_category", custom: "VARIABLE" },
+    { kind: "category", name: "🧩 My Blocks", categorystyle: "procedure_category", custom: "PROCEDURE" },
   ],
 };
 

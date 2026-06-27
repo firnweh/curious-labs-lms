@@ -179,6 +179,10 @@ export function ScratchStudio() {
   const fileRef = useRef<HTMLInputElement>(null);
   const spriteFileRef = useRef<HTMLInputElement>(null);
   const backdropFileRef = useRef<HTMLInputElement>(null);
+  // Sensing state: live mouse position (stage coords), held keys, timer origin.
+  const mouseRef = useRef({ x: 0, y: 0, down: false });
+  const keysRef = useRef<Set<string>>(new Set());
+  const timerStartRef = useRef(0);
   const wsRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const runtimeRef = useRef<Map<string, Runtime>>(new Map());
   const scriptsRef = useRef<Map<string, object>>(new Map());
@@ -297,12 +301,19 @@ export function ScratchStudio() {
       if (handled) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
+    // Track held keys for Sensing's "key … pressed?".
+    const onKeyDownTrack = (e: KeyboardEvent) => { const k = normKey(e); if (k) keysRef.current.add(k); };
+    const onKeyUpTrack = (e: KeyboardEvent) => { const k = normKey(e); if (k) keysRef.current.delete(k); };
+    window.addEventListener("keydown", onKeyDownTrack);
+    window.addEventListener("keyup", onKeyUpTrack);
 
     return () => {
       window.clearTimeout(t);
       ro.disconnect();
       cancelAnimationFrame(rafRender.current);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKeyDownTrack);
+      window.removeEventListener("keyup", onKeyUpTrack);
       ws.dispose();
       wsRef.current = null;
     };
@@ -311,18 +322,6 @@ export function ScratchStudio() {
 
   // Activity change: load that activity's scaffold into the selected sprite.
   // (The full block palette is always available — no gating by level.)
-  useEffect(() => {
-    if (firstGrade.current) { firstGrade.current = false; return; }
-    if (freePlayRef.current) return; // Free Play keeps whatever's built
-    const ws = wsRef.current;
-    if (!ws) return;
-    const ex = exampleFor(grade);
-    ws.clear();
-    try { Blockly.serialization.workspaces.load(ex, ws); } catch { /* ignore */ }
-    scriptsRef.current.set(selectedIdRef.current, ex);
-    ws.scrollCenter();
-  }, [grade]);
-
   // Restore saved activity completion.
   useEffect(() => {
     try {
@@ -525,6 +524,38 @@ export function ScratchStudio() {
       play: (name: string) => { playSound(name); },
       playUntil: async (name: string) => { const d = playSound(name); await sleep(d); },
       wait: (secs: number) => sleep(secs),
+      // Motion: random-position / mouse-pointer targets (Sensing-powered)
+      gotoTarget: (t: string) => {
+        rt.x = t === "mouse" ? mouseRef.current.x : Math.round(Math.random() * 480 - 240);
+        rt.y = t === "mouse" ? mouseRef.current.y : Math.round(Math.random() * 360 - 180);
+      },
+      glideTarget: (secs: number, t: string) => {
+        const tx = t === "mouse" ? mouseRef.current.x : Math.round(Math.random() * 480 - 240);
+        const ty = t === "mouse" ? mouseRef.current.y : Math.round(Math.random() * 360 - 180);
+        return new Promise<void>((res, rej) => {
+          const sx = rt.x, sy = rt.y, start = performance.now(), dur = Math.max(1, secs * 1000);
+          const tick = () => {
+            if (stopRef.current) return rej(STOP);
+            const p = Math.min(1, (performance.now() - start) / dur);
+            rt.x = sx + (tx - sx) * p; rt.y = sy + (ty - sy) * p;
+            if (p >= 1) return res();
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+      },
+      pointToward: (t: string) => {
+        const tx = t === "mouse" ? mouseRef.current.x : 0;
+        const ty = t === "mouse" ? mouseRef.current.y : 0;
+        rt.dir = norm(90 - (Math.atan2(ty - rt.y, tx - rt.x) * 180) / Math.PI);
+      },
+      // Sensing reporters
+      mouseX: () => Math.round(mouseRef.current.x),
+      mouseY: () => Math.round(mouseRef.current.y),
+      mouseDown: () => mouseRef.current.down,
+      keyDown: (k: string) => keysRef.current.has(k),
+      timer: () => Math.round((performance.now() - timerStartRef.current) / 100) / 10,
+      resetTimer: () => { timerStartRef.current = performance.now(); },
     };
   }
 
@@ -579,6 +610,7 @@ export function ScratchStudio() {
     syncSelectedScript();
     stopRef.current = false;
     sessionRef.current = true;
+    timerStartRef.current = performance.now();
     compiledRef.current.clear();
     for (const sp of spritesRef.current) compiledRef.current.set(sp.id, compileSprite(sp.id));
     for (const rt of runtimeRef.current.values()) rt.bubble = null;
@@ -586,12 +618,6 @@ export function ScratchStudio() {
     for (const sp of spritesRef.current) {
       const c = compiledRef.current.get(sp.id);
       if (c) for (const code of c.flag) runStack(sp.id, code, c.defs);
-    }
-    // Activity solved? Celebrate + mark it complete (no auto-advance — keep playing).
-    const ws = wsRef.current;
-    if (ws && !completed.has(grade)) {
-      const types = new Set(ws.getAllBlocks(false).map((b) => b.type));
-      if (missionFor(grade).check(types)) window.setTimeout(() => markComplete(false), 350);
     }
   }
 
@@ -611,6 +637,7 @@ export function ScratchStudio() {
   }
   function onCanvasDown(e: React.PointerEvent) {
     const p = pointerToStage(e);
+    mouseRef.current.x = p.x; mouseRef.current.y = p.y; mouseRef.current.down = true;
     for (let i = spritesRef.current.length - 1; i >= 0; i--) {
       const sp = spritesRef.current[i];
       const rt = runtimeRef.current.get(sp.id);
@@ -625,6 +652,8 @@ export function ScratchStudio() {
     }
   }
   function onCanvasMove(e: React.PointerEvent) {
+    const m = pointerToStage(e);
+    mouseRef.current.x = m.x; mouseRef.current.y = m.y;
     if (!dragRef.current) return;
     const p = pointerToStage(e);
     const rt = runtimeRef.current.get(dragRef.current.id);
@@ -633,7 +662,7 @@ export function ScratchStudio() {
       rt.y = Math.max(-180, Math.min(180, p.y + dragRef.current.dy));
     }
   }
-  function onCanvasUp() { dragRef.current = null; }
+  function onCanvasUp() { dragRef.current = null; mouseRef.current.down = false; }
 
   function selectSprite(id: string) {
     const ws = wsRef.current;
