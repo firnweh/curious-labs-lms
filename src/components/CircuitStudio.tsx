@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CircuitDoc, PinRef, PartType, SimResult } from "@/lib/circuits/types";
 import { simulate } from "@/lib/circuits/engine";
-import { PART_DEFS, PART_ORDER, BOX_W, BOX_H } from "@/lib/circuits/parts";
+import { PART_DEFS, PART_GROUPS, BOX_W, BOX_H } from "@/lib/circuits/parts";
 import { useCircuits } from "@/lib/circuits/store";
 import type { Challenge } from "@/lib/circuits/challenges";
+import { GLASS } from "@/lib/maker-ui";
 
 const VBW = 760;
 const VBH = 470;
@@ -17,7 +18,7 @@ const snap = (v: number) => Math.round(v / GRID) * GRID;
 const EMPTY: SimResult = { active: false, comp: {}, wireLive: {} };
 const IDLE = { current: 0, on: false, level: 0 };
 const LED_COLORS = ["#ef4444", "#f59e0b", "#fde047", "#34d399", "#3b82f6", "#a855f7"];
-const PART_EMOJI: Record<PartType, string> = {
+const PART_EMOJI: Partial<Record<PartType, string>> = {
   battery: "🔋",
   switch: "🎚️",
   button: "🔘",
@@ -173,6 +174,13 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
   const selComp = sel?.kind === "component" ? doc.components.find((c) => c.id === sel.id) : undefined;
   const bigBtn = "font-round font-semibold rounded-2xl transition active:scale-95";
 
+  const partTile = (t: PartType) => (
+    <button key={t} onPointerDown={(e) => startTrayDrag(t, e)} className="cs-tile flex shrink-0 touch-none flex-col items-center gap-0.5 rounded-xl border border-white/10 bg-white/[0.04] px-2 py-1.5 transition-all hover:border-cyan-300/50 hover:bg-white/[0.07] hover:shadow-[0_0_18px_-6px_rgba(34,211,238,0.6)]">
+      <svg viewBox="0 0 120 88" className="h-7 w-11">{PART_DEFS[t].render({ id: `tray-${t}`, type: t, x: 0, y: 0, props: { ...PART_DEFS[t].defaultProps } }, IDLE, false)}</svg>
+      <span className="max-w-[64px] truncate text-[10px] font-medium text-[#8595bd]">{PART_DEFS[t].label}</span>
+    </button>
+  );
+
   if (fill) {
     return (
       <div className="flex h-full w-full flex-col gap-2">
@@ -182,18 +190,17 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
             <p className="font-round text-sm font-bold text-ink">{solved ? "You did it! 🌟" : challenge.prompt}</p>
           </div>
         )}
-        {/* parts — horizontal strip on top */}
-        <div className="flex shrink-0 items-center gap-2 overflow-x-auto rounded-2xl border-2 border-line bg-panel-2/40 p-2">
-          <span className="shrink-0 px-1 font-round text-sm font-bold text-ink">🧰 Parts</span>
-          {PART_ORDER.map((t) => (
-            <button key={t} onPointerDown={(e) => startTrayDrag(t, e)} className="cs-tile flex shrink-0 touch-none flex-col items-center gap-0.5 rounded-2xl border-2 border-line bg-panel-2/70 px-2.5 py-1.5 hover:border-neon-green/70">
-              <svg viewBox="0 0 120 88" className="h-8 w-12">{PART_DEFS[t].render({ id: `tray-${t}`, type: t, x: 0, y: 0, props: { ...PART_DEFS[t].defaultProps } }, IDLE, false)}</svg>
-              <span className="font-round text-[11px] font-semibold text-ink-dim">{PART_DEFS[t].label}</span>
-            </button>
+        {/* parts — grouped, horizontal strip on top */}
+        <div className={`flex shrink-0 items-stretch gap-3 overflow-x-auto p-2 ${GLASS}`}>
+          {PART_GROUPS.map((g, gi) => (
+            <div key={g.name} className={`flex shrink-0 items-center gap-2 ${gi > 0 ? "border-l border-white/10 pl-3" : ""}`}>
+              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#566091]">{g.emoji} {g.name}</span>
+              <div className="flex gap-1.5">{g.types.map(partTile)}</div>
+            </div>
           ))}
         </div>
         {/* board — fills the rest */}
-        <div className="cs-board relative min-h-0 flex-1 overflow-hidden rounded-3xl border-2 border-[#2a3a6a]">
+        <div className="cs-board relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.7)]">
           <svg ref={svgRef} viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="xMidYMid meet" className="block h-full w-full touch-none" onPointerDown={() => { setSel(null); setWireFrom(null); }} onPointerMove={onMove} onPointerUp={onUp}>
             <defs>
               <pattern id="cs-grid" width="38" height="38" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.6" fill="#36477e" /></pattern>
@@ -221,7 +228,7 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
                   {PART_DEFS[c.type].render(c, st, running)}
                   {!running && PART_DEFS[c.type].pins.map((pin) => {
                     const isFrom = wireFrom?.c === c.id && wireFrom?.p === pin.id;
-                    return <circle key={pin.id} cx={pin.x} cy={pin.y} r={isFrom ? 12 : 9} fill={isFrom ? "#22d3ee" : "#0b1228"} stroke={isFrom ? "#d6f7ff" : "#ffd54a"} strokeWidth="3" className={isFrom ? "" : "cs-pin-pulse"} style={{ cursor: "crosshair" }} onPointerDown={(e) => onPinDown({ c: c.id, p: pin.id }, e)} />;
+                    return <circle key={pin.id} cx={pin.x} cy={pin.y} r={isFrom ? 12 : 9} fill={isFrom ? "#22d3ee" : "#0b1228"} stroke={isFrom ? "#d6f7ff" : "#22d3ee"} strokeWidth="3" className={isFrom ? "" : "cs-pin-pulse"} style={{ cursor: "crosshair" }} onPointerDown={(e) => onPinDown({ c: c.id, p: pin.id }, e)} />;
                   })}
                 </g>
               );
@@ -239,8 +246,8 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
             </div>
           </div>
           {selComp && (
-            <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-2 rounded-2xl border-2 border-line bg-base/90 px-3 py-2 shadow-lg backdrop-blur">
-              <span className="flex items-center gap-1.5 font-round text-sm font-bold text-ink"><span className="text-lg">{PART_EMOJI[selComp.type]}</span>{PART_DEFS[selComp.type].label}</span>
+            <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#0c1222]/90 px-3 py-2 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+              <span className="flex items-center gap-1.5 font-round text-sm font-bold text-ink"><span className="text-lg">{PART_EMOJI[selComp.type] ?? "🧩"}</span>{PART_DEFS[selComp.type].label}</span>
               {selComp.type === "led" && (
                 <div className="flex gap-1.5">{LED_COLORS.map((col) => (<button key={col} onClick={() => updateComp(selComp.id, {}, { color: col })} className="h-7 w-7 rounded-full transition active:scale-90" style={{ background: col, boxShadow: selComp.props.color === col ? `0 0 0 2px #fff, 0 0 0 4px ${col}` : "none" }} aria-label={col} />))}</div>
               )}
@@ -279,18 +286,12 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
       {/* ── toy shelf ── */}
       <aside className="panel h-fit rounded-3xl border-2 border-line p-3">
         <p className="mb-2 px-1 font-round text-base font-bold text-ink">🧰 Parts</p>
-        <div className="grid grid-cols-2 gap-2">
-          {PART_ORDER.map((t) => (
-            <button
-              key={t}
-              onPointerDown={(e) => startTrayDrag(t, e)}
-              className="cs-tile flex touch-none flex-col items-center gap-0.5 rounded-2xl border-2 border-line bg-panel-2/70 p-2 hover:border-neon-green/70"
-            >
-              <svg viewBox="0 0 120 88" className="h-11 w-16">
-                {PART_DEFS[t].render({ id: `tray-${t}`, type: t, x: 0, y: 0, props: { ...PART_DEFS[t].defaultProps } }, IDLE, false)}
-              </svg>
-              <span className="font-round text-[13px] font-semibold text-ink-dim">{PART_DEFS[t].label}</span>
-            </button>
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          {PART_GROUPS.map((g) => (
+            <div key={g.name}>
+              <p className="mb-1.5 px-1 font-round text-[11px] font-bold uppercase tracking-wide text-ink-faint">{g.emoji} {g.name}</p>
+              <div className="grid grid-cols-2 gap-2">{g.types.map(partTile)}</div>
+            </div>
           ))}
         </div>
 
@@ -345,7 +346,7 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
                 {!running &&
                   PART_DEFS[c.type].pins.map((pin) => {
                     const isFrom = wireFrom?.c === c.id && wireFrom?.p === pin.id;
-                    return <circle key={pin.id} cx={pin.x} cy={pin.y} r={isFrom ? 12 : 9} fill={isFrom ? "#22d3ee" : "#0b1228"} stroke={isFrom ? "#d6f7ff" : "#ffd54a"} strokeWidth="3" className={isFrom ? "" : "cs-pin-pulse"} style={{ cursor: "crosshair" }} onPointerDown={(e) => onPinDown({ c: c.id, p: pin.id }, e)} />;
+                    return <circle key={pin.id} cx={pin.x} cy={pin.y} r={isFrom ? 12 : 9} fill={isFrom ? "#22d3ee" : "#0b1228"} stroke={isFrom ? "#d6f7ff" : "#22d3ee"} strokeWidth="3" className={isFrom ? "" : "cs-pin-pulse"} style={{ cursor: "crosshair" }} onPointerDown={(e) => onPinDown({ c: c.id, p: pin.id }, e)} />;
                   })}
               </g>
             );
@@ -378,7 +379,7 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
         {selComp && (
           <div className="space-y-3">
             <p className="flex items-center gap-2 font-round text-base font-bold text-ink">
-              <span className="text-xl">{PART_EMOJI[selComp.type]}</span> {PART_DEFS[selComp.type].label}
+              <span className="text-xl">{PART_EMOJI[selComp.type] ?? "🧩"}</span> {PART_DEFS[selComp.type].label}
             </p>
 
             {selComp.type === "led" && (

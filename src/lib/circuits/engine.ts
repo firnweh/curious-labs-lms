@@ -16,6 +16,7 @@ const R_CLOSED = 0.01; // closed switch / wire-ish
 const LED_R = 180;
 const BUZZER_R = 120;
 const MOTOR_R = 60;
+const MODULE_R = 470; // generic board/sensor/actuator module — a light load
 const LED_ON = 0.0005; // 0.5 mA
 const ACT_ON = 0.001; // motor/buzzer threshold
 const LED_FULL = 0.02; // 20 mA = full brightness
@@ -35,8 +36,10 @@ function resistanceOf(c: CircuitComponent): number | null {
       return BUZZER_R;
     case "motor":
       return MOTOR_R;
+    case "battery":
+      return null; // handled separately as a source
     default:
-      return null;
+      return MODULE_R; // boards / sensors / actuators behave as a light load
   }
 }
 
@@ -210,6 +213,10 @@ export function simulate(doc: CircuitDoc): SimResult {
       s.on = ai > LED_ON;
       s.level = clamp(ai / LED_FULL, 0, 1);
     } else if (c.type === "buzzer" || c.type === "motor") {
+      s.on = ai > ACT_ON;
+      s.level = clamp(ai / LED_FULL, 0, 1);
+    } else if (!["battery", "resistor", "pot", "switch", "button"].includes(c.type)) {
+      // boards / sensors / actuators — light their status LED when powered
       s.on = ai > ACT_ON;
       s.level = clamp(ai / LED_FULL, 0, 1);
     }

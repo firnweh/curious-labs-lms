@@ -118,6 +118,15 @@ const BLOCKS = [
     output: "Number", style: "sensor_blocks",
   },
   { type: "sensor_button", message0: "🔘 button on pin %1 pressed", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_flame", message0: "🔥 flame near pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_touch", message0: "✋ touch on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_tilt", message0: "📐 tilted on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_water", message0: "💧 water level on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_gas", message0: "💨 gas level on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_rain", message0: "🌧️ rain level on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_sound", message0: "🎤 sound level on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_temp", message0: "🌡️ temperature °C (LM35) on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "arduino_relay", message0: "🔀 relay pin %1 %2", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }, { type: "field_dropdown", name: "STATE", options: [["ON", "HIGH"], ["OFF", "LOW"]] }], previousStatement: null, nextStatement: null, style: "comp_blocks" },
   // ── Wi-Fi (ESP) ──
   {
     type: "esp_wifi_connect",
@@ -135,10 +144,10 @@ export function arduinoTheme(): Blockly.Theme | undefined {
     base: Blockly.Themes.Classic,
     fontStyle: { family: "'JetBrains Mono', ui-monospace, monospace", size: 12 },
     componentStyles: {
-      workspaceBackgroundColour: "#0e1726",
-      toolboxBackgroundColour: "#0b1220",
+      workspaceBackgroundColour: "#0a0f1e",
+      toolboxBackgroundColour: "#0b1020",
       toolboxForegroundColour: "#cbd5e1",
-      flyoutBackgroundColour: "#0b1220",
+      flyoutBackgroundColour: "#0b1020",
       flyoutForegroundColour: "#cbd5e1",
       flyoutOpacity: 1,
       scrollbarColour: "#334155",
@@ -228,6 +237,7 @@ export const ARDUINO_TOOLBOX = {
         { kind: "block", type: "arduino_servo", inputs: { ANGLE: num(90) } },
         { kind: "block", type: "arduino_rgbled", inputs: { R: num(255), G: num(0), B: num(0) } },
         { kind: "block", type: "arduino_buzzer", inputs: { FREQ: num(440), DUR: num(200) } },
+        { kind: "block", type: "arduino_relay" },
       ],
     },
     {
@@ -239,7 +249,15 @@ export const ARDUINO_TOOLBOX = {
         { kind: "block", type: "sensor_ldr" },
         { kind: "block", type: "sensor_pot" },
         { kind: "block", type: "sensor_dht" },
+        { kind: "block", type: "sensor_temp" },
         { kind: "block", type: "sensor_button" },
+        { kind: "block", type: "sensor_flame" },
+        { kind: "block", type: "sensor_touch" },
+        { kind: "block", type: "sensor_tilt" },
+        { kind: "block", type: "sensor_water" },
+        { kind: "block", type: "sensor_gas" },
+        { kind: "block", type: "sensor_rain" },
+        { kind: "block", type: "sensor_sound" },
       ],
     },
     {
@@ -372,6 +390,15 @@ G.forBlock["sensor_dht"] = (b) => {
   return [`dht_${pin}.read${read}()`, G.ORDER_ATOMIC];
 };
 G.forBlock["sensor_button"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`btn_${p}`] = `  pinMode(${p}, INPUT_PULLUP);\n`; return [`digitalRead(${p}) == LOW`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_flame"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`flame_${p}`] = `  pinMode(${p}, INPUT);\n`; return [`digitalRead(${p}) == LOW`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_touch"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`touch_${p}`] = `  pinMode(${p}, INPUT);\n`; return [`digitalRead(${p}) == HIGH`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_tilt"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`tilt_${p}`] = `  pinMode(${p}, INPUT_PULLUP);\n`; return [`digitalRead(${p}) == LOW`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_water"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_gas"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_rain"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_sound"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_temp"] = (b) => [`(analogRead(${b.getFieldValue("PIN")}) * 0.48828)`, G.ORDER_MUL];
+G.forBlock["arduino_relay"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`relay_${p}`] = `  pinMode(${p}, OUTPUT);\n`; return `digitalWrite(${p}, ${b.getFieldValue("STATE")});\n`; };
 
 /* ── Built-in blocks → C++ ── */
 G.forBlock["math_number"] = (b) => {

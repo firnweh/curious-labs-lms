@@ -8,6 +8,7 @@ import {
   arduinoTheme,
   ARDUINO_TOOLBOX,
 } from "@/lib/arduinoBlocks";
+import { CARD, CHIP, PILL, PILL_GHOST, PILL_ACTIVE, PILL_CYAN, MONO, MUTED, FAINT } from "@/lib/maker-ui";
 
 const BOARDS = [
   { id: "pw_curious", label: "PW Curious Board" },
@@ -140,74 +141,73 @@ export function ArduinoStudio() {
     setSendText("");
   };
 
-  const tabBtn = (t: Tab, label: string) =>
-    `rounded-lg px-3 py-1.5 font-mono text-xs font-semibold transition ${tab === t ? "bg-neon-cyan/15 text-neon-cyan" : "text-ink-faint hover:text-ink-dim"}`;
+  const tabBtn = (t: Tab) => `${PILL} ${tab === t ? PILL_ACTIVE : PILL_GHOST}`;
 
   return (
-    <div className="flex h-full w-full flex-col gap-2">
+    <div className="flex h-full w-full flex-col gap-2.5">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-xl border border-line/70 bg-[#0b1220] p-1">
-          <button onClick={() => setTab("blocks")} className={tabBtn("blocks", "Blocks")}>🧩 Blocks</button>
-          <button onClick={() => setTab("code")} className={tabBtn("code", "Code")}>{"</>"} Code</button>
-          <button onClick={() => setTab("serial")} className={tabBtn("serial", "Serial")}>🖥️ Serial{connected && <span className="ml-1 text-neon-green">●</span>}</button>
-          <button onClick={() => setTab("plotter")} className={tabBtn("plotter", "Plotter")}>📈 Plotter</button>
+        <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
+          <button onClick={() => setTab("blocks")} className={tabBtn("blocks")}>🧩 Blocks</button>
+          <button onClick={() => setTab("code")} className={tabBtn("code")}>{"</>"} Code</button>
+          <button onClick={() => setTab("serial")} className={tabBtn("serial")}>🖥️ Serial{connected && <span className="ml-1 text-emerald-400">●</span>}</button>
+          <button onClick={() => setTab("plotter")} className={tabBtn("plotter")}>📈 Plotter</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select value={board.id} onChange={(e) => setBoard(BOARDS.find((b) => b.id === e.target.value) ?? BOARDS[0])}
-            className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1.5 font-mono text-xs text-ink-dim focus:border-neon-cyan/60 focus:outline-none">
-            {BOARDS.map((b) => (<option key={b.id} value={b.id}>{b.label}</option>))}
+            className={`${CHIP} cursor-pointer ${MONO}`}>
+            {BOARDS.map((b) => (<option key={b.id} value={b.id} className="bg-[#0c1222] text-[#e8eefc]">{b.label}</option>))}
           </select>
-          <button onClick={copy} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink">{copied ? "✓ Copied" : "⧉ Copy"}</button>
-          <button onClick={download} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink">⬇ .ino</button>
+          <button onClick={copy} className={CHIP}>{copied ? "✓ Copied" : "⧉ Copy"}</button>
+          <button onClick={download} className={CHIP}>⬇ .ino</button>
           {connected
-            ? <button onClick={disconnect} className="rounded-lg bg-neon-red/15 px-3 py-1.5 font-mono text-xs font-semibold text-neon-red transition hover:bg-neon-red/25">⏏ Disconnect</button>
-            : <button onClick={connect} className="rounded-lg bg-neon-cyan/15 px-3 py-1.5 font-mono text-xs font-semibold text-neon-cyan transition hover:bg-neon-cyan/25">🔌 Connect</button>}
+            ? <button onClick={disconnect} className={`${PILL} bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/30 hover:bg-rose-500/25`}>⏏ Disconnect</button>
+            : <button onClick={connect} className={`${PILL} ${PILL_CYAN}`}>🔌 Connect</button>}
         </div>
       </div>
 
       {/* Tab body (fills) */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
+      <div className={`relative min-h-0 flex-1 overflow-hidden ${CARD}`}>
         {/* Blockly stays mounted; only visible on the Blocks tab */}
-        <div ref={blocklyDiv} className={`h-full w-full bg-[#0e1726] ${tab === "blocks" ? "" : "hidden"}`} />
+        <div ref={blocklyDiv} className={`h-full w-full ${tab === "blocks" ? "" : "hidden"}`} style={{ background: "#0a0f1e" }} />
 
         {tab === "code" && (
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
-              <span className="font-mono text-xs tracking-tech text-neon-cyan">curious_labs.ino {manualCode != null && <span className="text-amber-400">· edited</span>}</span>
-              {manualCode != null && <button onClick={() => setManualCode(null)} className="font-mono text-[11px] text-neon-violet hover:underline">↻ regenerate from blocks</button>}
+            <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+              <span className={`${MONO} text-xs text-cyan-300`}>curious_labs.ino {manualCode != null && <span className="text-amber-300">· edited</span>}</span>
+              {manualCode != null && <button onClick={() => setManualCode(null)} className={`${MONO} text-[11px] text-violet-300 hover:underline`}>↻ regenerate from blocks</button>}
             </div>
             <textarea value={code} onChange={(e) => setManualCode(e.target.value)} spellCheck={false}
-              className="min-h-0 flex-1 w-full resize-none bg-transparent p-3 font-mono text-[12px] leading-relaxed text-emerald-200 outline-none" />
+              className={`min-h-0 w-full flex-1 resize-none bg-transparent p-3 ${MONO} text-[12.5px] leading-relaxed text-emerald-200 outline-none`} />
           </div>
         )}
 
         {tab === "serial" && (
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between gap-2 border-b border-line/60 px-3 py-2">
-              <span className="font-mono text-xs tracking-tech text-ink-dim">🖥️ Serial Monitor {connected && <span className="text-neon-green">● live</span>}</span>
+            <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+              <span className={`${MONO} text-xs ${MUTED}`}>🖥️ Serial Monitor {connected && <span className="text-emerald-400">● live</span>}</span>
               <div className="flex items-center gap-2">
                 <select value={monBaud} onChange={(e) => setMonBaud(Number(e.target.value))} disabled={connected}
-                  className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1 font-mono text-[11px] text-ink-dim focus:outline-none disabled:opacity-50">
-                  {BAUDS.map((b) => (<option key={b} value={b}>{b} baud</option>))}
+                  className={`rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 ${MONO} text-[11px] ${MUTED} focus:outline-none disabled:opacity-50`}>
+                  {BAUDS.map((b) => (<option key={b} value={b} className="bg-[#0c1222]">{b} baud</option>))}
                 </select>
-                <button onClick={() => setSerialOut("")} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+                <button onClick={() => setSerialOut("")} className={`${MONO} text-[11px] ${FAINT} hover:text-[#8595bd]`}>clear</button>
               </div>
             </div>
-            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-cyan-200">{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
-            <div className="flex items-center gap-2 border-t border-line/60 p-2">
+            <pre className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 ${MONO} text-[11px] leading-relaxed text-cyan-200`}>{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
+            <div className="flex items-center gap-2 border-t border-white/10 p-2">
               <input value={sendText} onChange={(e) => setSendText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSerial()} disabled={!connected}
-                placeholder={connected ? "send to board…" : "connect a board to send"} className="flex-1 rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink placeholder:text-ink-faint focus:border-neon-cyan/60 focus:outline-none disabled:opacity-50" />
-              <button onClick={sendSerial} disabled={!connected} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink disabled:opacity-50">Send</button>
+                placeholder={connected ? "send to board…" : "connect a board to send"} className={`flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 ${MONO} text-xs text-[#e8eefc] placeholder:text-[#566091] focus:border-cyan-300/50 focus:outline-none disabled:opacity-50`} />
+              <button onClick={sendSerial} disabled={!connected} className={`${CHIP} disabled:opacity-50`}>Send</button>
             </div>
           </div>
         )}
 
         {tab === "plotter" && (
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
-              <span className="font-mono text-xs tracking-tech text-ink-dim">📈 Serial Plotter {connected && <span className="text-neon-green">● live</span>}</span>
-              <button onClick={() => setPlot([])} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+            <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+              <span className={`${MONO} text-xs ${MUTED}`}>📈 Serial Plotter {connected && <span className="text-emerald-400">● live</span>}</span>
+              <button onClick={() => setPlot([])} className={`${MONO} text-[11px] ${FAINT} hover:text-[#8595bd]`}>clear</button>
             </div>
             <div className="min-h-0 flex-1 p-2"><Plotter data={plot} /></div>
           </div>
@@ -224,9 +224,9 @@ function Plotter({ data }: { data: number[][] }) {
   if (!data.length) {
     return (
       <div className="grid h-full place-items-center">
-        <p className="max-w-xs text-center font-mono text-xs leading-relaxed text-ink-faint">
+        <p className={`max-w-xs text-center ${MONO} text-xs leading-relaxed text-[#566091]`}>
           Print numbers over Serial (e.g.{" "}
-          <code className="text-neon-cyan">Serial.println(value)</code>) to plot them here.
+          <code className="text-cyan-300">Serial.println(value)</code>) to plot them here.
         </p>
       </div>
     );
@@ -241,7 +241,7 @@ function Plotter({ data }: { data: number[][] }) {
   const y = (v: number) => P + (1 - (v - lo) / (hi - lo)) * (H - 2 * P);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-      <rect width={W} height={H} fill="#0e1726" rx="8" />
+      <rect width={W} height={H} fill="#0a0f1e" rx="8" />
       {[0.25, 0.5, 0.75].map((f) => (<line key={f} x1={P} x2={W - P} y1={P + f * (H - 2 * P)} y2={P + f * (H - 2 * P)} stroke="#1e293b" strokeWidth="1" />))}
       {Array.from({ length: series }).map((_, s) => {
         const pts = data.map((sample, i) => (Number.isFinite(sample[s]) ? `${x(i).toFixed(1)},${y(sample[s]).toFixed(1)}` : "")).filter(Boolean).join(" ");

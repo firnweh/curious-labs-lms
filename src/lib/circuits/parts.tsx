@@ -247,6 +247,31 @@ function Pot({ comp }: { comp: CircuitComponent }) {
   );
 }
 
+/** Generic module/board/sensor — a labelled PCB block with 2 power leads.
+ *  Lights a small status LED when it's powered. Lets us add many parts (boards,
+ *  sensors, actuators) with a consistent look without bespoke art for each. */
+function ModulePart({ comp, emoji, label, color, state, running }: { comp: CircuitComponent; emoji: string; label: string; color: string; state: CompState; running: boolean }) {
+  void comp;
+  const on = running && state.on;
+  return (
+    <g>
+      {lead(6, 24)}
+      {lead(96, 114)}
+      <rect x="24" y="20" width="72" height="48" rx="9" fill={color} stroke="#0b1228" strokeWidth="2.5" />
+      <rect x="24" y="20" width="72" height="13" rx="9" fill="#ffffff" opacity="0.12" />
+      <text x="60" y="49" textAnchor="middle" fontSize="22">{emoji}</text>
+      <text x="60" y="82" textAnchor="middle" fill="#cbd5e1" fontFamily="Fredoka, system-ui" fontSize="11" fontWeight="600">{label}</text>
+      <circle cx="88" cy="28" r="3.4" fill={on ? "#34d399" : "#243049"} stroke="#0b1228" strokeWidth="1" />
+      {on && <circle cx="88" cy="28" r="6.5" fill="#34d399" opacity="0.35" />}
+    </g>
+  );
+}
+
+const mod = (type: PartType, label: string, emoji: string, color: string): PartDef => ({
+  type, label, pins: PINS, defaultProps: {},
+  render: (c, s, r) => <ModulePart comp={c} emoji={emoji} label={label} color={color} state={s} running={r} />,
+});
+
 export const PART_DEFS: Record<PartType, PartDef> = {
   battery: { type: "battery", label: "Battery", pins: PINS, defaultProps: { volts: 9 }, render: (c) => <Battery comp={c} /> },
   switch: { type: "switch", label: "Switch", pins: PINS, defaultProps: { closed: false }, toggleable: true, render: (c, _s, r) => <Switchy comp={c} running={r} /> },
@@ -256,9 +281,41 @@ export const PART_DEFS: Record<PartType, PartDef> = {
   buzzer: { type: "buzzer", label: "Buzzer", pins: PINS, defaultProps: {}, render: (c, s, r) => <Buzzer comp={c} state={s} running={r} /> },
   motor: { type: "motor", label: "Motor", pins: PINS, defaultProps: {}, render: (c, s, r) => <Motor comp={c} state={s} running={r} /> },
   pot: { type: "pot", label: "Knob", pins: PINS, defaultProps: { ohms: 500 }, render: (c) => <Pot comp={c} /> },
+  // boards
+  arduino: mod("arduino", "Arduino Uno", "🔲", "#1e9b8a"),
+  curious: mod("curious", "Curious Board", "🟢", "#16a34a"),
+  // outputs / actuators
+  relay: mod("relay", "Relay", "🔀", "#f59e0b"),
+  servo: mod("servo", "Servo", "🦾", "#ec4899"),
+  lamp: mod("lamp", "Lamp", "💡", "#eab308"),
+  fan: mod("fan", "Fan", "🌀", "#38bdf8"),
+  rgb: mod("rgb", "RGB LED", "🌈", "#a855f7"),
+  // sensors
+  ultrasonic: mod("ultrasonic", "Ultrasonic", "📏", "#ef4444"),
+  pir: mod("pir", "PIR Motion", "🚶", "#f43f5e"),
+  ir: mod("ir", "IR Sensor", "🚧", "#fb7185"),
+  soil: mod("soil", "Soil Moisture", "🌱", "#84cc16"),
+  ldr: mod("ldr", "Light (LDR)", "☀️", "#f59e0b"),
+  dht: mod("dht", "DHT11", "🌡️", "#22d3ee"),
+  temp: mod("temp", "Temp (LM35)", "🌡️", "#f97316"),
+  water: mod("water", "Water Level", "💧", "#0ea5e9"),
+  gas: mod("gas", "Gas (MQ-2)", "💨", "#94a3b8"),
+  flame: mod("flame", "Flame", "🔥", "#ef4444"),
+  touch: mod("touch", "Touch", "✋", "#c084fc"),
+  tilt: mod("tilt", "Tilt", "📐", "#14b8a6"),
+  rain: mod("rain", "Rain", "🌧️", "#3b82f6"),
+  mic: mod("mic", "Sound", "🎤", "#ec4899"),
 };
 
-export const PART_ORDER: PartType[] = ["battery", "switch", "button", "led", "resistor", "buzzer", "motor", "pot"];
+/** Parts grouped for the tray. */
+export const PART_GROUPS: { name: string; emoji: string; types: PartType[] }[] = [
+  { name: "Basics", emoji: "🔋", types: ["battery", "switch", "button", "led", "resistor", "pot"] },
+  { name: "Outputs", emoji: "💡", types: ["buzzer", "motor", "relay", "servo", "lamp", "fan", "rgb"] },
+  { name: "Sensors", emoji: "📡", types: ["ultrasonic", "pir", "ir", "soil", "ldr", "dht", "temp", "water", "gas", "flame", "touch", "tilt", "rain", "mic"] },
+  { name: "Boards", emoji: "🧠", types: ["arduino", "curious"] },
+];
+
+export const PART_ORDER: PartType[] = PART_GROUPS.flatMap((g) => g.types);
 
 /* ── colour helpers ── */
 function clamp01(v: number) {
