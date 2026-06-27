@@ -1,23 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { signInWithPhoneNumber, RecaptchaVerifier, type ConfirmationResult } from "firebase/auth";
+import { firebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 
-/** Existing Curious Labs backend (emails the code via Resend, sets the cookie). */
+/** Existing Curious Labs backend (verifies the Firebase token, sets the cookie). */
 const AUTH_BASE = "https://curiouslabs.online";
 
-type Step = "email" | "otp" | "school";
+type Step = "phone" | "otp" | "school";
 
 /**
- * Student login popup — email OTP. Opens on `?login=1` or the `cl:open-login`
- * event. Flow: enter email → the backend emails a 6-digit code (Resend) → enter
- * the code → the backend verifies it and sets the shared `.curiouslabs.online`
- * cookie. A brand-new email does a one-time "join your school" step.
- *
- * (Mobile/phone OTP lives in PhoneLoginModal.tsx — kept for later.)
+ * Student login popup — mobile OTP via Firebase Phone Auth. Opens on `?login=1`
+ * or the `cl:open-login` event. Flow: enter mobile number → Firebase sends an
+ * OTP → enter the code → the backend verifies the Firebase token and sets the
+ * shared `.curiouslabs.online` cookie. A brand-new number does a one-time
+ * "join your school" step (class code + name + grade + section).
  */
-export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+export function PhoneLoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -25,7 +26,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [section, setSection] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const challengeRef = useRef<string>("");
+
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const idTokenRef = useRef<string>("");
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -34,9 +38,12 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Tidy the reCAPTCHA when the modal closes so a reopen starts clean.
   useEffect(() => {
     if (open) return;
-    setStep("email");
+    recaptchaRef.current?.clear();
+    recaptchaRef.current = null;
+    setStep("phone");
     setOtp("");
     setError("");
     setBusy(false);
@@ -44,78 +51,81 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
   if (!open) return null;
 
-  const sendCode = async () => {
-    const addr = email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) {
-      setError("Enter a valid email address.");
+  const sendOtp = async () => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      setError("Enter your 10-digit mobile number.");
+      return;
+    }
+    if (!isFirebaseConfigured) {
+      setError("Mobile login isn't set up yet. Please try again later.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`${AUTH_BASE}/api/student/email-otp/send`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: addr }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setError(data.error || "Couldn't send the code. Try again.");
-        setBusy(false);
-        return;
-      }
-      challengeRef.current = data.challenge;
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = new RecaptchaVerifier(firebaseAuth(), "recaptcha-container", { size: "invisible" });
+      confirmationRef.current = await signInWithPhoneNumber(firebaseAuth(), "+91" + digits, recaptchaRef.current);
       setStep("otp");
       setBusy(false);
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code || (e as { message?: string })?.message || "unknown error";
+      setError(`Couldn't send the code — ${code}`);
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = null;
       setBusy(false);
     }
   };
 
-  const verify = async (extra: Record<string, string> = {}) => {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`${AUTH_BASE}/api/student/email-otp/verify`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: otp.trim(), challenge: challengeRef.current, ...extra }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.ok) {
-        window.location.assign("/");
-        return;
-      }
-      if (data.needsOnboarding) {
-        setStep("school");
-        setError(data.error || "");
-        setBusy(false);
-        return;
-      }
-      setError(data.error || "Couldn't log in. Try again.");
-      setBusy(false);
-    } catch {
-      setError("Network error. Please try again.");
-      setBusy(false);
+  const loginWithToken = async (body: Record<string, string>) => {
+    const res = await fetch(`${AUTH_BASE}/api/student/otp-login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      window.location.assign("/");
+      return;
     }
+    if (data.needsOnboarding) {
+      setStep("school");
+      setError(data.error || "");
+      setBusy(false);
+      return;
+    }
+    setError(data.error || "Couldn't log in. Try again.");
+    setBusy(false);
   };
 
-  const verifyOtp = () => {
-    if (otp.replace(/\D/g, "").length !== 6) {
+  const verifyOtp = async () => {
+    if (otp.replace(/\D/g, "").length !== 6 || !confirmationRef.current) {
       setError("Enter the 6-digit code.");
       return;
     }
-    verify();
+    setBusy(true);
+    setError("");
+    try {
+      const cred = await confirmationRef.current.confirm(otp.trim());
+      idTokenRef.current = await cred.user.getIdToken();
+      await loginWithToken({ idToken: idTokenRef.current });
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code || "";
+      setError(code ? `Couldn't verify — ${code}` : "That code didn't match. Try again.");
+      setBusy(false);
+    }
   };
-  const joinSchool = () => {
+
+  const joinSchool = async () => {
     if (!code.trim() || !name.trim() || !grade || !section.trim()) {
       setError("Fill in the class code, your name, grade and section.");
       return;
     }
-    verify({ code, name, grade, section });
+    setBusy(true);
+    setError("");
+    await loginWithToken({ idToken: idTokenRef.current, code, name, grade, section });
   };
 
   const field =
@@ -136,26 +146,29 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           ✕
         </button>
 
-        <div className="text-4xl">{step === "school" ? "🏫" : "✉️"}</div>
+        <div className="text-4xl">{step === "school" ? "🏫" : "📱"}</div>
         <h2 className="mt-2 font-round text-2xl font-bold text-ink">
           {step === "school" ? "Join your school" : "Student login"}
         </h2>
 
-        {step === "email" && (
+        {step === "phone" && (
           <div className="mt-5 space-y-2.5">
-            <p className="font-round text-sm text-ink-faint">We&apos;ll email you a one-time code.</p>
-            <input
-              autoFocus
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendCode()}
-              placeholder="you@email.com"
-              className={field}
-            />
+            <p className="font-round text-sm text-ink-faint">We&apos;ll text you a one-time code.</p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-2xl border-2 border-line bg-panel-2/70 px-3 py-3 font-round text-ink">+91</span>
+              <input
+                autoFocus
+                inputMode="numeric"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onKeyDown={(e) => e.key === "Enter" && sendOtp()}
+                placeholder="Mobile number"
+                className={`${field} flex-1 tracking-[0.15em]`}
+              />
+            </div>
             {error && <p className="font-round text-sm text-neon-red">{error}</p>}
-            <button onClick={sendCode} disabled={busy} className={cta}>
-              {busy ? "Sending…" : "✉️ Send code"}
+            <button onClick={sendOtp} disabled={busy} className={cta}>
+              {busy ? "Sending…" : "📲 Send code"}
             </button>
           </div>
         )}
@@ -163,7 +176,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
         {step === "otp" && (
           <div className="mt-5 space-y-2.5">
             <p className="font-round text-sm text-ink-faint">
-              Enter the code we emailed to <span className="font-bold text-ink">{email}</span>
+              Enter the code sent to <span className="font-bold text-ink">+91 {phone}</span>
             </p>
             <input
               autoFocus
@@ -179,10 +192,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
               {busy ? "Verifying…" : "🚀 Verify & enter"}
             </button>
             <button
-              onClick={() => { setStep("email"); setOtp(""); setError(""); }}
+              onClick={() => { setStep("phone"); setOtp(""); setError(""); }}
               className="font-round text-xs text-neon-cyan hover:underline"
             >
-              ← use a different email
+              ← change number
             </button>
           </div>
         )}
@@ -212,6 +225,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           Teacher or admin?{" "}
           <a href={`${AUTH_BASE}/login`} className="font-semibold text-neon-cyan hover:underline">Admin login →</a>
         </p>
+
+        <div id="recaptcha-container" />
       </div>
     </div>
   );
