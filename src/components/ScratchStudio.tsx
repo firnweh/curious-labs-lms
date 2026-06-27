@@ -279,7 +279,7 @@ export function ScratchStudio() {
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cw, ch);
-    ctx.strokeStyle = "rgba(56,189,248,0.06)";
+    ctx.strokeStyle = "rgba(0,0,0,0.06)";
     ctx.lineWidth = 1;
     for (let gx = 0; gx <= cw; gx += 30) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ch); ctx.stroke(); }
     for (let gy = 0; gy <= ch; gy += 30) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(cw, gy); ctx.stroke(); }
@@ -301,7 +301,7 @@ export function ScratchStudio() {
       ctx.fillText(emoji, 0, 0);
       ctx.restore();
       if (sp.id === selectedIdRef.current) {
-        ctx.strokeStyle = "rgba(34,211,238,0.45)";
+        ctx.strokeStyle = "rgba(76,151,255,0.7)";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(cx, cy, Math.max(10, fs * 0.7), 0, 7);
@@ -318,8 +318,8 @@ export function ScratchStudio() {
     const w = Math.min(180, ctx.measureText(t).width + 18);
     const h = 26;
     ctx.save();
-    ctx.fillStyle = "rgba(245,248,255,0.96)";
-    ctx.strokeStyle = "rgba(34,211,238,0.6)";
+    ctx.fillStyle = "rgba(255,255,255,0.98)";
+    ctx.strokeStyle = "rgba(120,128,150,0.65)";
     ctx.lineWidth = 1.5;
     const rx = x, ry = y - h;
     ctx.beginPath();
@@ -682,20 +682,29 @@ export function ScratchStudio() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(300px,400px)_1fr]">
-      {/* ── Stage + sprites ─────────────────────────────────── */}
-      <div className="flex flex-col gap-4">
-        <div className="panel p-3">
+      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
+      {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
+      <div className="order-2 overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1">
+        <div className="flex items-center justify-between border-b border-[#E5E5E5] bg-[#F9F9F9] px-4 py-2">
+          <p className="font-mono text-xs tracking-tech text-[#575E75]">SCRIPTS · <span className="font-semibold text-[#2E3856]">{selectedSprite?.name ?? "—"}</span></p>
+          <span className="font-mono text-[10px] tracking-tech text-[#9AA0B3]">{running ? "▶ running…" : "idle"}</span>
+        </div>
+        <div ref={blocklyDiv} className="h-[440px] w-full sm:h-[600px]" />
+      </div>
+
+      {/* ── Stage + sprites — RIGHT ── */}
+      <div className="order-1 flex flex-col gap-4 lg:order-2">
+        <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="font-mono text-xs tracking-tech text-neon-cyan">STAGE</p>
-              <button onClick={saveProject} title="Save project" className="rounded-md border border-line px-2 py-0.5 text-xs text-ink-dim transition-colors hover:border-neon-cyan/50 hover:text-ink">💾</button>
-              <button onClick={() => fileRef.current?.click()} title="Load project" className="rounded-md border border-line px-2 py-0.5 text-xs text-ink-dim transition-colors hover:border-neon-cyan/50 hover:text-ink">📂</button>
+              <p className="font-mono text-xs tracking-tech text-[#575E75]">STAGE</p>
+              <button onClick={saveProject} title="Save project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">💾</button>
+              <button onClick={() => fileRef.current?.click()} title="Load project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">📂</button>
               <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadProject(f); e.target.value = ""; }} />
             </div>
             <div className="flex gap-2">
-              <button onClick={greenFlag} disabled={running} title="Green flag — run all" className="grid h-8 w-8 place-items-center rounded-full border border-neon-green/50 bg-neon-green/15 text-sm transition-colors hover:bg-neon-green/25 disabled:opacity-50">🟢</button>
-              <button onClick={stopAll} title="Stop everything" className="grid h-8 w-8 place-items-center rounded-full border border-neon-red/50 bg-neon-red/10 text-sm transition-colors hover:bg-neon-red/20">🛑</button>
+              <button onClick={greenFlag} disabled={running} title="Green flag — run all" className="grid h-8 w-8 place-items-center rounded-full border border-[#4CBB17]/50 bg-[#4CBB17]/10 text-sm transition-colors hover:bg-[#4CBB17]/20 disabled:opacity-50">🟢</button>
+              <button onClick={stopAll} title="Stop everything" className="grid h-8 w-8 place-items-center rounded-full border border-[#EC4C4C]/50 bg-[#EC4C4C]/10 text-sm transition-colors hover:bg-[#EC4C4C]/20">🛑</button>
             </div>
           </div>
           <canvas
@@ -704,25 +713,25 @@ export function ScratchStudio() {
             onPointerMove={onCanvasMove}
             onPointerUp={onCanvasUp}
             onPointerCancel={onCanvasUp}
-            className="block aspect-[4/3] w-full cursor-grab touch-none rounded-xl border border-line/70 active:cursor-grabbing"
-            style={{ background: "radial-gradient(120% 120% at 50% 0%, #0b1428, #070d1a)" }}
+            className="block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border border-[#D9D9D9] active:cursor-grabbing"
+            style={{ background: "#ffffff" }}
           />
-          <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-ink-faint">
+          <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#9AA0B3]">
             drag sprites on the stage · 🟢 run · space/arrows trigger key blocks
           </p>
         </div>
 
         {/* Sprite panel */}
-        <div className="panel p-3">
+        <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <p className="font-mono text-xs tracking-tech text-neon-violet">SPRITES</p>
-            <button onClick={() => setPicker((p) => !p)} className="rounded-full border border-neon-cyan/50 px-3 py-1 font-mono text-xs text-neon-cyan transition-colors hover:bg-neon-cyan/10">+ Add sprite</button>
+            <p className="font-mono text-xs tracking-tech text-[#575E75]">SPRITES</p>
+            <button onClick={() => setPicker((p) => !p)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">+ Add sprite</button>
           </div>
 
           {picker && (
-            <div className="mb-3 grid grid-cols-6 gap-1.5 rounded-xl border border-line bg-base/50 p-2">
+            <div className="mb-3 grid grid-cols-6 gap-1.5 rounded-xl border border-[#E5E5E5] bg-[#F9F9F9] p-2">
               {LIBRARY.map((lib) => (
-                <button key={lib.name} onClick={() => addSprite(lib)} title={lib.name} className="grid aspect-square place-items-center rounded-lg border border-line text-xl transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10">
+                <button key={lib.name} onClick={() => addSprite(lib)} title={lib.name} className="grid aspect-square place-items-center rounded-lg border border-[#D9D9D9] bg-white text-xl transition-colors hover:border-[#4C97FF] hover:bg-[#4C97FF]/10">
                   {lib.costumes[0]}
                 </button>
               ))}
@@ -734,11 +743,11 @@ export function ScratchStudio() {
               const on = sp.id === selectedId;
               const rt = runtimeRef.current.get(sp.id);
               return (
-                <button key={sp.id} onClick={() => selectSprite(sp.id)} className={`relative grid place-items-center gap-1 rounded-xl border p-2 transition-colors ${on ? "border-neon-cyan bg-neon-cyan/10" : "border-line hover:border-neon-cyan/40"}`}>
+                <button key={sp.id} onClick={() => selectSprite(sp.id)} className={`relative grid place-items-center gap-1 rounded-xl border p-2 transition-colors ${on ? "border-[#4C97FF] bg-[#4C97FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#4C97FF]/50"}`}>
                   <span className="text-2xl">{sp.costumes[rt ? rt.costumeIndex % sp.costumes.length : 0]}</span>
-                  <span className="max-w-full truncate font-mono text-[10px] text-ink-dim">{sp.name}</span>
+                  <span className="max-w-full truncate font-mono text-[10px] text-[#575E75]">{sp.name}</span>
                   {sprites.length > 1 && (
-                    <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); deleteSprite(sp.id); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-neon-red/80 text-[10px] text-white">×</span>
+                    <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); deleteSprite(sp.id); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
                   )}
                 </button>
               );
@@ -746,13 +755,13 @@ export function ScratchStudio() {
           </div>
 
           {selectedSprite && selectedSprite.costumes.length > 1 && (
-            <div className="mt-3 border-t border-line/60 pt-3">
-              <p className="mb-2 font-mono text-[10px] tracking-tech text-ink-faint">COSTUMES · {selectedSprite.name}</p>
+            <div className="mt-3 border-t border-[#E5E5E5] pt-3">
+              <p className="mb-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">COSTUMES · {selectedSprite.name}</p>
               <div className="flex flex-wrap gap-2">
                 {selectedSprite.costumes.map((c, i) => {
                   const on = (selRt?.costumeIndex ?? 0) % selectedSprite.costumes.length === i;
                   return (
-                    <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }} className={`grid h-10 w-10 place-items-center rounded-lg border text-lg transition-colors ${on ? "border-neon-violet bg-neon-violet/15" : "border-line hover:border-neon-violet/50"}`}>
+                    <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }} className={`grid h-10 w-10 place-items-center rounded-lg border text-lg transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/15" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
                       {c}
                     </button>
                   );
@@ -761,15 +770,6 @@ export function ScratchStudio() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Blockly workspace ───────────────────────────────── */}
-      <div className="panel overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-line/60 px-4 py-2">
-          <p className="font-mono text-xs tracking-tech text-ink-dim">SCRIPTS · <span className="text-ink">{selectedSprite?.name ?? "—"}</span></p>
-          <span className="font-mono text-[10px] tracking-tech text-ink-faint">{running ? "▶ running…" : "idle"}</span>
-        </div>
-        <div ref={blocklyDiv} className="h-[440px] w-full sm:h-[600px]" />
       </div>
       </div>
     </div>
