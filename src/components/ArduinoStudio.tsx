@@ -21,6 +21,7 @@ const BOARDS = [
 const BAUDS = [9600, 115200, 57600, 4800];
 const STARTER = { blocks: { blocks: [{ type: "arduino_sketch", x: 40, y: 40 }] } };
 
+type Tab = "blocks" | "code" | "serial" | "plotter";
 type Nav = Navigator & { serial?: { requestPort: () => Promise<SerialPortLike> } };
 interface SerialPortLike {
   open: (o: { baudRate: number }) => Promise<void>;
@@ -30,24 +31,22 @@ interface SerialPortLike {
 }
 
 /**
- * Block-based Arduino studio with a block↔text toggle, board selector, and a
- * Web Serial "Connect board" + live Serial Monitor. Compile + flash and the IoT
- * dashboard are the next phases (need a compile service / MQTT backend).
+ * Block-based Arduino studio. Tabs: Blocks (canvas only) · Code (editable .ino)
+ * · Serial (monitor) · Plotter (live chart of serial numbers). Board selector +
+ * Web Serial "Connect board". Fills its container height.
  */
 export function ArduinoStudio() {
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const wsRef = useRef<Blockly.WorkspaceSvg | null>(null);
-  const [view, setView] = useState<"blocks" | "code">("blocks");
+  const [tab, setTab] = useState<Tab>("blocks");
   const [genCode, setGenCode] = useState("");
   const [manualCode, setManualCode] = useState<string | null>(null);
   const [board, setBoard] = useState(BOARDS[0]);
   const [copied, setCopied] = useState(false);
   const boardRef = useRef(board);
   boardRef.current = board;
-
   const code = manualCode ?? genCode;
 
-  // ── Blockly ──
   useEffect(() => {
     registerArduinoBlocks();
     if (!blocklyDiv.current) return;
@@ -63,10 +62,7 @@ export function ArduinoStudio() {
     wsRef.current = ws;
     try { Blockly.serialization.workspaces.load(STARTER, ws); } catch { /* ignore */ }
     const regen = () => {
-      try {
-        const body = arduinoGenerator.workspaceToCode(ws);
-        setGenCode(`// Curious Labs — ${boardRef.current.label}\n\n${body}`);
-      } catch { /* ignore */ }
+      try { setGenCode(`// Curious Labs — ${boardRef.current.label}\n\n${arduinoGenerator.workspaceToCode(ws)}`); } catch { /* ignore */ }
     };
     ws.addChangeListener((e) => { if (!(e as Blockly.Events.Abstract).isUiEvent) regen(); });
     regen();
@@ -76,44 +72,30 @@ export function ArduinoStudio() {
     return () => { ro.disconnect(); window.clearTimeout(t); ws.dispose(); };
   }, []);
 
-  // keep the board name fresh in the generated header comment
-  useEffect(() => {
-    setGenCode((c) => c.replace(/^\/\/ Curious Labs — .*$/m, `// Curious Labs — ${board.label}`));
-  }, [board]);
+  useEffect(() => { setGenCode((c) => c.replace(/^\/\/ Curious Labs — .*$/m, `// Curious Labs — ${board.label}`)); }, [board]);
+  useEffect(() => { if (tab === "blocks" && wsRef.current) setTimeout(() => Blockly.svgResize(wsRef.current!), 60); }, [tab]);
 
-  // re-size Blockly when returning to the blocks view
-  useEffect(() => {
-    if (view === "blocks" && wsRef.current) setTimeout(() => Blockly.svgResize(wsRef.current!), 50);
-  }, [view]);
+  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } };
+  const download = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" })); a.download = "curious_labs.ino"; a.click(); };
 
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
-  };
-  const download = () => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
-    a.download = "curious_labs.ino";
-    a.click();
-  };
-
-  // ── Web Serial: connect + live monitor ──
+  // ── Web Serial: monitor + plotter ──
   const portRef = useRef<SerialPortLike | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<string> | null>(null);
+  const lineBuf = useRef("");
   const [connected, setConnected] = useState(false);
   const [monBaud, setMonBaud] = useState(9600);
   const [serialOut, setSerialOut] = useState("");
   const [sendText, setSendText] = useState("");
-  const [monOpen, setMonOpen] = useState(false);
+  const [plot, setPlot] = useState<number[][]>([]);
 
   const connect = async () => {
     const nav = navigator as Nav;
-    if (!nav.serial) { setSerialOut("⚠ Web Serial needs Chrome or Edge (desktop). Plug in your board over USB and try again."); return; }
+    if (!nav.serial) { setSerialOut("⚠ Web Serial needs Chrome or Edge (desktop). Plug in your board over USB and try again."); setTab("serial"); return; }
     try {
       const port = await nav.serial.requestPort();
       await port.open({ baudRate: monBaud });
       portRef.current = port;
       setConnected(true);
-      setMonOpen(true);
       setSerialOut("✓ Connected. Listening…\n");
       if (port.readable) {
         const dec = new TextDecoderStream();
@@ -125,13 +107,23 @@ export function ArduinoStudio() {
             for (;;) {
               const { value, done } = await reader.read();
               if (done) break;
-              if (value) setSerialOut((s) => (s + value).slice(-6000));
+              if (!value) continue;
+              lineBuf.current += value;
+              const parts = lineBuf.current.split(/\r?\n/);
+              lineBuf.current = parts.pop() ?? "";
+              if (!parts.length) continue;
+              setSerialOut((s) => (s + parts.join("\n") + "\n").slice(-6000));
+              const samples = parts
+                .map((l) => l.trim().split(/[\s,;]+/).map(Number).filter((n) => Number.isFinite(n)))
+                .filter((a) => a.length);
+              if (samples.length) setPlot((p) => [...p, ...samples].slice(-150));
             }
           } catch { /* closed */ }
         })();
       }
     } catch (e) {
       setSerialOut("Couldn't connect: " + (e instanceof Error ? e.message : String(e)));
+      setTab("serial");
     }
   };
   const disconnect = async () => {
@@ -148,16 +140,18 @@ export function ArduinoStudio() {
     setSendText("");
   };
 
-  const tab = (v: "blocks" | "code", label: string) =>
-    `rounded-lg px-3 py-1.5 font-mono text-xs font-semibold transition ${view === v ? "bg-neon-cyan/15 text-neon-cyan" : "text-ink-faint hover:text-ink-dim"}`;
+  const tabBtn = (t: Tab, label: string) =>
+    `rounded-lg px-3 py-1.5 font-mono text-xs font-semibold transition ${tab === t ? "bg-neon-cyan/15 text-neon-cyan" : "text-ink-faint hover:text-ink-dim"}`;
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full w-full flex-col gap-2">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line/70 bg-[#0b1220] p-1">
-          <button onClick={() => setView("blocks")} className={tab("blocks", "Blocks")}>🧩 Blocks</button>
-          <button onClick={() => setView("code")} className={tab("code", "Code")}>{"</>"} Code</button>
+          <button onClick={() => setTab("blocks")} className={tabBtn("blocks", "Blocks")}>🧩 Blocks</button>
+          <button onClick={() => setTab("code")} className={tabBtn("code", "Code")}>{"</>"} Code</button>
+          <button onClick={() => setTab("serial")} className={tabBtn("serial", "Serial")}>🖥️ Serial{connected && <span className="ml-1 text-neon-green">●</span>}</button>
+          <button onClick={() => setTab("plotter")} className={tabBtn("plotter", "Plotter")}>📈 Plotter</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select value={board.id} onChange={(e) => setBoard(BOARDS.find((b) => b.id === e.target.value) ?? BOARDS[0])}
@@ -168,60 +162,93 @@ export function ArduinoStudio() {
           <button onClick={download} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink">⬇ .ino</button>
           {connected
             ? <button onClick={disconnect} className="rounded-lg bg-neon-red/15 px-3 py-1.5 font-mono text-xs font-semibold text-neon-red transition hover:bg-neon-red/25">⏏ Disconnect</button>
-            : <button onClick={connect} className="rounded-lg bg-neon-cyan/15 px-3 py-1.5 font-mono text-xs font-semibold text-neon-cyan transition hover:bg-neon-cyan/25">🔌 Connect board</button>}
+            : <button onClick={connect} className="rounded-lg bg-neon-cyan/15 px-3 py-1.5 font-mono text-xs font-semibold text-neon-cyan transition hover:bg-neon-cyan/25">🔌 Connect</button>}
         </div>
       </div>
 
-      {/* Editor body */}
-      <div className={view === "blocks" ? "grid gap-4 lg:grid-cols-[1fr_minmax(320px,420px)]" : "hidden"}>
-        <div className="overflow-hidden rounded-2xl border border-line/70 bg-[#0e1726]"><div ref={blocklyDiv} className="h-[560px] w-full" /></div>
-        <div className="flex h-[560px] flex-col overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
-          <div className="border-b border-line/60 px-3 py-2 font-mono text-xs tracking-tech text-neon-cyan">curious_labs.ino</div>
-          <pre className="flex-1 overflow-auto p-3 font-mono text-[12px] leading-relaxed text-emerald-200">{code || "// drag blocks to build your sketch"}</pre>
-        </div>
-      </div>
-      <div className={view === "code" ? "block" : "hidden"}>
-        <div className="overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
-          <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
-            <span className="font-mono text-xs tracking-tech text-neon-cyan">curious_labs.ino {manualCode != null && <span className="text-amber-400">· edited</span>}</span>
-            {manualCode != null && <button onClick={() => setManualCode(null)} className="font-mono text-[11px] text-neon-violet hover:underline">↻ regenerate from blocks</button>}
-          </div>
-          <textarea
-            value={code}
-            onChange={(e) => setManualCode(e.target.value)}
-            spellCheck={false}
-            className="h-[560px] w-full resize-none bg-transparent p-3 font-mono text-[12px] leading-relaxed text-emerald-200 outline-none"
-          />
-        </div>
-      </div>
+      {/* Tab body (fills) */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
+        {/* Blockly stays mounted; only visible on the Blocks tab */}
+        <div ref={blocklyDiv} className={`h-full w-full bg-[#0e1726] ${tab === "blocks" ? "" : "hidden"}`} />
 
-      {/* Serial Monitor (collapsible) */}
-      <div className="overflow-hidden rounded-2xl border border-line/70 bg-[#0b1220]">
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <button onClick={() => setMonOpen((o) => !o)} className="flex items-center gap-1.5 font-mono text-xs tracking-tech text-ink-dim transition hover:text-ink">
-            <span className="text-ink-faint">{monOpen ? "▾" : "▸"}</span>🖥️ Serial Monitor {connected && <span className="text-neon-green">● live</span>}
-          </button>
-          {monOpen && (
-            <div className="flex items-center gap-2">
-              <select value={monBaud} onChange={(e) => setMonBaud(Number(e.target.value))} disabled={connected}
-                className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1 font-mono text-[11px] text-ink-dim focus:outline-none disabled:opacity-50">
-                {BAUDS.map((b) => (<option key={b} value={b}>{b} baud</option>))}
-              </select>
-              <button onClick={() => setSerialOut("")} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+        {tab === "code" && (
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
+              <span className="font-mono text-xs tracking-tech text-neon-cyan">curious_labs.ino {manualCode != null && <span className="text-amber-400">· edited</span>}</span>
+              {manualCode != null && <button onClick={() => setManualCode(null)} className="font-mono text-[11px] text-neon-violet hover:underline">↻ regenerate from blocks</button>}
             </div>
-          )}
-        </div>
-        {monOpen && (
-          <>
-            <pre className="h-36 overflow-auto whitespace-pre-wrap break-words border-t border-line/60 p-3 font-mono text-[11px] leading-relaxed text-cyan-200">{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
+            <textarea value={code} onChange={(e) => setManualCode(e.target.value)} spellCheck={false}
+              className="min-h-0 flex-1 w-full resize-none bg-transparent p-3 font-mono text-[12px] leading-relaxed text-emerald-200 outline-none" />
+          </div>
+        )}
+
+        {tab === "serial" && (
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between gap-2 border-b border-line/60 px-3 py-2">
+              <span className="font-mono text-xs tracking-tech text-ink-dim">🖥️ Serial Monitor {connected && <span className="text-neon-green">● live</span>}</span>
+              <div className="flex items-center gap-2">
+                <select value={monBaud} onChange={(e) => setMonBaud(Number(e.target.value))} disabled={connected}
+                  className="rounded-lg border border-line/70 bg-[#0e1726] px-2 py-1 font-mono text-[11px] text-ink-dim focus:outline-none disabled:opacity-50">
+                  {BAUDS.map((b) => (<option key={b} value={b}>{b} baud</option>))}
+                </select>
+                <button onClick={() => setSerialOut("")} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+              </div>
+            </div>
+            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-cyan-200">{serialOut || "Connect a board over USB to see its Serial output here. (Chrome/Edge desktop)"}</pre>
             <div className="flex items-center gap-2 border-t border-line/60 p-2">
               <input value={sendText} onChange={(e) => setSendText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSerial()} disabled={!connected}
                 placeholder={connected ? "send to board…" : "connect a board to send"} className="flex-1 rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink placeholder:text-ink-faint focus:border-neon-cyan/60 focus:outline-none disabled:opacity-50" />
               <button onClick={sendSerial} disabled={!connected} className="rounded-lg border border-line/70 bg-[#0e1726] px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-neon-cyan/50 hover:text-ink disabled:opacity-50">Send</button>
             </div>
-          </>
+          </div>
+        )}
+
+        {tab === "plotter" && (
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between border-b border-line/60 px-3 py-2">
+              <span className="font-mono text-xs tracking-tech text-ink-dim">📈 Serial Plotter {connected && <span className="text-neon-green">● live</span>}</span>
+              <button onClick={() => setPlot([])} className="font-mono text-[11px] text-ink-faint hover:text-ink-dim">clear</button>
+            </div>
+            <div className="min-h-0 flex-1 p-2"><Plotter data={plot} /></div>
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+const PLOT_COLORS = ["#34d399", "#22d3ee", "#f59e0b", "#ef4444", "#a855f7", "#84cc16"];
+
+/** Live multi-series line chart of the numbers coming over Serial. */
+function Plotter({ data }: { data: number[][] }) {
+  if (!data.length) {
+    return (
+      <div className="grid h-full place-items-center">
+        <p className="max-w-xs text-center font-mono text-xs leading-relaxed text-ink-faint">
+          Print numbers over Serial (e.g.{" "}
+          <code className="text-neon-cyan">Serial.println(value)</code>) to plot them here.
+        </p>
+      </div>
+    );
+  }
+  const W = 600, H = 240, P = 10;
+  const series = Math.max(...data.map((s) => s.length));
+  const all = data.flat().filter(Number.isFinite);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const n = data.length;
+  const x = (i: number) => P + (i / Math.max(1, n - 1)) * (W - 2 * P);
+  const y = (v: number) => P + (1 - (v - lo) / (hi - lo)) * (H - 2 * P);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
+      <rect width={W} height={H} fill="#0e1726" rx="8" />
+      {[0.25, 0.5, 0.75].map((f) => (<line key={f} x1={P} x2={W - P} y1={P + f * (H - 2 * P)} y2={P + f * (H - 2 * P)} stroke="#1e293b" strokeWidth="1" />))}
+      {Array.from({ length: series }).map((_, s) => {
+        const pts = data.map((sample, i) => (Number.isFinite(sample[s]) ? `${x(i).toFixed(1)},${y(sample[s]).toFixed(1)}` : "")).filter(Boolean).join(" ");
+        return <polyline key={s} points={pts} fill="none" stroke={PLOT_COLORS[s % PLOT_COLORS.length]} strokeWidth="2" />;
+      })}
+      <text x={P} y={P + 10} fill="#64748b" fontSize="11" fontFamily="monospace">{hi.toFixed(1)}</text>
+      <text x={P} y={H - P} fill="#64748b" fontSize="11" fontFamily="monospace">{lo.toFixed(1)}</text>
+    </svg>
   );
 }

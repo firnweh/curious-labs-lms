@@ -60,10 +60,10 @@ export function MakerLab() {
       <div ref={containerRef} className="flex min-h-0 flex-1">
         {showCircuit && (
           <section
-            className="min-w-0 overflow-auto p-3"
+            className="flex min-w-0 overflow-hidden p-3"
             style={{ width: view === "split" ? `${100 - codePct}%` : "100%" }}
           >
-            <CircuitStudio />
+            <CircuitStudio fill />
           </section>
         )}
 
@@ -79,7 +79,7 @@ export function MakerLab() {
 
         {showCode && (
           <section
-            className="min-w-0 overflow-auto bg-[#0a1020] p-3"
+            className="flex min-w-0 overflow-hidden bg-[#0a1020] p-3"
             style={{ width: view === "split" ? `${codePct}%` : "100%" }}
           >
             <ArduinoStudio />
