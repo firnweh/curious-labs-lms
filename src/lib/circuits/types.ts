@@ -8,7 +8,31 @@ export type PartType =
   | "resistor"
   | "buzzer"
   | "motor"
-  | "pot";
+  | "pot"
+  // boards
+  | "arduino"
+  | "curious"
+  // outputs / actuators
+  | "relay"
+  | "servo"
+  | "lamp"
+  | "fan"
+  | "rgb"
+  // sensors (2-pin module parts)
+  | "ultrasonic"
+  | "pir"
+  | "ir"
+  | "soil"
+  | "ldr"
+  | "dht"
+  | "temp"
+  | "water"
+  | "gas"
+  | "flame"
+  | "touch"
+  | "tilt"
+  | "rain"
+  | "mic";
 
 /** A pin reference: which component, which pin ("a" | "b"). */
 export interface PinRef {
