@@ -60,6 +60,15 @@ const freshRuntime = (): Runtime => ({
   x: 0, y: 0, dir: 90, size: 100, visible: true, costumeIndex: 0, bubble: null, bubbleType: "say",
 });
 
+// A costume/backdrop that is a "data:" URL is an uploaded image; otherwise an emoji.
+const isImg = (c: string) => c.startsWith("data:");
+const imgCache = new Map<string, HTMLImageElement>();
+function getImg(src: string): HTMLImageElement | null {
+  let img = imgCache.get(src);
+  if (!img) { img = new Image(); img.src = src; imgCache.set(src, img); }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
 /* ── Classwise missions (problem-solving per class 1–10) ─────────────────── */
 const txtv = (t: string) => ({ shadow: { type: "text", fields: { TEXT: t } } });
 const SCORE_ID = "scoreVar1";
@@ -168,6 +177,8 @@ export function ScratchStudio() {
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const spriteFileRef = useRef<HTMLInputElement>(null);
+  const backdropFileRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const runtimeRef = useRef<Map<string, Runtime>>(new Map());
   const scriptsRef = useRef<Map<string, object>>(new Map());
@@ -200,6 +211,8 @@ export function ScratchStudio() {
   const [tab, setTab] = useState<"code" | "costumes" | "sounds">("code");
   const [costumePicker, setCostumePicker] = useState(false);
   const [backdrop, setBackdrop] = useState("#ffffff");
+  const [spriteMenu, setSpriteMenu] = useState(false);
+  const [backdropMenu, setBackdropMenu] = useState(false);
   const [, setTick] = useState(0);
 
   spritesRef.current = sprites;
@@ -392,14 +405,22 @@ export function ScratchStudio() {
       const cx = cw / 2 + rt.x * sc;
       const cy = ch / 2 - rt.y * sc;
       const fs = 40 * (rt.size / 100) * sc;
-      const emoji = sp.costumes[((rt.costumeIndex % sp.costumes.length) + sp.costumes.length) % sp.costumes.length];
+      const costume = sp.costumes[((rt.costumeIndex % sp.costumes.length) + sp.costumes.length) % sp.costumes.length];
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(((rt.dir - 90) * Math.PI) / 180);
-      ctx.font = `${Math.max(8, fs)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(emoji, 0, 0);
+      if (isImg(costume)) {
+        const img = getImg(costume);
+        if (img) {
+          const s = (fs * 1.8) / Math.max(img.naturalWidth, img.naturalHeight);
+          ctx.drawImage(img, (-img.naturalWidth * s) / 2, (-img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+        }
+      } else {
+        ctx.font = `${Math.max(8, fs)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(costume, 0, 0);
+      }
       ctx.restore();
       if (sp.id === selectedIdRef.current) {
         ctx.strokeStyle = "rgba(76,151,255,0.7)";
@@ -640,6 +661,40 @@ export function ScratchStudio() {
     setPicker(false);
   }
 
+  function surpriseSprite() {
+    addSprite(LIBRARY[Math.floor(Math.random() * LIBRARY.length)]);
+    setSpriteMenu(false);
+  }
+  function uploadSprite(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result);
+      const id = "sp" + idSeq.current++;
+      const count = spritesRef.current.length;
+      const rt = freshRuntime();
+      rt.x = ((count % 4) - 1.5) * 70;
+      rt.y = Math.floor(count / 4) * -70;
+      runtimeRef.current.set(id, rt);
+      scriptsRef.current.set(id, { blocks: { languageVersion: 0, blocks: [] } });
+      syncSelectedScript();
+      wsRef.current?.clear();
+      setSprites((s) => [...s, { id, name: `Sprite ${count}`, costumes: [url] }]);
+      setSelectedId(id);
+    };
+    reader.readAsDataURL(file);
+    setSpriteMenu(false);
+  }
+  function surpriseBackdrop() {
+    setBackdrop(BACKDROPS[Math.floor(Math.random() * BACKDROPS.length)].css);
+    setBackdropMenu(false);
+  }
+  function uploadBackdrop(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => setBackdrop(`center / cover no-repeat url(${JSON.stringify(String(reader.result))})`);
+    reader.readAsDataURL(file);
+    setBackdropMenu(false);
+  }
+
   function deleteSprite(id: string) {
     if (spritesRef.current.length <= 1) return;
     runtimeRef.current.delete(id);
@@ -802,9 +857,18 @@ export function ScratchStudio() {
             className={`block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border transition-shadow active:cursor-grabbing ${running ? "border-[#4CBB17] shadow-[0_0_0_3px_rgba(76,187,23,0.25)]" : "border-[#D9D9D9]"}`}
             style={{ background: backdrop }}
           />
-          {/* Backdrop picker */}
-          <div className="mt-2 flex items-center gap-1.5">
+          {/* Choose a Backdrop — Scratch-style menu */}
+          <div className="relative mt-2 flex items-center justify-between">
             <span className="font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
+            <button onClick={() => setBackdropMenu((m) => !m)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-[11px] text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🖼️ Choose a Backdrop ▾</button>
+            {backdropMenu && (
+              <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-lg">
+                <button onClick={surpriseBackdrop} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
+                <button onClick={() => backdropFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
+              </div>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {BACKDROPS.map((b) => (
               <button
                 key={b.name}
@@ -814,6 +878,7 @@ export function ScratchStudio() {
                 style={{ background: b.css }}
               />
             ))}
+            <input ref={backdropFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBackdrop(f); e.target.value = ""; }} />
           </div>
           <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#9AA0B3]">
             drag sprites · click a block to test it · 🟢 run · space/arrows for keys
@@ -840,7 +905,17 @@ export function ScratchStudio() {
         <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <p className="font-mono text-xs tracking-tech text-[#575E75]">SPRITES</p>
-            <button onClick={() => setPicker((p) => !p)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">+ Add sprite</button>
+            <div className="relative">
+              <button onClick={() => setSpriteMenu((m) => !m)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🐱 Choose a Sprite ▾</button>
+              {spriteMenu && (
+                <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-lg">
+                  <button onClick={() => { setSpriteMenu(false); setPicker(true); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🔍 Choose</button>
+                  <button onClick={surpriseSprite} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
+                  <button onClick={() => spriteFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
+                </div>
+              )}
+              <input ref={spriteFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSprite(f); e.target.value = ""; }} />
+            </div>
           </div>
 
           {picker && (
@@ -859,7 +934,7 @@ export function ScratchStudio() {
               const rt = runtimeRef.current.get(sp.id);
               return (
                 <button key={sp.id} onClick={() => selectSprite(sp.id)} className={`relative grid place-items-center gap-1 rounded-xl border p-2 transition-colors ${on ? "border-[#4C97FF] bg-[#4C97FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#4C97FF]/50"}`}>
-                  <span className="text-2xl">{sp.costumes[rt ? rt.costumeIndex % sp.costumes.length : 0]}</span>
+                  {(() => { const c = sp.costumes[rt ? rt.costumeIndex % sp.costumes.length : 0]; return isImg(c) ? <span aria-hidden className="inline-block h-8 w-8 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} /> : <span className="text-2xl">{c}</span>; })()}
                   <span className="max-w-full truncate font-mono text-[10px] text-[#575E75]">{sp.name}</span>
                   {sprites.length > 1 && (
                     <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); deleteSprite(sp.id); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
@@ -877,7 +952,7 @@ export function ScratchStudio() {
                   const on = (selRt?.costumeIndex ?? 0) % selectedSprite.costumes.length === i;
                   return (
                     <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }} className={`grid h-10 w-10 place-items-center rounded-lg border text-lg transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/15" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
-                      {c}
+                      {isImg(c) ? <span aria-hidden className="inline-block h-7 w-7 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} /> : c}
                     </button>
                   );
                 })}
