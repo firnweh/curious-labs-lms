@@ -54,6 +54,8 @@ export function ArduinoStudio() {
       toolbox: ARDUINO_TOOLBOX as unknown as Blockly.utils.toolbox.ToolboxDefinition,
       theme: arduinoTheme(),
       renderer: "zelos",
+      horizontalLayout: true,
+      toolboxPosition: "start",
       grid: { spacing: 28, length: 2, colour: "#1e293b", snap: true },
       zoom: { controls: true, wheel: true, startScale: 0.85, maxScale: 2.5, minScale: 0.3, pinch: true },
       move: { scrollbars: true, drag: true, wheel: true },

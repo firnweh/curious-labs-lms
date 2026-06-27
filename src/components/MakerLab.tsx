@@ -17,6 +17,7 @@ export function MakerLab() {
   const dragging = useRef(false);
   const [view, setView] = useState<View>("split");
   const [codePct, setCodePct] = useState(44); // code-pane width, % (split view)
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -25,7 +26,7 @@ export function MakerLab() {
       const pct = 100 - ((e.clientX - rect.left) / rect.width) * 100;
       setCodePct(Math.min(78, Math.max(22, pct)));
     };
-    const onUp = () => { dragging.current = false; document.body.style.userSelect = ""; };
+    const onUp = () => { dragging.current = false; setIsDragging(false); document.body.style.userSelect = ""; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -60,7 +61,7 @@ export function MakerLab() {
       <div ref={containerRef} className="flex min-h-0 flex-1">
         {showCircuit && (
           <section
-            className="flex min-w-0 overflow-hidden p-3"
+            className={`flex min-w-0 overflow-hidden p-3 ${isDragging ? "pointer-events-none" : ""}`}
             style={{ width: view === "split" ? `${100 - codePct}%` : "100%" }}
           >
             <CircuitStudio fill />
@@ -69,17 +70,24 @@ export function MakerLab() {
 
         {view === "split" && (
           <div
-            onMouseDown={() => { dragging.current = true; document.body.style.userSelect = "none"; }}
-            className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center border-x border-line bg-panel-2/60 hover:bg-neon-cyan/20"
-            title="Drag to resize"
+            onMouseDown={() => { dragging.current = true; setIsDragging(true); document.body.style.userSelect = "none"; }}
+            className={`group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center transition-colors ${isDragging ? "bg-neon-cyan/30" : "bg-panel-2/60 hover:bg-neon-cyan/20"}`}
+            title="Drag to resize circuit / code"
           >
-            <div className="h-10 w-0.5 rounded-full bg-line group-hover:bg-neon-cyan" />
+            {/* wider invisible grab zone */}
+            <span className="absolute inset-y-0 -left-2.5 -right-2.5" aria-hidden />
+            {/* grip dots */}
+            <div className="flex flex-col gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={`h-1 w-1 rounded-full transition-colors ${isDragging ? "bg-neon-cyan" : "bg-ink-faint group-hover:bg-neon-cyan"}`} />
+              ))}
+            </div>
           </div>
         )}
 
         {showCode && (
           <section
-            className="flex min-w-0 overflow-hidden bg-[#0a1020] p-3"
+            className={`flex min-w-0 overflow-hidden bg-[#0a1020] p-3 ${isDragging ? "pointer-events-none" : ""}`}
             style={{ width: view === "split" ? `${codePct}%` : "100%" }}
           >
             <ArduinoStudio />
