@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly";
 import { javascriptGenerator } from "blockly/javascript";
-import { registerScratchBlocks, getScratchTheme, scratchToolboxForGrade } from "@/lib/scratchBlocks";
+import { registerScratchBlocks, getScratchTheme, SCRATCH_TOOLBOX } from "@/lib/scratchBlocks";
 import { playSound, SOUND_NAMES } from "@/lib/scratchSound";
 
 type Sprite = { id: string; name: string; costumes: string[] };
@@ -64,20 +64,34 @@ const freshRuntime = (): Runtime => ({
 const txtv = (t: string) => ({ shadow: { type: "text", fields: { TEXT: t } } });
 const SCORE_ID = "scoreVar1";
 
-type Mission = { g: number; emoji: string; title: string; goal: string; hint: string; needs: string[]; difficulty: number };
+type Mission = { g: number; emoji: string; title: string; goal: string; hint: string; needs: string[]; difficulty: number; check: (t: Set<string>) => boolean };
 const MISSIONS: Mission[] = [
-  { g: 1, emoji: "💬", title: "Say Hello", goal: "When the green flag is clicked, make your sprite greet the world: “Hi, I’m a coder!”", hint: "Snap a purple Looks “say” block under the green-flag block.", needs: ["Events", "Looks"], difficulty: 1 },
-  { g: 2, emoji: "🏎️", title: "Zoom Across", goal: "Make your sprite glide smoothly across the stage — and back again.", hint: "Use Motion “glide … to x …” blocks (try two, to send it back).", needs: ["Events", "Motion"], difficulty: 1 },
-  { g: 3, emoji: "🏀", title: "Bouncing Ball", goal: "Keep your sprite moving forever and bouncing off every edge.", hint: "Put “move” + “if on edge, bounce” inside a forever loop.", needs: ["Control", "Motion"], difficulty: 2 },
-  { g: 4, emoji: "🕺", title: "Dance Party", goal: "Make your sprite dance — switching costumes and grooving across the stage in a loop.", hint: "forever → next costume → move a little → turn → wait.", needs: ["Looks", "Control"], difficulty: 2 },
-  { g: 5, emoji: "🎮", title: "Drive It!", goal: "Steer your sprite all around the stage using the arrow keys.", hint: "One “when → key pressed → change x/y” for each arrow.", needs: ["Events", "Motion"], difficulty: 3 },
-  { g: 6, emoji: "🔊", title: "Sound Blaster", goal: "Press space to fire a sound and blast your sprite off in a random direction.", hint: "Drop a “random” block into the turn and move blocks.", needs: ["Sound", "Operators", "Events"], difficulty: 3 },
-  { g: 7, emoji: "🌀", title: "Spinner Art", goal: "Use random angles in a loop to make your sprite trace wild, hypnotic patterns.", hint: "forever → move → turn by “random 10 to 40” → tiny wait.", needs: ["Operators", "Motion", "Control"], difficulty: 4 },
-  { g: 8, emoji: "🏆", title: "Score Counter", goal: "Make a “score” variable and add a point every time space is pressed.", hint: "Variables → Make a Variable → change score by 1 → say score.", needs: ["Variables", "Events"], difficulty: 4 },
-  { g: 9, emoji: "👾", title: "Catch Game", goal: "Build a real mini-game: drive a hero with arrows, score with space, and play a sound on every catch.", hint: "Combine key events, motion, a score variable and sound.", needs: ["Events", "Variables", "Sound"], difficulty: 5 },
-  { g: 10, emoji: "🚀", title: "Your Own Game", goal: "Design your own game from scratch — sprites, controls, scoring and sound. Make it yours!", hint: "No rules. Add sprites, mix every block, and invent something fun.", needs: ["Everything"], difficulty: 5 },
+  { g: 1, emoji: "💬", title: "Say Hello", goal: "When the green flag is clicked, make your sprite greet the world: “Hi, I’m a coder!”", hint: "Snap a purple Looks “say” block under the green-flag block.", needs: ["Events", "Looks"], difficulty: 1, check: (t) => t.has("looks_say") || t.has("looks_sayfor") || t.has("looks_think") },
+  { g: 2, emoji: "🏎️", title: "Zoom Across", goal: "Make your sprite glide smoothly across the stage — and back again.", hint: "Use Motion “glide … to x …” blocks (try two, to send it back).", needs: ["Events", "Motion"], difficulty: 1, check: (t) => t.has("motion_glide") || t.has("motion_move") || t.has("motion_goto") },
+  { g: 3, emoji: "🏀", title: "Bouncing Ball", goal: "Keep your sprite moving forever and bouncing off every edge.", hint: "Put “move” + “if on edge, bounce” inside a forever loop.", needs: ["Control", "Motion"], difficulty: 2, check: (t) => t.has("control_forever") && t.has("motion_bounce") },
+  { g: 4, emoji: "🕺", title: "Dance Party", goal: "Make your sprite dance — switching costumes and grooving across the stage in a loop.", hint: "forever → next costume → move a little → turn → wait.", needs: ["Looks", "Control"], difficulty: 2, check: (t) => t.has("control_forever") && (t.has("looks_nextcostume") || t.has("looks_switchcostume")) },
+  { g: 5, emoji: "🎮", title: "Drive It!", goal: "Steer your sprite all around the stage using the arrow keys.", hint: "One “when → key pressed → change x/y” for each arrow.", needs: ["Events", "Motion"], difficulty: 3, check: (t) => t.has("event_whenkey") && (t.has("motion_changex") || t.has("motion_changey") || t.has("motion_move")) },
+  { g: 6, emoji: "🔊", title: "Sound Blaster", goal: "Press space to fire a sound and blast your sprite off in a random direction.", hint: "Drop a “random” block into the turn and move blocks.", needs: ["Sound", "Operators", "Events"], difficulty: 3, check: (t) => (t.has("sound_play") || t.has("sound_playuntil")) && t.has("event_whenkey") },
+  { g: 7, emoji: "🌀", title: "Spinner Art", goal: "Use random angles in a loop to make your sprite trace wild, hypnotic patterns.", hint: "forever → move → turn by “random 10 to 40” → tiny wait.", needs: ["Operators", "Motion", "Control"], difficulty: 4, check: (t) => t.has("control_forever") && (t.has("motion_turnright") || t.has("motion_turnleft")) && t.has("math_random_int") },
+  { g: 8, emoji: "🏆", title: "Score Counter", goal: "Make a “score” variable and add a point every time space is pressed.", hint: "Variables → Make a Variable → change score by 1 → say score.", needs: ["Variables", "Events"], difficulty: 4, check: (t) => t.has("math_change") || t.has("variables_set") },
+  { g: 9, emoji: "👾", title: "Catch Game", goal: "Build a real mini-game: drive a hero with arrows, score with space, and play a sound on every catch.", hint: "Combine key events, motion, a score variable and sound.", needs: ["Events", "Variables", "Sound"], difficulty: 5, check: (t) => t.has("event_whenkey") && (t.has("math_change") || t.has("variables_set")) && (t.has("sound_play") || t.has("sound_playuntil")) },
+  { g: 10, emoji: "🚀", title: "Your Own Game", goal: "Design your own game from scratch — sprites, controls, scoring and sound. Make it yours!", hint: "No rules. Add sprites, mix every block, and invent something fun.", needs: ["Everything"], difficulty: 5, check: (t) => t.size >= 4 },
 ];
 const missionFor = (g: number) => MISSIONS.find((m) => m.g === g) ?? MISSIONS[0];
+
+type Level = "easy" | "medium" | "hard";
+const levelOf = (m: Mission): Level => (m.difficulty <= 2 ? "easy" : m.difficulty === 3 ? "medium" : "hard");
+const LEVEL_META: Record<Level, { label: string; color: string }> = {
+  easy: { label: "Easy", color: "#34d399" },
+  medium: { label: "Medium", color: "#f59e0b" },
+  hard: { label: "Hard", color: "#ec4899" },
+};
+const FILTERS: { id: "all" | Level; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "easy", label: "🟢 Easy" },
+  { id: "medium", label: "🟡 Medium" },
+  { id: "hard", label: "🔴 Hard" },
+];
 
 const NEED_COLOR: Record<string, string> = {
   Events: "#f59e0b", Motion: "#22d3ee", Looks: "#a855f7", Sound: "#ec4899",
@@ -171,12 +185,16 @@ export function ScratchStudio() {
   const idSeq = useRef(1);
   const gradeRef = useRef(1);
   const firstGrade = useRef(true);
+  const freePlayRef = useRef(false);
 
   const [sprites, setSprites] = useState<Sprite[]>([DEFAULT_SPRITE]);
   const [selectedId, setSelectedId] = useState("sp0");
   const [grade, setGrade] = useState(1);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [celebrate, setCelebrate] = useState<number | null>(null);
+  const [goalMet, setGoalMet] = useState(false);
+  const [filter, setFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
+  const [freePlay, setFreePlay] = useState(false);
   const [running, setRunning] = useState(false);
   const [picker, setPicker] = useState(false);
   const [tab, setTab] = useState<"code" | "costumes" | "sounds">("code");
@@ -187,6 +205,7 @@ export function ScratchStudio() {
   spritesRef.current = sprites;
   selectedIdRef.current = selectedId;
   gradeRef.current = grade;
+  freePlayRef.current = freePlay;
 
   // ── Mount: runtime + Blockly + render loop + key listener ────────────────
   useEffect(() => {
@@ -197,7 +216,7 @@ export function ScratchStudio() {
 
     if (!blocklyDiv.current) return;
     const ws = Blockly.inject(blocklyDiv.current, {
-      toolbox: scratchToolboxForGrade(gradeRef.current),
+      toolbox: SCRATCH_TOOLBOX as unknown as Blockly.utils.toolbox.ToolboxDefinition,
       theme: getScratchTheme(),
       renderer: "zelos",
       grid: { spacing: 28, length: 2, colour: "#16223c", snap: true },
@@ -225,6 +244,14 @@ export function ScratchStudio() {
       sessionRef.current = true;
       runStack(selectedIdRef.current, code, defs);
     });
+
+    // Live goal detection — lights up the moment the activity's blocks are present.
+    ws.addChangeListener((e) => {
+      if (e.isUiEvent) return;
+      const types = new Set(ws.getAllBlocks(false).map((b) => b.type));
+      setGoalMet(missionFor(gradeRef.current).check(types));
+    });
+    setGoalMet(missionFor(gradeRef.current).check(new Set(ws.getAllBlocks(false).map((b) => b.type))));
 
     const ro = new ResizeObserver(() => Blockly.svgResize(ws));
     ro.observe(blocklyDiv.current);
@@ -268,13 +295,13 @@ export function ScratchStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Activity change: scale the palette to the class AND load that activity's
-  // scaffold into the selected sprite, so activities are stepped one by one.
+  // Activity change: load that activity's scaffold into the selected sprite.
+  // (The full block palette is always available — no gating by level.)
   useEffect(() => {
     if (firstGrade.current) { firstGrade.current = false; return; }
+    if (freePlayRef.current) return; // Free Play keeps whatever's built
     const ws = wsRef.current;
     if (!ws) return;
-    ws.updateToolbox(scratchToolboxForGrade(grade));
     const ex = exampleFor(grade);
     ws.clear();
     try { Blockly.serialization.workspaces.load(ex, ws); } catch { /* ignore */ }
@@ -290,17 +317,20 @@ export function ScratchStudio() {
     } catch { /* ignore */ }
   }, []);
 
-  function markComplete() {
+  function markComplete(advance = true) {
+    const already = completed.has(grade);
     setCompleted((prev) => {
       const next = new Set(prev);
       next.add(grade);
       try { localStorage.setItem("cl-scratch-done", JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
-    playSound("chime");
-    setCelebrate(grade);
-    window.setTimeout(() => setCelebrate(null), 1600);
-    if (grade < 10) window.setTimeout(() => setGrade((g) => Math.min(10, g + 1)), 850);
+    if (!already) {
+      playSound("chime");
+      setCelebrate(grade);
+      window.setTimeout(() => setCelebrate(null), 1600);
+    }
+    if (advance && grade < 10) window.setTimeout(() => setGrade((g) => Math.min(10, g + 1)), 850);
   }
 
   function loadExample() {
@@ -535,6 +565,12 @@ export function ScratchStudio() {
       const c = compiledRef.current.get(sp.id);
       if (c) for (const code of c.flag) runStack(sp.id, code, c.defs);
     }
+    // Activity solved? Celebrate + mark it complete (no auto-advance — keep playing).
+    const ws = wsRef.current;
+    if (ws && !completed.has(grade)) {
+      const types = new Set(ws.getAllBlocks(false).map((b) => b.type));
+      if (missionFor(grade).check(types)) window.setTimeout(() => markComplete(false), 350);
+    }
   }
 
   function stopAll() {
@@ -688,57 +724,79 @@ export function ScratchStudio() {
           </div>
         )}
         <div className="relative">
-          <div className="flex items-center justify-between gap-3">
+          {/* Activity picker — difficulty filter + freely-choosable gallery */}
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="mr-1 font-mono text-[11px] tracking-tech text-ink-faint">ACTIVITIES</p>
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors ${filter === f.id ? "bg-neon-cyan font-bold text-base" : "border border-line text-ink-dim hover:text-ink"}`}
+              >
+                {f.label}
+              </button>
+            ))}
             <button
-              onClick={() => setGrade((g) => Math.max(1, g - 1))}
-              disabled={grade <= 1}
-              aria-label="Previous activity"
-              className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs text-ink-dim transition-colors hover:border-neon-cyan/50 hover:text-ink disabled:opacity-25"
+              onClick={() => setFreePlay(true)}
+              className={`ml-auto rounded-full px-3 py-1 font-mono text-[11px] transition-colors ${freePlay ? "bg-neon-violet font-bold text-base" : "border border-neon-violet/50 text-neon-violet hover:bg-neon-violet/10"}`}
             >
-              ← Back
+              🎮 Free Play
             </button>
-            <div className="flex flex-1 flex-col items-center gap-1.5">
-              <p className="font-mono text-[11px] tracking-tech text-neon-cyan">
-                ACTIVITY {grade} OF 10 <span className="text-neon-green">· {completed.size} DONE</span>
-              </p>
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((c) => {
-                  const done = completed.has(c);
-                  const cur = c === grade;
-                  return (
-                    <button
-                      key={c}
-                      onClick={() => setGrade(c)}
-                      aria-label={`Go to activity ${c}${done ? " (complete)" : ""}`}
-                      title={done ? `Activity ${c} ✓` : `Activity ${c}`}
-                      className={`h-2 rounded-full transition-all ${cur ? "w-5 bg-neon-cyan" : done ? "w-2.5 bg-neon-green" : "w-2 bg-line"}`}
-                    />
-                  );
-                })}
+            <span className="font-mono text-[10px] tracking-tech text-neon-green">{completed.size}/10 done</span>
+          </div>
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {MISSIONS.filter((m) => filter === "all" || levelOf(m) === filter).map((m) => {
+              const active = !freePlay && m.g === grade;
+              const done = completed.has(m.g);
+              const lv = LEVEL_META[levelOf(m)];
+              return (
+                <button
+                  key={m.g}
+                  onClick={() => { setFreePlay(false); setGrade(m.g); }}
+                  className={`relative flex w-28 shrink-0 flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors ${active ? "border-neon-cyan bg-neon-cyan/10" : "border-line hover:border-neon-cyan/40"}`}
+                >
+                  <span className="text-2xl">{m.emoji}</span>
+                  <span className="line-clamp-1 text-[11px] font-semibold text-ink">{m.title}</span>
+                  <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold" style={{ color: lv.color, background: `${lv.color}1f` }}>{lv.label}</span>
+                  {done && <span className="absolute right-1 top-1 text-xs text-neon-green">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+          {freePlay ? (
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-neon-violet/30 bg-neon-violet/10 p-3">
+              <span className="text-2xl">🎮</span>
+              <div>
+                <p className="font-display font-bold text-ink">Free Play</p>
+                <p className="text-sm text-ink-dim">All blocks unlocked — build anything you imagine. No goals, no rules. Press 🟢 to run it.</p>
               </div>
             </div>
-            <button
-              onClick={() => setGrade((g) => Math.min(10, g + 1))}
-              disabled={grade >= 10}
-              aria-label="Next activity"
-              className="shrink-0 rounded-full border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1.5 font-mono text-xs font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-25"
-            >
-              Next →
-            </button>
-          </div>
+          ) : (
           <div className="mt-3 flex items-start gap-3">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-neon-amber/40 bg-neon-amber/10 text-2xl">
               {mission.emoji}
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[11px] tracking-tech text-neon-amber">
-                🎯 MISSION · CLASS {grade}
+                🎯 CHALLENGE · {LEVEL_META[levelOf(mission)].label.toUpperCase()}
                 <span className="ml-2 align-middle text-neon-amber" title={`Difficulty ${mission.difficulty}/5`}>{"★".repeat(mission.difficulty)}</span>
                 <span className="align-middle text-ink-faint">{"☆".repeat(5 - mission.difficulty)}</span>
               </p>
               <h3 className="font-display text-lg font-bold text-ink">{mission.title}</h3>
               <p className="text-sm text-ink-dim">{mission.goal}</p>
               <p className="mt-1 text-xs text-ink-faint">💡 {mission.hint}</p>
+              {completed.has(grade) ? (
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-neon-green/50 bg-neon-green/15 px-3 py-1 font-mono text-[11px] font-bold tracking-tech text-neon-green">
+                  ✓ Solved! Great job 🎉
+                </p>
+              ) : goalMet ? (
+                <p
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-neon-green/50 bg-neon-green/15 px-3 py-1 font-mono text-[11px] font-bold tracking-tech text-neon-green"
+                  style={{ animation: "reactorIn .4s cubic-bezier(.18,1.8,.34,1) both" }}
+                >
+                  🎯 Goal met — press 🟢 to win!
+                </p>
+              ) : null}
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 {mission.needs.map((n) => (
                   <span
@@ -756,7 +814,7 @@ export function ScratchStudio() {
                   ✨ Load example
                 </button>
                 <button
-                  onClick={markComplete}
+                  onClick={() => markComplete()}
                   className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${completed.has(grade) ? "border-neon-green/60 bg-neon-green/15 text-neon-green" : "border-neon-green/40 text-neon-green hover:bg-neon-green/10"}`}
                 >
                   {completed.has(grade) ? "✓ Completed" : "✓ Mark complete"}
@@ -764,6 +822,7 @@ export function ScratchStudio() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
 

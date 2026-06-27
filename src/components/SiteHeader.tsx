@@ -28,14 +28,6 @@ export function SiteHeader() {
             className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-violet/50 hover:text-ink sm:inline-flex"
           >
             <span aria-hidden>🎮</span>
-            <span className="font-mono text-xs tracking-tech">Sprites</span>
-          </Link>
-          <Link
-            href="/code-studio"
-            title="Code Studio"
-            className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-amber/50 hover:text-ink sm:inline-flex"
-          >
-            <span aria-hidden>🧩</span>
             <span className="font-mono text-xs tracking-tech">Studio</span>
           </Link>
           <Link
