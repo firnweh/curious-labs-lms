@@ -89,6 +89,35 @@ const BLOCKS = [
     ],
     inputsInline: true, output: "Number", style: "comp_blocks",
   },
+  // ── Components ──
+  {
+    type: "arduino_rgbled",
+    message0: "RGB LED  R pin %1 G pin %2 B pin %3 to  R %4 G %5 B %6",
+    args0: [
+      { type: "field_dropdown", name: "RPIN", options: PIN_OPTIONS }, { type: "field_dropdown", name: "GPIN", options: PIN_OPTIONS }, { type: "field_dropdown", name: "BPIN", options: PIN_OPTIONS },
+      { type: "input_value", name: "R", check: "Number" }, { type: "input_value", name: "G", check: "Number" }, { type: "input_value", name: "B", check: "Number" },
+    ],
+    inputsInline: true, previousStatement: null, nextStatement: null, style: "comp_blocks",
+  },
+  { type: "arduino_buzzer", message0: "buzzer pin %1 play %2 Hz for %3 ms", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }, { type: "input_value", name: "FREQ", check: "Number" }, { type: "input_value", name: "DUR", check: "Number" }], inputsInline: true, previousStatement: null, nextStatement: null, style: "comp_blocks" },
+  // ── Sensors ──
+  { type: "sensor_ultrasonic", message0: "📏 distance (cm)  trig %1 echo %2", args0: [{ type: "field_dropdown", name: "TRIG", options: PIN_OPTIONS }, { type: "field_dropdown", name: "ECHO", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_pir", message0: "🚶 motion detected on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_ir", message0: "🚧 obstacle near IR pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
+  { type: "sensor_soil", message0: "🌱 soil moisture on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_ldr", message0: "☀️ light level on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  { type: "sensor_pot", message0: "🎚️ knob (potentiometer) on pin %1", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Number", style: "sensor_blocks" },
+  {
+    type: "sensor_dht",
+    message0: "🌡️ %1 from %2 sensor on pin %3",
+    args0: [
+      { type: "field_dropdown", name: "READ", options: [["temperature °C", "Temperature"], ["humidity %", "Humidity"]] },
+      { type: "field_dropdown", name: "MODEL", options: [["DHT11", "DHT11"], ["DHT22", "DHT22"]] },
+      { type: "field_dropdown", name: "PIN", options: PIN_OPTIONS },
+    ],
+    output: "Number", style: "sensor_blocks",
+  },
+  { type: "sensor_button", message0: "🔘 button on pin %1 pressed", args0: [{ type: "field_dropdown", name: "PIN", options: PIN_OPTIONS }], output: "Boolean", style: "sensor_blocks" },
   // ── Wi-Fi (ESP) ──
   {
     type: "esp_wifi_connect",
@@ -126,6 +155,7 @@ export function arduinoTheme(): Blockly.Theme | undefined {
       ctrl_blocks: { colourPrimary: "#f59e0b", colourSecondary: "#d97706", colourTertiary: "#b45309" },
       serial_blocks: { colourPrimary: "#14b8a6", colourSecondary: "#0d9488", colourTertiary: "#0f766e" },
       comp_blocks: { colourPrimary: "#ec4899", colourSecondary: "#db2777", colourTertiary: "#be185d" },
+      sensor_blocks: { colourPrimary: "#ef4444", colourSecondary: "#dc2626", colourTertiary: "#b91c1c" },
       wifi_blocks: { colourPrimary: "#6366f1", colourSecondary: "#4f46e5", colourTertiary: "#4338ca" },
       logic_blocks: { colourPrimary: "#84cc16", colourSecondary: "#65a30d", colourTertiary: "#4d7c0f" },
       math_blocks: { colourPrimary: "#84cc16", colourSecondary: "#65a30d", colourTertiary: "#4d7c0f" },
@@ -196,6 +226,20 @@ export const ARDUINO_TOOLBOX = {
     {
       kind: "category", name: "🧩 Components", colour: "#ec4899", contents: [
         { kind: "block", type: "arduino_servo", inputs: { ANGLE: num(90) } },
+        { kind: "block", type: "arduino_rgbled", inputs: { R: num(255), G: num(0), B: num(0) } },
+        { kind: "block", type: "arduino_buzzer", inputs: { FREQ: num(440), DUR: num(200) } },
+      ],
+    },
+    {
+      kind: "category", name: "📡 Sensors", colour: "#ef4444", contents: [
+        { kind: "block", type: "sensor_ultrasonic" },
+        { kind: "block", type: "sensor_pir" },
+        { kind: "block", type: "sensor_ir" },
+        { kind: "block", type: "sensor_soil" },
+        { kind: "block", type: "sensor_ldr" },
+        { kind: "block", type: "sensor_pot" },
+        { kind: "block", type: "sensor_dht" },
+        { kind: "block", type: "sensor_button" },
       ],
     },
     {
@@ -302,6 +346,32 @@ G.forBlock["esp_wifi_connect"] = (b) => {
   G.definitions_["wifi_h"] = "#if defined(ESP32)\n#include <WiFi.h>\n#else\n#include <ESP8266WiFi.h>\n#endif";
   return `WiFi.begin(${v(b, "SSID", G.ORDER_NONE)}, ${v(b, "PASS", G.ORDER_NONE)});\nwhile (WiFi.status() != WL_CONNECTED) { delay(500); }\n`;
 };
+
+/* ── Components & Sensors ── */
+G.forBlock["arduino_rgbled"] = (b) => {
+  const rp = b.getFieldValue("RPIN"), gp = b.getFieldValue("GPIN"), bp = b.getFieldValue("BPIN");
+  [rp, gp, bp].forEach((p) => { G.setups_[`rgb_${p}`] = `  pinMode(${p}, OUTPUT);\n`; });
+  return `analogWrite(${rp}, ${v(b, "R", G.ORDER_NONE)});\nanalogWrite(${gp}, ${v(b, "G", G.ORDER_NONE)});\nanalogWrite(${bp}, ${v(b, "B", G.ORDER_NONE)});\n`;
+};
+G.forBlock["arduino_buzzer"] = (b) => `tone(${b.getFieldValue("PIN")}, ${v(b, "FREQ", G.ORDER_NONE)}, ${v(b, "DUR", G.ORDER_NONE)});\n`;
+G.forBlock["sensor_ultrasonic"] = (b) => {
+  G.globals_["fn_ultrasonic"] =
+    "long readDistanceCM(int trig, int echo) {\n  pinMode(trig, OUTPUT); pinMode(echo, INPUT);\n  digitalWrite(trig, LOW); delayMicroseconds(2);\n  digitalWrite(trig, HIGH); delayMicroseconds(10); digitalWrite(trig, LOW);\n  return pulseIn(echo, HIGH) * 0.0343 / 2;\n}";
+  return [`readDistanceCM(${b.getFieldValue("TRIG")}, ${b.getFieldValue("ECHO")})`, G.ORDER_ATOMIC];
+};
+G.forBlock["sensor_pir"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`pir_${p}`] = `  pinMode(${p}, INPUT);\n`; return [`digitalRead(${p}) == HIGH`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_ir"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`ir_${p}`] = `  pinMode(${p}, INPUT);\n`; return [`digitalRead(${p}) == LOW`, G.ORDER_EQUALITY]; };
+G.forBlock["sensor_soil"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_ldr"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_pot"] = (b) => [`analogRead(${b.getFieldValue("PIN")})`, G.ORDER_ATOMIC];
+G.forBlock["sensor_dht"] = (b) => {
+  const pin = b.getFieldValue("PIN"), model = b.getFieldValue("MODEL"), read = b.getFieldValue("READ");
+  G.definitions_["dht_h"] = "#include <DHT.h>";
+  G.globals_[`dht_${pin}`] = `DHT dht_${pin}(${pin}, ${model});`;
+  G.setups_[`dht_${pin}`] = `  dht_${pin}.begin();\n`;
+  return [`dht_${pin}.read${read}()`, G.ORDER_ATOMIC];
+};
+G.forBlock["sensor_button"] = (b) => { const p = b.getFieldValue("PIN"); G.setups_[`btn_${p}`] = `  pinMode(${p}, INPUT_PULLUP);\n`; return [`digitalRead(${p}) == LOW`, G.ORDER_EQUALITY]; };
 
 /* ── Built-in blocks → C++ ── */
 G.forBlock["math_number"] = (b) => {
