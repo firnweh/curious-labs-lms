@@ -24,6 +24,8 @@ const COMP: Record<string, ReturnType<typeof dynamic>> = {
   clustering: dynamic(() => import("./ai-lab/clustering"), { ssr: false, loading: Loading }),
   prompt: dynamic(() => import("./ai-lab/prompt"), { ssr: false, loading: Loading }),
   recommend: dynamic(() => import("./ai-lab/recommend"), { ssr: false, loading: Loading }),
+  ethics: dynamic(() => import("./ai-lab/ethics"), { ssr: false, loading: Loading }),
+  evaluation: dynamic(() => import("./ai-lab/evaluation"), { ssr: false, loading: Loading }),
 };
 
 const EXPERIMENTS = [
@@ -33,7 +35,9 @@ const EXPERIMENTS = [
   { id: "vision", name: "Spot the Mistake", emoji: "👀", grades: "5–8", concept: "Computer vision", accent: "#22d3ee" },
   { id: "chatbot", name: "Chatbot Brain", emoji: "💬", grades: "6–8", concept: "NLP · intent", accent: "#60a5fa" },
   { id: "clustering", name: "Group the Unknown", emoji: "🔮", grades: "6–9", concept: "Clustering", accent: "#a855f7" },
+  { id: "ethics", name: "Who's Affected?", emoji: "⚖️", grades: "6–10", concept: "AI ethics", accent: "#22d3ee" },
   { id: "prompt", name: "Prompt Lab", emoji: "✨", grades: "6–10", concept: "Generative AI", accent: "#34d399" },
+  { id: "evaluation", name: "How Good Is It?", emoji: "📊", grades: "7–10", concept: "Model evaluation", accent: "#fb7185" },
   { id: "recommend", name: "Recommend-o-Bot", emoji: "▶️", grades: "7–10", concept: "Recommendations", accent: "#fb7185" },
 ] as const;
 
