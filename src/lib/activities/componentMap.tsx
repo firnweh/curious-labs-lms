@@ -43,6 +43,7 @@ export const ACTIVITY_COMPONENTS: Record<string, ActivityComponent> = {
   "j-robo-light": dynamic(() => import("./impl/j-robo-light"), { ssr: false, loading: LabLoading }),
   "j-robo-build": dynamic(() => import("./impl/j-robo-build"), { ssr: false, loading: LabLoading }),
   "j-ai-sort": dynamic(() => import("./impl/j-ai-sort"), { ssr: false, loading: LabLoading }),
+  "g3-ai-or-not-ai": dynamic(() => import("./impl/g3-ai-or-not-ai"), { ssr: false, loading: LabLoading }),
   "j-ai-odd": dynamic(() => import("./impl/j-ai-odd"), { ssr: false, loading: LabLoading }),
   "j-3d-stack": dynamic(() => import("./impl/j-3d-stack"), { ssr: false, loading: LabLoading }),
   "j-3d-spin": dynamic(() => import("./impl/j-3d-spin"), { ssr: false, loading: LabLoading }),
