@@ -40,11 +40,11 @@ export function SiteHeader() {
           </Link>
           <Link
             href="/neural"
-            title="Neural — train your own AI"
+            title="Neural Lab — train your own AI"
             className="hidden items-center gap-1.5 rounded-full border border-line/70 bg-base/50 px-3 py-1.5 text-ink-dim transition-colors hover:border-neon-green/50 hover:text-ink sm:inline-flex"
           >
             <span aria-hidden>⚡</span>
-            <span className="font-mono text-xs tracking-tech">Neural</span>
+            <span className="font-mono text-xs tracking-tech">Neural Lab</span>
           </Link>
           <Link
             href="/passport"
