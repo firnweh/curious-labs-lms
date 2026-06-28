@@ -59,7 +59,12 @@ export function AILab() {
         >
           NEURAL
         </span>
-        <span className="font-mono text-sm font-bold tracking-[0.3em] text-[#5b6b8c]">LAB</span>
+        <span
+          className="font-mono text-sm font-bold tracking-[0.3em]"
+          style={{ backgroundImage: "linear-gradient(90deg,#34d399,#22d3ee)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}
+        >
+          LAB
+        </span>
         <span className="hidden font-mono text-[11px] text-[#5b6b8c] sm:inline">// {EXPERIMENTS.length} experiments · Grades 1–10</span>
       </header>
 
