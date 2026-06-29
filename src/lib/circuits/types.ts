@@ -32,7 +32,43 @@ export type PartType =
   | "touch"
   | "tilt"
   | "rain"
-  | "mic";
+  | "mic"
+  // more boards
+  | "nano"
+  | "mega"
+  | "esp32"
+  | "esp8266"
+  | "pico"
+  // displays
+  | "oled"
+  | "lcd1602"
+  | "sevenseg"
+  | "matrix"
+  | "neopixel"
+  // motors & drivers
+  | "stepper"
+  | "l298n"
+  | "pump"
+  | "vibration"
+  // comms
+  | "bluetooth"
+  | "nrf24"
+  | "rfid"
+  | "irrecv"
+  // inputs / controls
+  | "joystick"
+  | "keypad"
+  | "encoder"
+  // power
+  | "solar"
+  | "buck"
+  | "usbpower"
+  // more sensors
+  | "mpu6050"
+  | "rtc"
+  | "hall"
+  | "color"
+  | "current";
 
 /** A pin reference: which component, which pin ("a" | "b"). */
 export interface PinRef {

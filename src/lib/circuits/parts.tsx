@@ -309,14 +309,55 @@ export const PART_DEFS: Record<PartType, PartDef> = {
   tilt: mod("tilt", "Tilt", "📐", "#14b8a6"),
   rain: mod("rain", "Rain", "🌧️", "#3b82f6"),
   mic: mod("mic", "Sound", "🎤", "#ec4899"),
+  // more boards
+  nano: mod("nano", "Arduino Nano", "🔲", "#1e9b8a"),
+  mega: mod("mega", "Arduino Mega", "🔲", "#1e9b8a"),
+  esp32: mod("esp32", "ESP32", "📶", "#334155"),
+  esp8266: mod("esp8266", "ESP8266", "📶", "#334155"),
+  pico: mod("pico", "Pico", "🟢", "#2e7d32"),
+  // displays
+  oled: mod("oled", "OLED", "🖥️", "#1f2937"),
+  lcd1602: mod("lcd1602", "LCD 16×2", "🖥️", "#1d4ed8"),
+  sevenseg: mod("sevenseg", "7-Segment", "🔢", "#7f1d1d"),
+  matrix: mod("matrix", "LED Matrix", "🟥", "#7f1d1d"),
+  neopixel: mod("neopixel", "NeoPixel", "🌈", "#0f172a"),
+  // motors & drivers
+  stepper: mod("stepper", "Stepper", "⚙️", "#3b82f6"),
+  l298n: mod("l298n", "Motor Driver", "🔌", "#1e3a8a"),
+  pump: mod("pump", "Water Pump", "🚰", "#0ea5e9"),
+  vibration: mod("vibration", "Vibration", "📳", "#475569"),
+  // comms
+  bluetooth: mod("bluetooth", "Bluetooth", "🔵", "#1d4ed8"),
+  nrf24: mod("nrf24", "NRF24", "📡", "#1e40af"),
+  rfid: mod("rfid", "RFID", "💳", "#1d4ed8"),
+  irrecv: mod("irrecv", "IR Receiver", "📺", "#334155"),
+  // inputs / controls
+  joystick: mod("joystick", "Joystick", "🕹️", "#1e3a8a"),
+  keypad: mod("keypad", "Keypad", "⌨️", "#334155"),
+  encoder: mod("encoder", "Encoder", "🎛️", "#1e3a8a"),
+  // power
+  solar: mod("solar", "Solar Panel", "☀️", "#1e3a8a"),
+  buck: mod("buck", "Buck Converter", "🔋", "#1d4ed8"),
+  usbpower: mod("usbpower", "USB Power", "🔌", "#334155"),
+  // more sensors
+  mpu6050: mod("mpu6050", "Gyro (MPU6050)", "🧭", "#6d28d9"),
+  rtc: mod("rtc", "Clock (RTC)", "⏰", "#1d4ed8"),
+  hall: mod("hall", "Hall Effect", "🧲", "#334155"),
+  color: mod("color", "Color Sensor", "🎨", "#334155"),
+  current: mod("current", "Current (ACS712)", "⚡", "#1e40af"),
 };
 
 /** Parts grouped for the tray. */
 export const PART_GROUPS: { name: string; emoji: string; types: PartType[] }[] = [
   { name: "Basics", emoji: "🔋", types: ["battery", "switch", "button", "led", "resistor", "pot"] },
   { name: "Outputs", emoji: "💡", types: ["buzzer", "motor", "relay", "servo", "lamp", "fan", "rgb"] },
-  { name: "Sensors", emoji: "📡", types: ["ultrasonic", "pir", "ir", "soil", "ldr", "dht", "temp", "water", "gas", "flame", "touch", "tilt", "rain", "mic"] },
-  { name: "Boards", emoji: "🧠", types: ["arduino", "curious"] },
+  { name: "Displays", emoji: "🖥️", types: ["oled", "lcd1602", "sevenseg", "matrix", "neopixel"] },
+  { name: "Motors", emoji: "⚙️", types: ["stepper", "l298n", "pump", "vibration"] },
+  { name: "Sensors", emoji: "📡", types: ["ultrasonic", "pir", "ir", "soil", "ldr", "dht", "temp", "water", "gas", "flame", "touch", "tilt", "rain", "mic", "mpu6050", "rtc", "hall", "color", "current"] },
+  { name: "Inputs", emoji: "🎮", types: ["joystick", "keypad", "encoder"] },
+  { name: "Comms", emoji: "📶", types: ["bluetooth", "nrf24", "rfid", "irrecv"] },
+  { name: "Power", emoji: "🔌", types: ["solar", "buck", "usbpower"] },
+  { name: "Boards", emoji: "🧠", types: ["arduino", "curious", "nano", "mega", "esp32", "esp8266", "pico"] },
 ];
 
 export const PART_ORDER: PartType[] = PART_GROUPS.flatMap((g) => g.types);
