@@ -1130,7 +1130,7 @@ export function ScratchStudio() {
       <style>{`
         /* Strong cyan neon partition between the block palette and the editor canvas */
         .blocklyToolbox { border-right: 3px solid rgba(34,211,238,0.75) !important; box-shadow: 2px 0 22px rgba(34,211,238,0.32); }
-        .blocklyToolboxCategory { margin: 2px 5px; }
+        .blocklyToolboxCategory { margin: 7px 5px; }
         .blocklyTreeRowContentContainer { padding: 6px 8px !important; border-radius: 12px; transition: background .15s ease, transform .12s ease; }
         /* Hover = a tiny nudge only — never a fill behind the word. */
         .blocklyToolboxCategory:hover .blocklyTreeRowContentContainer { transform: translateX(2px); }
