@@ -868,10 +868,10 @@ export function ScratchStudio() {
   const selRt = runtimeRef.current.get(selectedId);
 
   return (
-    <div className="bg-gradient-to-br from-[#eef3fb] via-[#e9eff8] to-[#e1e8f3] lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
+    <div className="lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <div ref={splitRef} className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
-      <div className="order-2 flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_0_0_1.5px_rgba(76,151,255,0.4),0_8px_26px_rgba(76,151,255,0.14)] lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
+      <div className="order-2 flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_0_0_2px_rgba(76,151,255,0.55),0_14px_34px_rgba(76,151,255,0.22)] lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
         <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
           <Link href="/" title="Leave the Studio" className="mr-1 flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">
@@ -960,10 +960,10 @@ export function ScratchStudio() {
 
       {/* ── Stage + sprites — RIGHT ── */}
       <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:h-full lg:min-w-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_1.5px_rgba(153,102,255,0.45),0_8px_26px_rgba(153,102,255,0.16)]">
+        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <p className="font-mono text-xs tracking-tech text-[#575E75]">STAGE</p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#7c6cff] to-[#b06cff] px-2.5 py-1 font-mono text-[10px] font-bold tracking-tech text-white shadow-[0_2px_8px_rgba(124,108,255,0.4)]">🎬 STAGE</span>
               <button onClick={saveProject} title="Save project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">💾</button>
               <button onClick={() => fileRef.current?.click()} title="Load project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">📂</button>
               <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadProject(f); e.target.value = ""; }} />
@@ -1044,7 +1044,7 @@ export function ScratchStudio() {
         </div>
 
         {/* Sprite info bar — Scratch-style live x / y / size / direction */}
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs text-[#575E75] shadow-[0_0_0_1.5px_rgba(34,211,238,0.45),0_8px_24px_rgba(34,211,238,0.16)]">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs text-[#575E75] shadow-[0_0_0_2px_rgba(34,211,238,0.6),0_12px_30px_rgba(34,211,238,0.22)]">
           <span className="max-w-[7rem] truncate font-semibold text-[#2E3856]">{selectedSprite?.name ?? "Sprite"}</span>
           <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">x <b ref={xRef} className="font-mono text-[#2E3856]">0</b></span>
           <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">y <b ref={yRef} className="font-mono text-[#2E3856]">0</b></span>
@@ -1060,9 +1060,9 @@ export function ScratchStudio() {
         </div>
 
         {/* Sprite panel */}
-        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_1.5px_rgba(153,102,255,0.45),0_8px_26px_rgba(153,102,255,0.16)]">
+        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
           <div className="mb-2 flex items-center justify-between">
-            <p className="font-mono text-xs tracking-tech text-[#575E75]">SPRITES</p>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#b06cff] to-[#ff66c4] px-2.5 py-1 font-mono text-[10px] font-bold tracking-tech text-white shadow-[0_2px_8px_rgba(220,100,200,0.4)]">🐾 SPRITES</span>
             <div className="relative">
               <button onClick={() => setSpriteMenu((m) => !m)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🐱 Choose a Sprite ▾</button>
               {spriteMenu && (
