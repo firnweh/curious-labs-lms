@@ -162,7 +162,7 @@ export function getScratchTheme(): Blockly.Theme | undefined {
   if (themeSingleton) return themeSingleton;
   const styles = {
     base: Blockly.Themes.Classic,
-    fontStyle: { family: "'Helvetica Neue', Helvetica, Arial, sans-serif", size: 12 },
+    fontStyle: { family: "var(--font-round), 'Trebuchet MS', 'Helvetica Neue', sans-serif", size: 12, weight: "600" },
     componentStyles: {
       workspaceBackgroundColour: "#0e1530",
       toolboxBackgroundColour: "#0c1228",
