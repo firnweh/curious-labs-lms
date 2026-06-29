@@ -11,14 +11,49 @@ import { PaintEditor } from "@/components/PaintEditor";
 type Sprite = { id: string; name: string; costumes: string[] };
 
 const COSTUME_EMOJIS = ["😀", "😎", "😺", "🤖", "👾", "🚀", "🛸", "⭐", "🌟", "🔥", "💧", "🍎", "⚽", "🎈", "🌈", "🦄", "🐶", "🐱", "🐸", "🦋", "🎃", "👻", "💀", "🐢"];
-const BACKDROPS: { name: string; css: string }[] = [
-  { name: "White", css: "#ffffff" },
-  { name: "Sky", css: "linear-gradient(180deg,#bfe3ff,#eaf6ff)" },
-  { name: "Sunset", css: "linear-gradient(180deg,#ffd194,#ff9a9e)" },
-  { name: "Grass", css: "linear-gradient(180deg,#bdf0c0,#7ddf86)" },
-  { name: "Space", css: "radial-gradient(120% 120% at 50% 0%,#1b2447,#070d1a)" },
-  { name: "Candy", css: "linear-gradient(180deg,#fbc2eb,#a6c1ee)" },
+// Wrap an inline SVG scene as a `cover` background (no external files needed).
+const svgBg = (s: string) => `center / cover no-repeat url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+const photoBg = (url: string) => `center / cover no-repeat url("${url}")`;
+
+/** Backdrop library, grouped: flat colours, illustrated scenes, real photos. */
+const BACKDROP_GROUPS: { label: string; items: { name: string; css: string }[] }[] = [
+  {
+    label: "Colours",
+    items: [
+      { name: "White", css: "#ffffff" },
+      { name: "Sky", css: "linear-gradient(180deg,#bfe3ff,#eaf6ff)" },
+      { name: "Sunset", css: "linear-gradient(180deg,#ffd194,#ff9a9e)" },
+      { name: "Grass", css: "linear-gradient(180deg,#bdf0c0,#7ddf86)" },
+      { name: "Night", css: "radial-gradient(120% 120% at 50% 0%,#1b2447,#070d1a)" },
+      { name: "Candy", css: "linear-gradient(180deg,#fbc2eb,#a6c1ee)" },
+    ],
+  },
+  {
+    label: "Scenes",
+    items: [
+      { name: "Space", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><rect width='320' height='240' fill='#0a1233'/><g fill='#fff'><circle cx='30' cy='40' r='1.6'/><circle cx='80' cy='25' r='1'/><circle cx='130' cy='55' r='1.4'/><circle cx='200' cy='30' r='1'/><circle cx='60' cy='110' r='1'/><circle cx='160' cy='130' r='1.4'/><circle cx='300' cy='150' r='1'/><circle cx='40' cy='180' r='1.4'/><circle cx='120' cy='200' r='1'/><circle cx='240' cy='190' r='1.6'/></g><circle cx='255' cy='72' r='28' fill='#7c6cff'/><ellipse cx='255' cy='72' rx='42' ry='9' fill='none' stroke='#b9aeff' stroke-width='3' opacity='.7'/></svg>") },
+      { name: "Sunset", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><defs><linearGradient id='s' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#ffd194'/><stop offset='.6' stop-color='#ff9a9e'/><stop offset='1' stop-color='#fa709a'/></linearGradient></defs><rect width='320' height='240' fill='url(#s)'/><circle cx='160' cy='150' r='46' fill='#fff3c4'/><path d='M0 180 Q80 152 160 180 T320 180 V240 H0 Z' fill='#7a4b8a' opacity='.6'/><path d='M0 205 Q80 182 160 205 T320 205 V240 H0 Z' fill='#5a3568'/></svg>") },
+      { name: "Beach", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><rect width='320' height='240' fill='#aee3ff'/><circle cx='260' cy='48' r='24' fill='#fff1a8'/><rect y='150' width='320' height='40' fill='#3aa0d8'/><path d='M0 150 q40 8 80 0 t80 0 t80 0 t80 0' fill='none' stroke='#bfeaff' stroke-width='3'/><rect y='188' width='320' height='52' fill='#f2dca0'/></svg>") },
+      { name: "Forest", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><defs><linearGradient id='f' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#cdeccf'/><stop offset='1' stop-color='#7ddf86'/></linearGradient></defs><rect width='320' height='240' fill='url(#f)'/><g fill='#2e7d4f'><path d='M50 200 L70 120 L90 200 Z'/><path d='M120 210 L145 108 L170 210 Z'/><path d='M210 205 L235 125 L260 205 Z'/></g><rect y='205' width='320' height='35' fill='#5aa86a'/></svg>") },
+      { name: "Ocean", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><defs><linearGradient id='o' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#2bb3e0'/><stop offset='1' stop-color='#0b4f7a'/></linearGradient></defs><rect width='320' height='240' fill='url(#o)'/><g fill='#bfefff' opacity='.6'><circle cx='60' cy='80' r='6'/><circle cx='92' cy='58' r='4'/><circle cx='220' cy='110' r='7'/><circle cx='252' cy='88' r='4'/><circle cx='150' cy='150' r='5'/></g><path d='M0 210 q40 -12 80 0 t80 0 t80 0 t80 0 V240 H0Z' fill='#093d5e'/></svg>") },
+      { name: "City", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><defs><linearGradient id='c' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#3a2b6b'/><stop offset='1' stop-color='#ff9e7a'/></linearGradient></defs><rect width='320' height='240' fill='url(#c)'/><circle cx='250' cy='58' r='20' fill='#ffe9a8'/><g fill='#241a40'><rect x='20' y='150' width='34' height='90'/><rect x='64' y='120' width='30' height='120'/><rect x='104' y='160' width='28' height='80'/><rect x='142' y='100' width='34' height='140'/><rect x='186' y='140' width='30' height='100'/><rect x='226' y='120' width='32' height='120'/><rect x='268' y='150' width='34' height='90'/></g></svg>") },
+      { name: "Mountains", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><rect width='320' height='240' fill='#bfe3ff'/><circle cx='60' cy='52' r='20' fill='#fff1a8'/><path d='M0 240 L90 110 L150 180 L210 90 L320 240 Z' fill='#6b7fb0'/><path d='M90 110 L70 140 L110 140 Z M210 90 L188 124 L232 124 Z' fill='#fff'/><rect y='215' width='320' height='25' fill='#4f6196'/></svg>") },
+      { name: "Winter", css: svgBg("<svg xmlns='http://www.w3.org/2000/svg' width='320' height='240'><defs><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#dff1ff'/><stop offset='1' stop-color='#acd2ee'/></linearGradient></defs><rect width='320' height='240' fill='url(#w)'/><g fill='#fff'><circle cx='40' cy='40' r='3'/><circle cx='120' cy='70' r='2.5'/><circle cx='220' cy='40' r='3'/><circle cx='280' cy='90' r='2.5'/><circle cx='70' cy='130' r='2.5'/><circle cx='180' cy='120' r='3'/></g><path d='M0 200 q80 -20 160 0 t160 0 V240 H0Z' fill='#fff'/></svg>") },
+    ],
+  },
+  {
+    label: "Photos",
+    items: [
+      { name: "Galaxy", css: photoBg("https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=640&q=70") },
+      { name: "Beach", css: photoBg("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=640&q=70") },
+      { name: "Forest", css: photoBg("https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=640&q=70") },
+      { name: "Mountains", css: photoBg("https://images.unsplash.com/photo-1454496522488-7a8e488e8606?auto=format&fit=crop&w=640&q=70") },
+      { name: "City", css: photoBg("https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=640&q=70") },
+      { name: "Desert", css: photoBg("https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=640&q=70") },
+    ],
+  },
 ];
+const BACKDROPS = BACKDROP_GROUPS.flatMap((g) => g.items);
 type Runtime = {
   x: number; y: number; dir: number; size: number; visible: boolean;
   costumeIndex: number; bubble: string | null; bubbleType: "say" | "think";
@@ -947,30 +982,60 @@ export function ScratchStudio() {
             className={`block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border transition-shadow active:cursor-grabbing ${running ? "border-[#4CBB17] shadow-[0_0_0_3px_rgba(76,187,23,0.25)]" : "border-[#D9D9D9]"}`}
             style={{ background: backdrop }}
           />
-          {/* Choose a Backdrop — Scratch-style menu */}
-          <div className="relative mt-2 flex items-center justify-between">
-            <span className="font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
-            <button onClick={() => setBackdropMenu((m) => !m)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-[11px] text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🖼️ Choose a Backdrop ▾</button>
-            {backdropMenu && (
-              <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-lg">
-                <button onClick={surpriseBackdrop} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
-                <button onClick={() => backdropFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
-                <button onClick={() => { setBackdropMenu(false); setPaintTarget("backdrop"); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎨 Paint</button>
+          {/* Backdrop quick-strip + library button */}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="shrink-0 font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
+            <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-1">
+              {BACKDROPS.slice(0, 9).map((b) => (
+                <button
+                  key={b.name}
+                  onClick={() => setBackdrop(b.css)}
+                  title={b.name}
+                  className={`h-7 w-10 shrink-0 rounded-md border transition-transform hover:scale-105 ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#D9D9D9]"}`}
+                  style={{ background: b.css }}
+                />
+              ))}
+            </div>
+            <button onClick={() => setBackdropMenu(true)} className="shrink-0 rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-[11px] text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🖼️ Library</button>
+          </div>
+          <input ref={backdropFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBackdrop(f); e.target.value = ""; }} />
+
+          {/* Backdrop library — colours, illustrated scenes, real photos */}
+          {backdropMenu && (
+            <div className="fixed inset-0 z-[90] grid place-items-center bg-black/40 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) setBackdropMenu(false); }}>
+              <div className="flex max-h-[85vh] w-full max-w-[660px] flex-col overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[#E5E5E5] px-4 py-3">
+                  <p className="font-mono text-sm font-semibold text-[#2E3856]">🖼️ Backdrop Library</p>
+                  <button onClick={() => setBackdropMenu(false)} className="grid h-7 w-7 place-items-center rounded-full border border-[#D9D9D9] text-[#575E75] transition-colors hover:border-[#EC4C4C] hover:text-[#EC4C4C]">×</button>
+                </div>
+                <div className="flex flex-wrap gap-2 border-b border-[#E5E5E5] px-4 py-2.5">
+                  <button onClick={surpriseBackdrop} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎲 Surprise</button>
+                  <button onClick={() => { setBackdropMenu(false); backdropFileRef.current?.click(); }} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">⬆️ Upload photo</button>
+                  <button onClick={() => { setBackdropMenu(false); setPaintTarget("backdrop"); }} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎨 Paint</button>
+                </div>
+                <div className="overflow-y-auto px-4 py-3">
+                  {BACKDROP_GROUPS.map((g) => (
+                    <div key={g.label} className="mb-4 last:mb-0">
+                      <p className="mb-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">{g.label.toUpperCase()}</p>
+                      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                        {g.items.map((b) => (
+                          <button
+                            key={g.label + b.name}
+                            onClick={() => { setBackdrop(b.css); setBackdropMenu(false); }}
+                            title={b.name}
+                            className={`group relative aspect-[4/3] overflow-hidden rounded-lg border-2 transition-transform hover:scale-[1.04] ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#E5E5E5]"}`}
+                            style={{ background: b.css }}
+                          >
+                            <span className="absolute inset-x-0 bottom-0 bg-black/45 px-1 py-0.5 text-center font-mono text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100">{b.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {BACKDROPS.map((b) => (
-              <button
-                key={b.name}
-                onClick={() => setBackdrop(b.css)}
-                title={b.name}
-                className={`h-5 w-5 rounded-md border transition-transform hover:scale-110 ${backdrop === b.css ? "border-[#4C97FF] ring-1 ring-[#4C97FF]" : "border-[#D9D9D9]"}`}
-                style={{ background: b.css }}
-              />
-            ))}
-            <input ref={backdropFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBackdrop(f); e.target.value = ""; }} />
-          </div>
+            </div>
+          )}
           <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#9AA0B3]">
             drag sprites · click a block to test it · 🟢 run · space/arrows for keys
           </p>
