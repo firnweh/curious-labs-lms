@@ -6,7 +6,7 @@ import { simulate } from "@/lib/circuits/engine";
 import { PART_DEFS, PART_GROUPS, BOX_W, BOX_H } from "@/lib/circuits/parts";
 import { useCircuits } from "@/lib/circuits/store";
 import type { Challenge } from "@/lib/circuits/challenges";
-import { GLASS } from "@/lib/maker-ui";
+import { GLASS, CARD } from "@/lib/maker-ui";
 
 const VBW = 760;
 const VBH = 470;
@@ -48,6 +48,8 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
   const [wireFrom, setWireFrom] = useState<PinRef | null>(null);
   const [running, setRunning] = useState(false);
   const [ghost, setGhost] = useState<{ type: PartType; x: number; y: number } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
   const [solved, setSolved] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -103,6 +105,14 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [deleteSel, rotateSel, running]);
+
+  // close the parts picker on Escape
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPickerOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickerOpen]);
 
   const startTrayDrag = (type: PartType, e: React.PointerEvent) => {
     e.preventDefault();
@@ -181,6 +191,22 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
     </button>
   );
 
+  // Maker-Lab parts picker: a dropdown with a search filter (instead of a strip).
+  const matchPart = (t: PartType) => {
+    const q = query.trim().toLowerCase();
+    return !q || PART_DEFS[t].label.toLowerCase().includes(q) || t.toLowerCase().includes(q);
+  };
+  const pickerTile = (t: PartType) => (
+    <button
+      key={t}
+      onClick={() => { addPartAt(t); setPickerOpen(false); setQuery(""); }}
+      className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 transition-all hover:border-cyan-300/50 hover:bg-white/[0.07] hover:shadow-[0_0_18px_-6px_rgba(34,211,238,0.6)]"
+    >
+      <svg viewBox="0 0 120 88" className="h-9 w-14">{PART_DEFS[t].render({ id: `pick-${t}`, type: t, x: 0, y: 0, props: { ...PART_DEFS[t].defaultProps } }, IDLE, false)}</svg>
+      <span className="max-w-[76px] truncate text-[10px] font-medium text-[#8595bd]">{PART_DEFS[t].label}</span>
+    </button>
+  );
+
   if (fill) {
     return (
       <div className="flex h-full w-full flex-col gap-2">
@@ -190,14 +216,55 @@ export function CircuitStudio({ challenge, onSolved, fill = false }: { challenge
             <p className="font-round text-sm font-bold text-ink">{solved ? "You did it! 🌟" : challenge.prompt}</p>
           </div>
         )}
-        {/* parts — grouped, horizontal strip on top */}
-        <div className={`flex shrink-0 items-stretch gap-3 overflow-x-auto p-2 ${GLASS}`}>
-          {PART_GROUPS.map((g, gi) => (
-            <div key={g.name} className={`flex shrink-0 items-center gap-2 ${gi > 0 ? "border-l border-white/10 pl-3" : ""}`}>
-              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#566091]">{g.emoji} {g.name}</span>
-              <div className="flex gap-1.5">{g.types.map(partTile)}</div>
-            </div>
-          ))}
+        {/* parts — dropdown picker with a search filter */}
+        <div className={`relative z-20 flex shrink-0 items-center gap-2 p-2 ${GLASS}`}>
+          <button
+            onClick={() => setPickerOpen((o) => !o)}
+            className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-all ${pickerOpen ? "border-cyan-300/50 bg-cyan-400/10 text-cyan-200" : "border-white/10 bg-white/[0.04] text-[#cdd7f0] hover:border-cyan-300/50 hover:bg-white/[0.07]"}`}
+          >
+            <span className="text-base" aria-hidden>➕</span>
+            <span>Add a part</span>
+            <span className={`ml-0.5 text-xs transition-transform ${pickerOpen ? "rotate-180" : ""}`} aria-hidden>▾</span>
+          </button>
+          {doc.components.length > 0 && (
+            <span className="text-xs text-[#566091]">{doc.components.length} on board</span>
+          )}
+
+          {pickerOpen && (
+            <>
+              <button aria-hidden tabIndex={-1} className="fixed inset-0 z-30 cursor-default" onClick={() => setPickerOpen(false)} />
+              <div className={`absolute left-2 top-full z-40 mt-2 w-[380px] max-w-[92vw] overflow-hidden ${CARD}`}>
+                <div className="border-b border-white/10 p-2">
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5">
+                    <span className="text-[#566091]" aria-hidden>🔍</span>
+                    <input
+                      autoFocus
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Filter parts…"
+                      className="w-full bg-transparent text-sm text-[#e8eefc] placeholder:text-[#566091] focus:outline-none"
+                    />
+                    {query && <button onClick={() => setQuery("")} className="text-xs text-[#566091] hover:text-[#e8eefc]" aria-label="Clear filter">✕</button>}
+                  </div>
+                </div>
+                <div className="max-h-[46vh] overflow-y-auto p-2">
+                  {PART_GROUPS.map((g) => {
+                    const types = g.types.filter(matchPart);
+                    if (!types.length) return null;
+                    return (
+                      <div key={g.name} className="mb-2 last:mb-0">
+                        <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#566091]">{g.emoji} {g.name}</div>
+                        <div className="grid grid-cols-3 gap-1.5">{types.map(pickerTile)}</div>
+                      </div>
+                    );
+                  })}
+                  {!PART_GROUPS.some((g) => g.types.some(matchPart)) && (
+                    <div className="px-2 py-6 text-center text-sm text-[#566091]">No parts match “{query}”.</div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
         {/* board — fills the rest */}
         <div className="cs-board relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.7)]">
