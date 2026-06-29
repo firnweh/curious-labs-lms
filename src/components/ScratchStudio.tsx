@@ -1132,8 +1132,19 @@ export function ScratchStudio() {
         .blocklyToolbox { border-right: 3px solid rgba(34,211,238,0.75) !important; box-shadow: 2px 0 22px rgba(34,211,238,0.32); }
         .blocklyToolboxCategory { margin: 2px 5px; }
         .blocklyTreeRowContentContainer { padding: 6px 8px !important; border-radius: 12px; transition: background .15s ease, transform .12s ease; }
-        .blocklyToolboxCategory:hover .blocklyTreeRowContentContainer { background: rgba(34,211,238,0.10); transform: translateX(2px); }
-        .blocklyToolboxSelected .blocklyTreeRowContentContainer { background: rgba(34,211,238,0.16) !important; box-shadow: inset 3px 0 0 rgba(34,211,238,0.85); }
+        /* Hover = a faint NEUTRAL lift (never the category colour, never over the word). */
+        .blocklyToolboxCategory:hover .blocklyTreeRowContentContainer { background: rgba(255,255,255,0.05); transform: translateX(2px); }
+        /* Selected = a coloured LEFT BAR only, in the category's accent. No colour fill is
+           ever placed behind the text — the word stays exactly as it normally looks. */
+        .blocklyToolboxSelected:has(.cl-events) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #FFBF00; }
+        .blocklyToolboxSelected:has(.cl-motion) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #4C97FF; }
+        .blocklyToolboxSelected:has(.cl-looks) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #9966FF; }
+        .blocklyToolboxSelected:has(.cl-sound) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #CF63CF; }
+        .blocklyToolboxSelected:has(.cl-control) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #FFAB19; }
+        .blocklyToolboxSelected:has(.cl-sensing) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #5CB1D6; }
+        .blocklyToolboxSelected:has(.cl-operators) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #59C059; }
+        .blocklyToolboxSelected:has(.cl-variables) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #FF8C1A; }
+        .blocklyToolboxSelected:has(.cl-myblocks) .blocklyTreeRowContentContainer { box-shadow: inset 4px 0 0 #FF6680; }
         /* Cool techy label font */
         .blocklyToolboxCategoryLabel { font-family: var(--font-orbitron), "Orbitron", monospace !important; font-weight: 600 !important; font-size: 11px !important; letter-spacing: .3px; }
         .blocklyFlyout { filter: drop-shadow(0 6px 18px rgba(0,0,0,0.45)); }
