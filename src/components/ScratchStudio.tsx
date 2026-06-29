@@ -871,22 +871,22 @@ export function ScratchStudio() {
     <div className="lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <div ref={splitRef} className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
-      <div className="order-2 flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_0_0_2px_rgba(76,151,255,0.55),0_14px_34px_rgba(76,151,255,0.22)] lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
+      <div className="order-2 flex w-full flex-col overflow-hidden rounded-2xl bg-[#141d38] shadow-[0_0_0_2px_rgba(76,151,255,0.55),0_14px_34px_rgba(76,151,255,0.22)] lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
-        <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
-          <Link href="/" title="Leave the Studio" className="mr-1 flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">
+        <div className="flex items-center gap-1 border-b border-[#26314f] bg-[#0e1630] px-2 py-1.5">
+          <Link href="/" title="Leave the Studio" className="mr-1 flex items-center gap-1 rounded-lg border border-[#2a3656] bg-[#141d38] px-2.5 py-1 font-mono text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">
             ← Back
           </Link>
           {([["code", "💻 Code"], ["costumes", "🎨 Costumes"], ["sounds", "🔊 Sounds"]] as const).map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`rounded-lg px-3 py-1 font-mono text-xs transition-colors ${tab === id ? "bg-white text-[#2E3856] shadow-sm ring-1 ring-[#D9D9D9]" : "text-[#9AA0B3] hover:text-[#575E75]"}`}
+              className={`rounded-lg px-3 py-1 font-mono text-xs transition-colors ${tab === id ? "bg-[#141d38] text-[#eaf0ff] shadow-sm ring-1 ring-[#D9D9D9]" : "text-[#7682a3] hover:text-[#aeb9d6]"}`}
             >
               {label}
             </button>
           ))}
-          <span className="ml-auto pr-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">{running ? "▶ running…" : selectedSprite?.name ?? ""}</span>
+          <span className="ml-auto pr-2 font-mono text-[10px] tracking-tech text-[#7682a3]">{running ? "▶ running…" : selectedSprite?.name ?? ""}</span>
         </div>
 
         {/* Code tab — Blockly stays mounted, just hidden off-tab */}
@@ -896,16 +896,16 @@ export function ScratchStudio() {
         {tab === "costumes" && (
           <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px] lg:h-auto lg:min-h-0 lg:flex-1">
             <div className="mb-3 flex items-center justify-between">
-              <p className="font-mono text-xs tracking-tech text-[#575E75]">COSTUMES · {selectedSprite?.name}</p>
+              <p className="font-mono text-xs tracking-tech text-[#aeb9d6]">COSTUMES · {selectedSprite?.name}</p>
               <div className="flex gap-2">
                 <button onClick={() => setCostumePicker((p) => !p)} className="rounded-full border border-[#9966FF]/60 px-3 py-1 font-mono text-xs text-[#9966FF] hover:bg-[#9966FF]/10">+ Add costume</button>
                 <button onClick={() => setPaintTarget("costume")} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] hover:bg-[#4C97FF]/10">🎨 Paint</button>
               </div>
             </div>
             {costumePicker && (
-              <div className="mb-3 grid grid-cols-8 gap-1.5 rounded-xl border border-[#E5E5E5] bg-[#F9F9F9] p-2">
+              <div className="mb-3 grid grid-cols-8 gap-1.5 rounded-xl border border-[#26314f] bg-[#0e1630] p-2">
                 {COSTUME_EMOJIS.map((em) => (
-                  <button key={em} onClick={() => addCostume(em)} className="grid aspect-square place-items-center rounded-lg border border-[#D9D9D9] bg-white text-xl hover:border-[#9966FF] hover:bg-[#9966FF]/10">{em}</button>
+                  <button key={em} onClick={() => addCostume(em)} className="grid aspect-square place-items-center rounded-lg border border-[#2a3656] bg-[#141d38] text-xl hover:border-[#9966FF] hover:bg-[#9966FF]/10">{em}</button>
                 ))}
               </div>
             )}
@@ -914,11 +914,11 @@ export function ScratchStudio() {
                 const on = (selRt?.costumeIndex ?? 0) % (selectedSprite?.costumes.length || 1) === i;
                 return (
                   <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }}
-                    className={`relative grid place-items-center gap-1 rounded-xl border p-3 transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
+                    className={`relative grid place-items-center gap-1 rounded-xl border p-3 transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/10" : "border-[#26314f] bg-[#141d38] hover:border-[#9966FF]/50"}`}>
                     {isImg(c)
                       ? <span aria-hidden className="inline-block h-12 w-12 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} />
                       : <span className="text-3xl">{c}</span>}
-                    <span className="font-mono text-[10px] text-[#9AA0B3]">costume {i + 1}</span>
+                    <span className="font-mono text-[10px] text-[#7682a3]">costume {i + 1}</span>
                     {(selectedSprite?.costumes.length || 1) > 1 && (
                       <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); removeCostume(i); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
                     )}
@@ -926,23 +926,23 @@ export function ScratchStudio() {
                 );
               })}
             </div>
-            <p className="mt-4 font-mono text-[10px] text-[#9AA0B3]">Tip: use the “next costume” / “switch to costume” blocks to animate these.</p>
+            <p className="mt-4 font-mono text-[10px] text-[#7682a3]">Tip: use the “next costume” / “switch to costume” blocks to animate these.</p>
           </div>
         )}
 
         {/* Sounds tab */}
         {tab === "sounds" && (
           <div className="h-[440px] w-full overflow-auto p-4 sm:h-[600px] lg:h-auto lg:min-h-0 lg:flex-1">
-            <p className="mb-3 font-mono text-xs tracking-tech text-[#575E75]">SOUNDS · tap to preview</p>
+            <p className="mb-3 font-mono text-xs tracking-tech text-[#aeb9d6]">SOUNDS · tap to preview</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {SOUND_NAMES.map((name) => (
-                <button key={name} onClick={() => playSound(name)} className="flex items-center justify-between rounded-xl border border-[#E5E5E5] bg-white px-3 py-2.5 text-left transition-colors hover:border-[#CF63CF]">
-                  <span className="font-mono text-sm text-[#2E3856]">{name}</span>
+                <button key={name} onClick={() => playSound(name)} className="flex items-center justify-between rounded-xl border border-[#26314f] bg-[#141d38] px-3 py-2.5 text-left transition-colors hover:border-[#CF63CF]">
+                  <span className="font-mono text-sm text-[#eaf0ff]">{name}</span>
                   <span className="text-[#CF63CF]">▶</span>
                 </button>
               ))}
             </div>
-            <p className="mt-4 font-mono text-[10px] text-[#9AA0B3]">Tip: use the “play sound” blocks in the 🔊 Sound category to trigger these.</p>
+            <p className="mt-4 font-mono text-[10px] text-[#7682a3]">Tip: use the “play sound” blocks in the 🔊 Sound category to trigger these.</p>
           </div>
         )}
       </div>
@@ -960,12 +960,12 @@ export function ScratchStudio() {
 
       {/* ── Stage + sprites — RIGHT ── */}
       <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:h-full lg:min-w-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
+        <div className="rounded-2xl bg-[#141d38] p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#7c6cff] to-[#b06cff] px-2.5 py-1 font-mono text-[10px] font-bold tracking-tech text-white shadow-[0_2px_8px_rgba(124,108,255,0.4)]">🎬 STAGE</span>
-              <button onClick={saveProject} title="Save project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">💾</button>
-              <button onClick={() => fileRef.current?.click()} title="Load project" className="rounded-md border border-[#D9D9D9] px-2 py-0.5 text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">📂</button>
+              <button onClick={saveProject} title="Save project" className="rounded-md border border-[#2a3656] px-2 py-0.5 text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">💾</button>
+              <button onClick={() => fileRef.current?.click()} title="Load project" className="rounded-md border border-[#2a3656] px-2 py-0.5 text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">📂</button>
               <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadProject(f); e.target.value = ""; }} />
             </div>
             <div className="flex gap-2">
@@ -986,14 +986,14 @@ export function ScratchStudio() {
           </div>
           {/* Backdrop quick-strip + library button */}
           <div className="mt-2 flex items-center gap-2">
-            <span className="shrink-0 font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
+            <span className="shrink-0 font-mono text-[10px] tracking-tech text-[#7682a3]">BACKDROP</span>
             <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-1">
-              {BACKDROPS.slice(0, 9).map((b) => (
+              {BACKDROPS.slice(0, 9).map((b, i) => (
                 <button
-                  key={b.name}
+                  key={`${i}-${b.name}`}
                   onClick={() => setBackdrop(b.css)}
                   title={b.name}
-                  className={`h-7 w-10 shrink-0 rounded-md border transition-transform hover:scale-105 ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#D9D9D9]"}`}
+                  className={`h-7 w-10 shrink-0 rounded-md border transition-transform hover:scale-105 ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#2a3656]"}`}
                   style={{ background: b.css }}
                 />
               ))}
@@ -1005,27 +1005,27 @@ export function ScratchStudio() {
           {/* Backdrop library — colours, illustrated scenes, real photos */}
           {backdropMenu && (
             <div className="fixed inset-0 z-[90] grid place-items-center bg-black/40 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) setBackdropMenu(false); }}>
-              <div className="flex max-h-[85vh] w-full max-w-[660px] flex-col overflow-hidden rounded-2xl border border-[#D9D9D9] bg-white shadow-2xl">
-                <div className="flex items-center justify-between border-b border-[#E5E5E5] px-4 py-3">
-                  <p className="font-mono text-sm font-semibold text-[#2E3856]">🖼️ Backdrop Library</p>
-                  <button onClick={() => setBackdropMenu(false)} className="grid h-7 w-7 place-items-center rounded-full border border-[#D9D9D9] text-[#575E75] transition-colors hover:border-[#EC4C4C] hover:text-[#EC4C4C]">×</button>
+              <div className="flex max-h-[85vh] w-full max-w-[660px] flex-col overflow-hidden rounded-2xl border border-[#2a3656] bg-[#141d38] shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[#26314f] px-4 py-3">
+                  <p className="font-mono text-sm font-semibold text-[#eaf0ff]">🖼️ Backdrop Library</p>
+                  <button onClick={() => setBackdropMenu(false)} className="grid h-7 w-7 place-items-center rounded-full border border-[#2a3656] text-[#aeb9d6] transition-colors hover:border-[#EC4C4C] hover:text-[#EC4C4C]">×</button>
                 </div>
-                <div className="flex flex-wrap gap-2 border-b border-[#E5E5E5] px-4 py-2.5">
-                  <button onClick={surpriseBackdrop} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎲 Surprise</button>
-                  <button onClick={() => { setBackdropMenu(false); backdropFileRef.current?.click(); }} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">⬆️ Upload photo</button>
-                  <button onClick={() => { setBackdropMenu(false); setPaintTarget("backdrop"); }} className="rounded-full border border-[#D9D9D9] px-3 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎨 Paint</button>
+                <div className="flex flex-wrap gap-2 border-b border-[#26314f] px-4 py-2.5">
+                  <button onClick={surpriseBackdrop} className="rounded-full border border-[#2a3656] px-3 py-1 font-mono text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎲 Surprise</button>
+                  <button onClick={() => { setBackdropMenu(false); backdropFileRef.current?.click(); }} className="rounded-full border border-[#2a3656] px-3 py-1 font-mono text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">⬆️ Upload photo</button>
+                  <button onClick={() => { setBackdropMenu(false); setPaintTarget("backdrop"); }} className="rounded-full border border-[#2a3656] px-3 py-1 font-mono text-xs text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">🎨 Paint</button>
                 </div>
                 <div className="overflow-y-auto px-4 py-3">
                   {BACKDROP_GROUPS.map((g) => (
                     <div key={g.label} className="mb-4 last:mb-0">
-                      <p className="mb-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">{g.label.toUpperCase()}</p>
+                      <p className="mb-2 font-mono text-[10px] tracking-tech text-[#7682a3]">{g.label.toUpperCase()}</p>
                       <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
                         {g.items.map((b) => (
                           <button
                             key={g.label + b.name}
                             onClick={() => { setBackdrop(b.css); setBackdropMenu(false); }}
                             title={b.name}
-                            className={`group relative aspect-[4/3] overflow-hidden rounded-lg border-2 transition-transform hover:scale-[1.04] ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#E5E5E5]"}`}
+                            className={`group relative aspect-[4/3] overflow-hidden rounded-lg border-2 transition-transform hover:scale-[1.04] ${backdrop === b.css ? "border-[#4C97FF] ring-2 ring-[#4C97FF]/40" : "border-[#26314f]"}`}
                             style={{ background: b.css }}
                           >
                             <span className="absolute inset-x-0 bottom-0 bg-black/45 px-1 py-0.5 text-center font-mono text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100">{b.name}</span>
@@ -1038,39 +1038,39 @@ export function ScratchStudio() {
               </div>
             </div>
           )}
-          <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#9AA0B3]">
+          <p className="mt-2 text-center font-mono text-[10px] tracking-tech text-[#7682a3]">
             drag sprites · click a block to test it · 🟢 run · space/arrows for keys
           </p>
         </div>
 
         {/* Sprite info bar — Scratch-style live x / y / size / direction */}
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs text-[#575E75] shadow-[0_0_0_2px_rgba(34,211,238,0.6),0_12px_30px_rgba(34,211,238,0.22)]">
-          <span className="max-w-[7rem] truncate font-semibold text-[#2E3856]">{selectedSprite?.name ?? "Sprite"}</span>
-          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">x <b ref={xRef} className="font-mono text-[#2E3856]">0</b></span>
-          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">y <b ref={yRef} className="font-mono text-[#2E3856]">0</b></span>
-          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">size <b ref={sizeRef} className="font-mono text-[#2E3856]">100</b></span>
-          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">dir <b ref={dirRef} className="font-mono text-[#2E3856]">90</b></span>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-[#141d38] px-3 py-2 text-xs text-[#aeb9d6] shadow-[0_0_0_2px_rgba(34,211,238,0.6),0_12px_30px_rgba(34,211,238,0.22)]">
+          <span className="max-w-[7rem] truncate font-semibold text-[#eaf0ff]">{selectedSprite?.name ?? "Sprite"}</span>
+          <span className="rounded-md bg-[#1a244a] px-2 py-0.5">x <b ref={xRef} className="font-mono text-[#eaf0ff]">0</b></span>
+          <span className="rounded-md bg-[#1a244a] px-2 py-0.5">y <b ref={yRef} className="font-mono text-[#eaf0ff]">0</b></span>
+          <span className="rounded-md bg-[#1a244a] px-2 py-0.5">size <b ref={sizeRef} className="font-mono text-[#eaf0ff]">100</b></span>
+          <span className="rounded-md bg-[#1a244a] px-2 py-0.5">dir <b ref={dirRef} className="font-mono text-[#eaf0ff]">90</b></span>
           <button
             onClick={() => { const r = runtimeRef.current.get(selectedIdRef.current); if (r) { r.visible = !r.visible; setTick((t) => t + 1); } }}
             title="Show / hide sprite"
-            className="ml-auto rounded-md border border-[#D9D9D9] px-2 py-0.5 text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]"
+            className="ml-auto rounded-md border border-[#2a3656] px-2 py-0.5 text-[#aeb9d6] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]"
           >
             {selRt?.visible === false ? "🚫 hidden" : "👁 shown"}
           </button>
         </div>
 
         {/* Sprite panel */}
-        <div className="rounded-2xl bg-white p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
+        <div className="rounded-2xl bg-[#141d38] p-3 shadow-[0_0_0_2px_rgba(153,102,255,0.6),0_14px_34px_rgba(153,102,255,0.24)]">
           <div className="mb-2 flex items-center justify-between">
             <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#b06cff] to-[#ff66c4] px-2.5 py-1 font-mono text-[10px] font-bold tracking-tech text-white shadow-[0_2px_8px_rgba(220,100,200,0.4)]">🐾 SPRITES</span>
             <div className="relative">
               <button onClick={() => setSpriteMenu((m) => !m)} className="rounded-full border border-[#4C97FF]/60 px-3 py-1 font-mono text-xs text-[#4C97FF] transition-colors hover:bg-[#4C97FF]/10">🐱 Choose a Sprite ▾</button>
               {spriteMenu && (
-                <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#D9D9D9] bg-white p-1 shadow-lg">
-                  <button onClick={() => { setSpriteMenu(false); setPicker(true); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🔍 Choose</button>
-                  <button onClick={surpriseSprite} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
-                  <button onClick={() => spriteFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
-                  <button onClick={() => { setSpriteMenu(false); setPaintTarget("sprite"); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#575E75] hover:bg-[#4C97FF]/10">🎨 Paint</button>
+                <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-[#2a3656] bg-[#141d38] p-1 shadow-lg">
+                  <button onClick={() => { setSpriteMenu(false); setPicker(true); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#aeb9d6] hover:bg-[#4C97FF]/10">🔍 Choose</button>
+                  <button onClick={surpriseSprite} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#aeb9d6] hover:bg-[#4C97FF]/10">🎲 Surprise</button>
+                  <button onClick={() => spriteFileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#aeb9d6] hover:bg-[#4C97FF]/10">⬆️ Upload image</button>
+                  <button onClick={() => { setSpriteMenu(false); setPaintTarget("sprite"); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#aeb9d6] hover:bg-[#4C97FF]/10">🎨 Paint</button>
                 </div>
               )}
               <input ref={spriteFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSprite(f); e.target.value = ""; }} />
@@ -1078,9 +1078,9 @@ export function ScratchStudio() {
           </div>
 
           {picker && (
-            <div className="mb-3 grid grid-cols-6 gap-1.5 rounded-xl border border-[#E5E5E5] bg-[#F9F9F9] p-2">
+            <div className="mb-3 grid grid-cols-6 gap-1.5 rounded-xl border border-[#26314f] bg-[#0e1630] p-2">
               {LIBRARY.map((lib) => (
-                <button key={lib.name} onClick={() => addSprite(lib)} title={lib.name} className="grid aspect-square place-items-center rounded-lg border border-[#D9D9D9] bg-white text-xl transition-colors hover:border-[#4C97FF] hover:bg-[#4C97FF]/10">
+                <button key={lib.name} onClick={() => addSprite(lib)} title={lib.name} className="grid aspect-square place-items-center rounded-lg border border-[#2a3656] bg-[#141d38] text-xl transition-colors hover:border-[#4C97FF] hover:bg-[#4C97FF]/10">
                   {lib.costumes[0]}
                 </button>
               ))}
@@ -1092,9 +1092,9 @@ export function ScratchStudio() {
               const on = sp.id === selectedId;
               const rt = runtimeRef.current.get(sp.id);
               return (
-                <button key={sp.id} onClick={() => selectSprite(sp.id)} className={`relative grid place-items-center gap-1 rounded-xl border p-2 transition-colors ${on ? "border-[#4C97FF] bg-[#4C97FF]/10" : "border-[#E5E5E5] bg-white hover:border-[#4C97FF]/50"}`}>
+                <button key={sp.id} onClick={() => selectSprite(sp.id)} className={`relative grid place-items-center gap-1 rounded-xl border p-2 transition-colors ${on ? "border-[#4C97FF] bg-[#4C97FF]/10" : "border-[#26314f] bg-[#141d38] hover:border-[#4C97FF]/50"}`}>
                   {(() => { const c = sp.costumes[rt ? rt.costumeIndex % sp.costumes.length : 0]; return isImg(c) ? <span aria-hidden className="inline-block h-8 w-8 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} /> : <span className="text-2xl">{c}</span>; })()}
-                  <span className="max-w-full truncate font-mono text-[10px] text-[#575E75]">{sp.name}</span>
+                  <span className="max-w-full truncate font-mono text-[10px] text-[#aeb9d6]">{sp.name}</span>
                   {sprites.length > 1 && (
                     <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); deleteSprite(sp.id); }} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#EC4C4C] text-[10px] text-white">×</span>
                   )}
@@ -1104,13 +1104,13 @@ export function ScratchStudio() {
           </div>
 
           {selectedSprite && selectedSprite.costumes.length > 1 && (
-            <div className="mt-3 border-t border-[#E5E5E5] pt-3">
-              <p className="mb-2 font-mono text-[10px] tracking-tech text-[#9AA0B3]">COSTUMES · {selectedSprite.name}</p>
+            <div className="mt-3 border-t border-[#26314f] pt-3">
+              <p className="mb-2 font-mono text-[10px] tracking-tech text-[#7682a3]">COSTUMES · {selectedSprite.name}</p>
               <div className="flex flex-wrap gap-2">
                 {selectedSprite.costumes.map((c, i) => {
                   const on = (selRt?.costumeIndex ?? 0) % selectedSprite.costumes.length === i;
                   return (
-                    <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }} className={`grid h-10 w-10 place-items-center rounded-lg border text-lg transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/15" : "border-[#E5E5E5] bg-white hover:border-[#9966FF]/50"}`}>
+                    <button key={i} onClick={() => { if (selRt) { selRt.costumeIndex = i; setTick((t) => t + 1); } }} className={`grid h-10 w-10 place-items-center rounded-lg border text-lg transition-colors ${on ? "border-[#9966FF] bg-[#9966FF]/15" : "border-[#26314f] bg-[#141d38] hover:border-[#9966FF]/50"}`}>
                       {isImg(c) ? <span aria-hidden className="inline-block h-7 w-7 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(c)})` }} /> : c}
                     </button>
                   );
