@@ -505,7 +505,10 @@ export function CosmosFX() {
     if (fine) {
       const ret = document.createElement("div");
       ret.className = "cl-reticle";
-      ret.innerHTML = '<div class="cl-ret-ring"></div><div class="cl-ret-dot"></div>';
+      ret.innerHTML =
+        '<div class="cl-ret-frame"><span class="cl-ret-corner tl"></span><span class="cl-ret-corner tr"></span><span class="cl-ret-corner bl"></span><span class="cl-ret-corner br"></span></div>' +
+        '<div class="cl-ret-ring2"></div>' +
+        '<div class="cl-ret-dot"></div>';
       document.body.appendChild(ret);
       nodes.push(ret);
       const prevCursor = document.body.style.cursor;

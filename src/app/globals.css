@@ -603,14 +603,38 @@ body {
 .mission-hud .mh-sector { color: #38BDF8; }
 @keyframes hudBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 
-/* reticle cursor */
+/* robotic HUD targeting cursor */
 .cl-reticle { position: fixed; left: 0; top: 0; z-index: 4000; pointer-events: none; will-change: transform; }
-.cl-ret-ring { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%;
-  border: 1.5px solid rgba(56,189,248,.65); box-shadow: 0 0 12px rgba(56,189,248,.35);
-  transition: transform .22s ease, border-color .22s ease; }
-.cl-ret-dot { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: #7DD3FC; }
-.cl-reticle.on-link .cl-ret-ring { transform: scale(1.7); border-color: rgba(192,132,252,.9); }
-.cl-reticle.clicking .cl-ret-ring { transform: scale(.55); }
+
+/* square targeting frame built from four corner brackets */
+.cl-ret-frame { position: absolute; left: -15px; top: -15px; width: 30px; height: 30px;
+  transition: transform .2s cubic-bezier(.2,.8,.2,1); }
+.cl-ret-corner { position: absolute; width: 7px; height: 7px; box-sizing: border-box;
+  border: 1.6px solid rgba(56,189,248,.9); filter: drop-shadow(0 0 4px rgba(56,189,248,.5)); }
+.cl-ret-corner.tl { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.cl-ret-corner.tr { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.cl-ret-corner.bl { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+.cl-ret-corner.br { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+
+/* scanning dashed ring inside the frame */
+.cl-ret-ring2 { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.3px dashed rgba(56,189,248,.45); animation: clRetSpin 4.5s linear infinite;
+  transition: border-color .2s ease; }
+@keyframes clRetSpin { to { transform: rotate(360deg); } }
+
+/* pixel core */
+.cl-ret-dot { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 1px;
+  background: #7DD3FC; box-shadow: 0 0 6px rgba(125,211,252,.9);
+  transition: transform .2s ease, background .2s ease; }
+
+/* lock-on over interactive targets */
+.cl-reticle.on-link .cl-ret-frame { transform: scale(1.45) rotate(45deg); }
+.cl-reticle.on-link .cl-ret-corner { border-color: rgba(192,132,252,.95); filter: drop-shadow(0 0 6px rgba(192,132,252,.6)); }
+.cl-reticle.on-link .cl-ret-ring2 { border-color: rgba(192,132,252,.7); animation-duration: 1.3s; }
+.cl-reticle.on-link .cl-ret-dot { background: #E9D5FF; transform: scale(1.4); }
+
+/* fire / click */
+.cl-reticle.clicking .cl-ret-frame { transform: scale(.6); }
 
 /* black-hole section */
 .singularity { position: relative; z-index: 1; padding: 84px 20px 64px; text-align: center; overflow: hidden;
