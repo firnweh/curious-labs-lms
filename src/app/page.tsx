@@ -63,7 +63,7 @@ export default function Home() {
                 <p className="mx-auto mt-3 max-w-md text-ink-dim sm:mx-0">
                   Pick a grade, pick a track, and run your first experiment in seconds.
                 </p>
-                <Link href="/tracks" className="btn-primary mt-8">🚀 Enter the Labs</Link>
+                <Link href="/tracks" className="btn-primary mt-8">🚀 Explore your areas</Link>
               </div>
               <div className="hidden h-32 w-px bg-line/50 sm:block" aria-hidden />
               <StartQR />
