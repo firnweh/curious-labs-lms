@@ -59,6 +59,21 @@ const NEURONS: Neuron[] = [
 ];
 const byId = (id: string) => NEURONS.find((n) => n.id === id)!;
 
+// Inner SVG markup per experiment (24x24, line style inherited from the wrapper
+// <svg>; tiny dots opt into fill='currentColor'). Designed + verified per activity.
+const ICON: Record<string, string> = {
+  awareness: "<rect x='4' y='5' width='16' height='14' rx='3'/><line x1='12' y1='2.5' x2='12' y2='5'/><circle cx='12' cy='2.5' r='0.7' fill='currentColor' stroke='none'/><path d='M10 10.5 a2 2 0 1 1 2.6 1.9 c-0.6 0.25 -0.6 0.6 -0.6 1.1'/><circle cx='12' cy='15.6' r='0.7' fill='currentColor' stroke='none'/>",
+  classifier: "<path d='M12 4v3'/><path d='M12 7c0 3 -5 3 -5 6'/><path d='M12 7c0 3 5 3 5 6'/><rect x='3' y='15' width='8' height='6' rx='1'/><rect x='13' y='15' width='8' height='6' rx='1'/><circle cx='12' cy='4' r='1.4' fill='currentColor' stroke='none'/>",
+  clustering: "<circle cx='8' cy='8.5' r='4.5'/><circle cx='16' cy='15.5' r='4.5'/><circle cx='6.5' cy='7.5' r='1' fill='currentColor' stroke='none'/><circle cx='9.5' cy='10' r='1' fill='currentColor' stroke='none'/><circle cx='14.5' cy='14.5' r='1' fill='currentColor' stroke='none'/><circle cx='17.5' cy='16.5' r='1' fill='currentColor' stroke='none'/>",
+  sentiment: "<path d='M3 13a9 9 0 0 1 18 0'/><line x1='12' y1='13' x2='15.5' y2='9'/><circle cx='12' cy='13' r='1.1' fill='currentColor' stroke='none'/><line x1='4.5' y1='11.5' x2='6' y2='12'/><line x1='19.5' y1='11.5' x2='18' y2='12'/>",
+  chatbot: "<path d='M20 13a3 3 0 0 1-3 3H9l-4 3v-3a3 3 0 0 1-1-2.4V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z'/><circle cx='8.5' cy='11' r='1' fill='currentColor' stroke='none'/><circle cx='12' cy='11' r='1' fill='currentColor' stroke='none'/><circle cx='15.5' cy='11' r='1' fill='currentColor' stroke='none'/>",
+  vision: "<path d='M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z'/><circle cx='12' cy='12' r='2.5'/><path d='M15 6h3v3'/>",
+  prompt: "<path d='M14.5 4.5 5 14a2.12 2.12 0 0 0 3 3l9.5-9.5a2.12 2.12 0 0 0-3-3Z'/><path d='M19 3v3'/><path d='M21.5 4.5h-3'/>",
+  ethics: "<circle cx='12' cy='4' r='1.6' fill='currentColor' stroke='none'/><path d='M12 5.6V20'/><path d='M6 20h12'/><path d='M5 8h14'/><path d='M5 8l-2.5 5a2.5 2.5 0 0 0 5 0L5 8z'/><path d='M19 8l-2.5 5a2.5 2.5 0 0 0 5 0L19 8z'/>",
+  evaluation: "<circle cx='11' cy='11' r='8'/><circle cx='11' cy='11' r='4'/><circle cx='11' cy='11' r='1.25' fill='currentColor' stroke='none'/><path d='M14 16.5 L16.5 19 L20 14'/>",
+  recommend: "<path d='M9 21V9l3.5-7C13.9 2 15 3.1 15 4.5V8h4.5c1.1 0 1.9 1 1.7 2.1l-1.4 8c-.2 1-1 1.4-1.8 1.4H9'/><path d='M9 21H5.5C4.7 21 4 20.3 4 19.5V12c0-.8.7-1.5 1.5-1.5H9'/>",
+};
+
 const inputN = NEURONS.filter((n) => n.layer === "input");
 const hiddenN = NEURONS.filter((n) => n.layer === "hidden");
 const outputN = NEURONS.filter((n) => n.layer === "output");
@@ -184,14 +199,23 @@ export function AILab() {
                 style={{ left: `${n.x}%`, top: `${n.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.22 : 1})`, zIndex: isHot ? 40 : 12, opacity: dim ? 0.45 : 1 }}
               >
                 <span
-                  className="nn-node block rounded-full"
+                  className="nn-node grid place-items-center rounded-full"
                   style={{
-                    width: 26, height: 26,
-                    background: `radial-gradient(circle at 34% 30%, #ffffff, ${color} 58%, ${color}22 100%)`,
-                    boxShadow: `0 0 ${isHot ? 26 : lit ? 16 : 9}px ${color}, inset 0 0 6px ${color}aa`,
+                    width: 40, height: 40,
+                    background: "radial-gradient(circle at 50% 32%, #16263f, #070d18 80%)",
+                    border: `2px solid ${color}`,
+                    boxShadow: `0 0 ${isHot ? 24 : lit ? 15 : 9}px ${isHot ? color : color + "cc"}, inset 0 0 9px ${color}44`,
+                    color: "#eef4ff",
                     animationDelay: `${(i % 5) * 0.5}s`,
                   }}
-                />
+                >
+                  <svg
+                    viewBox="0 0 24 24" width="22" height="22"
+                    fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                    style={{ filter: `drop-shadow(0 0 3px ${color})` }}
+                    dangerouslySetInnerHTML={{ __html: ICON[n.id] }}
+                  />
+                </span>
                 <span
                   className="mt-1 max-w-[124px] text-center font-mono text-[10px] leading-tight transition-colors"
                   style={{ color: isHot || lit ? color : "#8a96b4" }}
