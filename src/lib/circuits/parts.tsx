@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CircuitComponent, CompState, PartType } from "./types";
+import { PART_ART } from "./partArt";
 
 /* ──────────────────────────────────────────────────────────────
    Part registry — every part is a 2-terminal block in a 120×88 box.
@@ -269,7 +270,10 @@ function ModulePart({ comp, emoji, label, color, state, running }: { comp: Circu
 
 const mod = (type: PartType, label: string, emoji: string, color: string): PartDef => ({
   type, label, pins: PINS, defaultProps: {},
-  render: (c, s, r) => <ModulePart comp={c} emoji={emoji} label={label} color={color} state={s} running={r} />,
+  render: (c, s, r) => {
+    const Art = PART_ART[type];
+    return Art ? <Art comp={c} state={s} running={r} /> : <ModulePart comp={c} emoji={emoji} label={label} color={color} state={s} running={r} />;
+  },
 });
 
 export const PART_DEFS: Record<PartType, PartDef> = {
