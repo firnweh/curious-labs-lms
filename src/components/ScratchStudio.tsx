@@ -1128,16 +1128,26 @@ export function ScratchStudio() {
 
       {/* Cooler, vibier block palette (only present while the Studio is mounted) */}
       <style>{`
-        /* Partition the block palette from the editor canvas */
-        .blocklyToolbox { border-right: 2px solid rgba(76,151,255,0.4) !important; box-shadow: 1px 0 14px rgba(76,151,255,0.14); }
+        /* Strong cyan neon partition between the block palette and the editor canvas */
+        .blocklyToolbox { border-right: 3px solid rgba(34,211,238,0.75) !important; box-shadow: 2px 0 22px rgba(34,211,238,0.32); }
         .blocklyToolboxCategory { margin: 2px 5px; }
-        .blocklyTreeRow { padding: 5px 8px !important; border-radius: 12px; transition: background .15s ease, transform .12s ease; }
-        .blocklyToolboxCategory:hover > .blocklyTreeRow,
-        .blocklyToolboxCategory:hover .blocklyTreeRow { background: rgba(76,151,255,0.10); transform: translateX(2px); }
-        .blocklyTreeSelected, .blocklyTreeRow.blocklyTreeSelected,
-        .blocklyToolboxSelected > .blocklyTreeRow { background: rgba(76,151,255,0.16) !important; box-shadow: inset 3px 0 0 rgba(76,151,255,0.7); }
-        .blocklyTreeLabel { font-weight: 600 !important; letter-spacing: .2px; }
-        .blocklyFlyout { filter: drop-shadow(0 6px 18px rgba(70,90,130,0.12)); }
+        .blocklyTreeRowContentContainer { padding: 6px 8px !important; border-radius: 12px; transition: background .15s ease, transform .12s ease; }
+        .blocklyToolboxCategory:hover .blocklyTreeRowContentContainer { background: rgba(34,211,238,0.10); transform: translateX(2px); }
+        .blocklyToolboxSelected .blocklyTreeRowContentContainer { background: rgba(34,211,238,0.16) !important; box-shadow: inset 3px 0 0 rgba(34,211,238,0.85); }
+        /* Cool techy label font */
+        .blocklyToolboxCategoryLabel { font-family: var(--font-orbitron), "Orbitron", monospace !important; font-weight: 600 !important; font-size: 11px !important; letter-spacing: .3px; }
+        .blocklyFlyout { filter: drop-shadow(0 6px 18px rgba(0,0,0,0.45)); }
+        /* Custom neon SVG category icons (replace the old emoji) */
+        .cl-ic { display:inline-block !important; width:19px !important; height:19px !important; margin-right:8px; vertical-align:middle; background-position:center; background-size:contain; background-repeat:no-repeat; }
+        .cl-events{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFBF00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 21V4'/><path d='M6 4h11l-2 3.5L17 11H6'/></svg>");filter:drop-shadow(0 0 2px #FFBF0099)}
+        .cl-motion{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234C97FF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 6l6 6-6 6'/><path d='M13 6l6 6-6 6'/></svg>");filter:drop-shadow(0 0 2px #4C97FF99)}
+        .cl-looks{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239966FF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3.5l1.9 5.6 5.6 1.9-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-1.9z'/></svg>");filter:drop-shadow(0 0 2px #9966FF99)}
+        .cl-sound{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CF63CF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 9v6h3.5L13 19V5L7.5 9z'/><path d='M16.5 8.5a5 5 0 0 1 0 7'/></svg>");filter:drop-shadow(0 0 2px #CF63CF99)}
+        .cl-control{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFAB19' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 9a7 7 0 0 1 12-3l2 2'/><path d='M18 4v4h-4'/><path d='M20 15a7 7 0 0 1-12 3l-2-2'/><path d='M6 20v-4h4'/></svg>");filter:drop-shadow(0 0 2px #FFAB1999)}
+        .cl-sensing{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235CB1D6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z'/><circle cx='12' cy='12' r='2.6'/></svg>");filter:drop-shadow(0 0 2px #5CB1D699)}
+        .cl-operators{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2359C059' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7.5h6'/><path d='M7 4.5v6'/><path d='M14.5 14.5l5 5'/><path d='M19.5 14.5l-5 5'/></svg>");filter:drop-shadow(0 0 2px #59C05999)}
+        .cl-variables{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FF8C1A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3l8 4.5v9L12 21l-8-4.5v-9z'/><path d='M4 7.5l8 4.5 8-4.5'/><path d='M12 12v9'/></svg>");filter:drop-shadow(0 0 2px #FF8C1A99)}
+        .cl-myblocks{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FF6680' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='5' width='16' height='4' rx='1.2'/><rect x='4' y='11' width='11' height='4' rx='1.2'/><rect x='4' y='17' width='7' height='4' rx='1.2'/></svg>");filter:drop-shadow(0 0 2px #FF668099)}
       `}</style>
     </div>
   );

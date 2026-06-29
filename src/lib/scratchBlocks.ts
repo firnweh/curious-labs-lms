@@ -215,14 +215,14 @@ export const SCRATCH_TOOLBOX = {
   kind: "categoryToolbox",
   contents: [
     {
-      kind: "category", name: "🟢 Events", categorystyle: "event_category",
+      kind: "category", name: "Events", categorystyle: "event_category", cssconfig: { icon: "cl-ic cl-events" },
       contents: [
         { kind: "block", type: "event_whenflag" },
         { kind: "block", type: "event_whenkey" },
       ],
     },
     {
-      kind: "category", name: "🏃 Motion", categorystyle: "motion_category",
+      kind: "category", name: "Motion", categorystyle: "motion_category", cssconfig: { icon: "cl-ic cl-motion" },
       contents: [
         { kind: "block", type: "motion_move", inputs: { STEPS: num(10) } },
         { kind: "block", type: "motion_turnright", inputs: { DEG: num(15) } },
@@ -241,7 +241,7 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🎨 Looks", categorystyle: "looks_category",
+      kind: "category", name: "Looks", categorystyle: "looks_category", cssconfig: { icon: "cl-ic cl-looks" },
       contents: [
         { kind: "block", type: "looks_say", inputs: { TEXT: txt("Hello!") } },
         { kind: "block", type: "looks_sayfor", inputs: { TEXT: txt("Hello!"), SECS: num(2) } },
@@ -255,14 +255,14 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🔊 Sound", categorystyle: "sound_category",
+      kind: "category", name: "Sound", categorystyle: "sound_category", cssconfig: { icon: "cl-ic cl-sound" },
       contents: [
         { kind: "block", type: "sound_play" },
         { kind: "block", type: "sound_playuntil" },
       ],
     },
     {
-      kind: "category", name: "🔁 Control", categorystyle: "control_category",
+      kind: "category", name: "Control", categorystyle: "control_category", cssconfig: { icon: "cl-ic cl-control" },
       contents: [
         { kind: "block", type: "control_wait", inputs: { SECS: num(1) } },
         { kind: "block", type: "control_repeat", inputs: { TIMES: num(10) } },
@@ -272,7 +272,7 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "👀 Sensing", categorystyle: "sensing_category",
+      kind: "category", name: "Sensing", categorystyle: "sensing_category", cssconfig: { icon: "cl-ic cl-sensing" },
       contents: [
         { kind: "block", type: "sensing_mousex" },
         { kind: "block", type: "sensing_mousey" },
@@ -283,7 +283,7 @@ export const SCRATCH_TOOLBOX = {
       ],
     },
     {
-      kind: "category", name: "🧮 Operators", categorystyle: "operator_category",
+      kind: "category", name: "Operators", categorystyle: "operator_category", cssconfig: { icon: "cl-ic cl-operators" },
       contents: [
         { kind: "block", type: "math_number", fields: { NUM: 0 } },
         { kind: "block", type: "math_arithmetic" },
@@ -294,8 +294,8 @@ export const SCRATCH_TOOLBOX = {
         { kind: "block", type: "text", fields: { TEXT: "hello" } },
       ],
     },
-    { kind: "category", name: "📦 Variables", categorystyle: "variable_category", custom: "VARIABLE" },
-    { kind: "category", name: "🧩 My Blocks", categorystyle: "procedure_category", custom: "PROCEDURE" },
+    { kind: "category", name: "Variables", categorystyle: "variable_category", cssconfig: { icon: "cl-ic cl-variables" }, custom: "VARIABLE" },
+    { kind: "category", name: "My Blocks", categorystyle: "procedure_category", cssconfig: { icon: "cl-ic cl-myblocks" }, custom: "PROCEDURE" },
   ],
 };
 
