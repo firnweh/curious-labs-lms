@@ -868,10 +868,10 @@ export function ScratchStudio() {
   const selRt = runtimeRef.current.get(selectedId);
 
   return (
-    <div className="lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
+    <div className="bg-gradient-to-br from-[#eef3fb] via-[#e9eff8] to-[#e1e8f3] lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <div ref={splitRef} className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
       {/* ── Blockly workspace — LEFT (Scratch: palette + code) ── */}
-      <div className="order-2 flex w-full flex-col overflow-hidden rounded-xl border border-[#D9D9D9] bg-white shadow-sm lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
+      <div className="order-2 flex w-full flex-col overflow-hidden rounded-2xl border border-[#E4E9F2] bg-white shadow-[0_4px_18px_rgba(70,90,130,0.08)] lg:order-1 lg:w-[var(--leftw)] lg:shrink-0" style={{ ["--leftw" as string]: `${leftPct}%` }}>
         {/* Tab bar — Code / Costumes / Sounds */}
         <div className="flex items-center gap-1 border-b border-[#E5E5E5] bg-[#F9F9F9] px-2 py-1.5">
           <Link href="/" title="Leave the Studio" className="mr-1 flex items-center gap-1 rounded-lg border border-[#D9D9D9] bg-white px-2.5 py-1 font-mono text-xs text-[#575E75] transition-colors hover:border-[#4C97FF] hover:text-[#4C97FF]">
@@ -960,7 +960,7 @@ export function ScratchStudio() {
 
       {/* ── Stage + sprites — RIGHT ── */}
       <div className="order-1 flex w-full flex-col gap-4 lg:order-3 lg:h-full lg:min-w-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-        <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
+        <div className="rounded-2xl border border-[#E4E9F2] bg-white p-3 shadow-[0_4px_18px_rgba(70,90,130,0.08)]">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <p className="font-mono text-xs tracking-tech text-[#575E75]">STAGE</p>
@@ -969,19 +969,21 @@ export function ScratchStudio() {
               <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadProject(f); e.target.value = ""; }} />
             </div>
             <div className="flex gap-2">
-              <button onClick={greenFlag} disabled={running} title="Green flag — run all" className="grid h-8 w-8 place-items-center rounded-full border border-[#4CBB17]/50 bg-[#4CBB17]/10 text-sm transition-colors hover:bg-[#4CBB17]/20 disabled:opacity-50">🟢</button>
-              <button onClick={stopAll} title="Stop everything" className="grid h-8 w-8 place-items-center rounded-full border border-[#EC4C4C]/50 bg-[#EC4C4C]/10 text-sm transition-colors hover:bg-[#EC4C4C]/20">🛑</button>
+              <button onClick={greenFlag} disabled={running} title="Green flag — run all" className="grid h-9 w-9 place-items-center rounded-full border-2 border-[#4CBB17]/50 bg-[#4CBB17]/10 text-base shadow-sm transition-all hover:scale-105 hover:bg-[#4CBB17]/20 active:scale-95 disabled:opacity-50">🟢</button>
+              <button onClick={stopAll} title="Stop everything" className="grid h-9 w-9 place-items-center rounded-full border-2 border-[#EC4C4C]/50 bg-[#EC4C4C]/10 text-base shadow-sm transition-all hover:scale-105 hover:bg-[#EC4C4C]/20 active:scale-95">🛑</button>
             </div>
           </div>
-          <canvas
-            ref={canvasRef}
-            onPointerDown={onCanvasDown}
-            onPointerMove={onCanvasMove}
-            onPointerUp={onCanvasUp}
-            onPointerCancel={onCanvasUp}
-            className={`block aspect-[4/3] w-full cursor-grab touch-none rounded-lg border transition-shadow active:cursor-grabbing ${running ? "border-[#4CBB17] shadow-[0_0_0_3px_rgba(76,187,23,0.25)]" : "border-[#D9D9D9]"}`}
-            style={{ background: backdrop }}
-          />
+          <div className={`rounded-2xl p-1.5 transition-all ${running ? "bg-gradient-to-b from-[#3a5a86] to-[#0b1220] shadow-[0_0_0_3px_rgba(76,187,23,0.5),0_10px_26px_rgba(20,40,80,0.25)]" : "bg-gradient-to-b from-[#2c3c58] to-[#0f1726] shadow-[0_8px_24px_rgba(20,40,80,0.18)]"}`}>
+            <canvas
+              ref={canvasRef}
+              onPointerDown={onCanvasDown}
+              onPointerMove={onCanvasMove}
+              onPointerUp={onCanvasUp}
+              onPointerCancel={onCanvasUp}
+              className="block aspect-[4/3] w-full cursor-grab touch-none rounded-xl active:cursor-grabbing"
+              style={{ background: backdrop }}
+            />
+          </div>
           {/* Backdrop quick-strip + library button */}
           <div className="mt-2 flex items-center gap-2">
             <span className="shrink-0 font-mono text-[10px] tracking-tech text-[#9AA0B3]">BACKDROP</span>
@@ -1042,12 +1044,12 @@ export function ScratchStudio() {
         </div>
 
         {/* Sprite info bar — Scratch-style live x / y / size / direction */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-[#D9D9D9] bg-white px-3 py-2 text-xs text-[#575E75] shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#E4E9F2] bg-white px-3 py-2 text-xs text-[#575E75] shadow-[0_4px_18px_rgba(70,90,130,0.08)]">
           <span className="max-w-[7rem] truncate font-semibold text-[#2E3856]">{selectedSprite?.name ?? "Sprite"}</span>
-          <span>x <b ref={xRef} className="font-mono text-[#2E3856]">0</b></span>
-          <span>y <b ref={yRef} className="font-mono text-[#2E3856]">0</b></span>
-          <span>size <b ref={sizeRef} className="font-mono text-[#2E3856]">100</b></span>
-          <span>dir <b ref={dirRef} className="font-mono text-[#2E3856]">90</b></span>
+          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">x <b ref={xRef} className="font-mono text-[#2E3856]">0</b></span>
+          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">y <b ref={yRef} className="font-mono text-[#2E3856]">0</b></span>
+          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">size <b ref={sizeRef} className="font-mono text-[#2E3856]">100</b></span>
+          <span className="rounded-md bg-[#F1F5FB] px-2 py-0.5">dir <b ref={dirRef} className="font-mono text-[#2E3856]">90</b></span>
           <button
             onClick={() => { const r = runtimeRef.current.get(selectedIdRef.current); if (r) { r.visible = !r.visible; setTick((t) => t + 1); } }}
             title="Show / hide sprite"
@@ -1058,7 +1060,7 @@ export function ScratchStudio() {
         </div>
 
         {/* Sprite panel */}
-        <div className="rounded-xl border border-[#D9D9D9] bg-white p-3 shadow-sm">
+        <div className="rounded-2xl border border-[#E4E9F2] bg-white p-3 shadow-[0_4px_18px_rgba(70,90,130,0.08)]">
           <div className="mb-2 flex items-center justify-between">
             <p className="font-mono text-xs tracking-tech text-[#575E75]">SPRITES</p>
             <div className="relative">
