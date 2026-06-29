@@ -5,10 +5,11 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 /**
- * Neural Lab — the AI platform shell. The selector is a CONSTELLATION SKY:
- * every experiment is a glowing STAR, topics are constellations joined by faint
- * star-lines, over a twinkling deep-space field. Hover a star to light it + its
- * constellation; tap to open that experiment full-screen. Each experiment is a
+ * Neural Lab — the AI platform shell. The selector is a LIVING NEURAL NETWORK:
+ * the 10 experiments are NEURONS arranged in three layers — Input (learn) →
+ * Hidden (apply) → Output (judge) — wired together by synapses with signal
+ * pulses flowing left→right. Hover a neuron to FIRE it and light up everything
+ * it connects to; tap to drop into that experiment. Each experiment is a
  * self-contained component under ./ai-lab, lazy-loaded on selection.
  */
 
@@ -29,35 +30,60 @@ const COMP: Record<string, ReturnType<typeof dynamic>> = {
   recommend: dynamic(() => import("./ai-lab/recommend"), { ssr: false, loading: Loading }),
 };
 
-interface Star { id: string; name: string; topic: string; x: number; y: number; accent: string; blurb: string }
-const STARS: Star[] = [
-  { id: "awareness", name: "AI or Not AI?", topic: "Foundations", x: 19, y: 23, accent: "#34d399", blurb: "Smart AI, or just a plain tool?" },
-  { id: "classifier", name: "Train an AI", topic: "Grouping", x: 13, y: 52, accent: "#34d399", blurb: "Train a model — and spot its bias." },
-  { id: "clustering", name: "Group the Unknown", topic: "Grouping", x: 28, y: 71, accent: "#a855f7", blurb: "Group things with no labels." },
-  { id: "sentiment", name: "Mood Meter", topic: "Language", x: 46, y: 19, accent: "#eab308", blurb: "Read the mood of a message." },
-  { id: "chatbot", name: "Chatbot Brain", topic: "Language", x: 59, y: 34, accent: "#60a5fa", blurb: "A bot that gets what you ask." },
-  { id: "vision", name: "Spot the Mistake", topic: "Vision", x: 48, y: 66, accent: "#22d3ee", blurb: "Why the AI saw it wrong." },
-  { id: "prompt", name: "Prompt Lab", topic: "Creating", x: 83, y: 17, accent: "#eab308", blurb: "Prompt it, catch it inventing." },
-  { id: "ethics", name: "Who's Affected?", topic: "Fairness", x: 75, y: 47, accent: "#22d3ee", blurb: "Who it helps, who it harms." },
-  { id: "evaluation", name: "How Good Is It?", topic: "Fairness", x: 89, y: 61, accent: "#fb7185", blurb: "Accuracy, precision, recall." },
-  { id: "recommend", name: "Recommend-o-Bot", topic: "Fairness", x: 77, y: 81, accent: "#fb7185", blurb: "Fall into a filter bubble." },
-];
-const byId = (id: string) => STARS.find((s) => s.id === id)!;
+type Layer = "input" | "hidden" | "output";
+interface Neuron { id: string; name: string; topic: string; layer: Layer; x: number; y: number; blurb: string }
 
-// Constellation lines join stars WITHIN a topic.
-const LINES: [string, string][] = [
-  ["classifier", "clustering"],
-  ["sentiment", "chatbot"],
-  ["ethics", "evaluation"],
-  ["evaluation", "recommend"],
-  ["recommend", "ethics"],
+const TOPIC_COLOR: Record<string, string> = {
+  Foundations: "#34d399",
+  Grouping: "#a855f7",
+  Language: "#60a5fa",
+  Vision: "#22d3ee",
+  Creating: "#eab308",
+  Fairness: "#fb7185",
+};
+
+// Input = how AI learns · Hidden = how AI applies itself · Output = how we judge it.
+const NEURONS: Neuron[] = [
+  { id: "awareness", name: "AI or Not AI?", topic: "Foundations", layer: "input", x: 15, y: 27, blurb: "Smart AI, or just a plain tool?" },
+  { id: "classifier", name: "Train an AI", topic: "Grouping", layer: "input", x: 15, y: 51, blurb: "Train a model — and spot its bias." },
+  { id: "clustering", name: "Group the Unknown", topic: "Grouping", layer: "input", x: 15, y: 75, blurb: "Group things with no labels." },
+
+  { id: "sentiment", name: "Mood Meter", topic: "Language", layer: "hidden", x: 50, y: 21, blurb: "Read the mood of a message." },
+  { id: "chatbot", name: "Chatbot Brain", topic: "Language", layer: "hidden", x: 50, y: 43, blurb: "A bot that gets what you ask." },
+  { id: "vision", name: "Spot the Mistake", topic: "Vision", layer: "hidden", x: 50, y: 63, blurb: "Why the AI saw it wrong." },
+  { id: "prompt", name: "Prompt Lab", topic: "Creating", layer: "hidden", x: 50, y: 83, blurb: "Prompt it, catch it inventing." },
+
+  { id: "ethics", name: "Who's Affected?", topic: "Fairness", layer: "output", x: 85, y: 29, blurb: "Who it helps, who it harms." },
+  { id: "evaluation", name: "How Good Is It?", topic: "Fairness", layer: "output", x: 85, y: 51, blurb: "Accuracy, precision, recall." },
+  { id: "recommend", name: "Recommend-o-Bot", topic: "Fairness", layer: "output", x: 85, y: 73, blurb: "Fall into a filter bubble." },
+];
+const byId = (id: string) => NEURONS.find((n) => n.id === id)!;
+
+const inputN = NEURONS.filter((n) => n.layer === "input");
+const hiddenN = NEURONS.filter((n) => n.layer === "hidden");
+const outputN = NEURONS.filter((n) => n.layer === "output");
+
+// Dense synapses: every input→hidden and every hidden→output (the classic net look).
+const SYNAPSES: { a: Neuron; b: Neuron }[] = [];
+inputN.forEach((a) => hiddenN.forEach((b) => SYNAPSES.push({ a, b })));
+hiddenN.forEach((a) => outputN.forEach((b) => SYNAPSES.push({ a, b })));
+
+// Pre-computed neighbours so hovering a neuron can light everything it wires to.
+const NEIGHBORS: Record<string, Set<string>> = {};
+NEURONS.forEach((n) => (NEIGHBORS[n.id] = new Set()));
+SYNAPSES.forEach(({ a, b }) => { NEIGHBORS[a.id].add(b.id); NEIGHBORS[b.id].add(a.id); });
+
+const LAYERS: { key: Layer; label: string; sub: string; x: number }[] = [
+  { key: "input", label: "INPUT", sub: "learn", x: 15 },
+  { key: "hidden", label: "HIDDEN", sub: "apply", x: 50 },
+  { key: "output", label: "OUTPUT", sub: "judge", x: 85 },
 ];
 
 // Deterministic decorative starfield (no Math.random).
-const BG = Array.from({ length: 60 }, (_, i) => ({
-  x: (i * 37) % 100,
-  y: (i * 61 + 11) % 100,
-  r: 0.18 + ((i * 13) % 6) / 16,
+const BG = Array.from({ length: 50 }, (_, i) => ({
+  x: (i * 41) % 100,
+  y: (i * 67 + 9) % 100,
+  r: 0.18 + ((i * 13) % 6) / 18,
   d: ((i * 7) % 32) / 10,
 }));
 
@@ -70,25 +96,20 @@ const NeuralWordmark = () => (
   </>
 );
 
-const StarShape = () => (
-  <svg width="38" height="38" viewBox="0 0 24 24" aria-hidden>
-    <path d="M12 1.4c.5 5.7 4.4 9.6 10.1 10.1-5.7.5-9.6 4.4-10.1 10.1-.5-5.7-4.4-9.6-10.1-10.1 5.7-.5 9.6-4.4 10.1-10.1z" fill="currentColor" />
-  </svg>
-);
-
 export function AILab() {
   const [sel, setSel] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
 
   const current = sel ? byId(sel) : null;
   const Active = sel ? COMP[sel] : null;
+  const hotColor = hover ? TOPIC_COLOR[byId(hover).topic] : null;
 
   return (
     <div className="flex h-full w-full flex-col" style={{ fontFamily: "system-ui, sans-serif" }}>
       <header className="flex items-center gap-3 border-b border-[#1e2738] px-4 py-2.5">
         {sel ? (
           <button onClick={() => setSel(null)} className="flex items-center gap-1 rounded-lg border border-[#2a3550] bg-[#0f1626] px-2.5 py-1 font-mono text-xs text-[#9fb0d0] transition-colors hover:border-[#34d399] hover:text-[#34d399]">
-            ← Sky
+            ← Network
           </button>
         ) : (
           <Link href="/" title="Leave Neural Lab" className="flex items-center gap-1 rounded-lg border border-[#2a3550] bg-[#0f1626] px-2.5 py-1 font-mono text-xs text-[#9fb0d0] transition-colors hover:border-[#34d399] hover:text-[#34d399]">
@@ -96,7 +117,7 @@ export function AILab() {
           </Link>
         )}
         <NeuralWordmark />
-        <span className="hidden font-mono text-[11px] text-[#5b6b8c] sm:inline">{current ? `// ${current.name}` : `// AI sky · ${STARS.length} experiments`}</span>
+        <span className="hidden font-mono text-[11px] text-[#5b6b8c] sm:inline">{current ? `// ${current.name}` : `// neural net · ${NEURONS.length} experiments`}</span>
       </header>
 
       {sel && Active ? (
@@ -104,68 +125,102 @@ export function AILab() {
       ) : (
         <div
           className="relative min-h-0 flex-1 overflow-hidden"
-          style={{ backgroundImage: "radial-gradient(ellipse 95% 75% at 50% 42%, #141f44 0%, #0a1126 50%, #060912 100%)" }}
+          style={{ backgroundImage: "radial-gradient(ellipse 95% 80% at 50% 45%, #131d40 0%, #0a1126 52%, #060912 100%)" }}
         >
-          <p className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 font-mono text-[11px] text-[#7c8baf]">✦ Tap a star to open its experiment</p>
+          <p className="pointer-events-none absolute left-1/2 top-2.5 z-30 -translate-x-1/2 font-mono text-[11px] text-[#7c8baf]">⚡ Tap a neuron to fire its experiment</p>
 
+          {/* layer headers */}
+          {LAYERS.map((l) => (
+            <div key={l.key} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${l.x}%`, top: "9%" }}>
+              <div className="font-mono text-[11px] font-bold tracking-[0.25em] text-[#9fb0d0]">{l.label}</div>
+              <div className="font-mono text-[9px] tracking-[0.2em]" style={{ color: "#566a90" }}>{l.sub}</div>
+            </div>
+          ))}
+
+          {/* synapses + starfield */}
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {/* starfield */}
             {BG.map((s, i) => (
-              <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nl-tw" style={{ animationDelay: `${s.d}s` }} />
+              <circle key={`bg${i}`} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nn-tw" style={{ animationDelay: `${s.d}s` }} />
             ))}
-            {/* constellation lines */}
-            {LINES.map(([a, b], i) => {
-              const na = byId(a), nb = byId(b);
-              const lit = hover != null && (a === hover || b === hover);
+            {SYNAPSES.map((s, i) => {
+              const lit = hover != null && (s.a.id === hover || s.b.id === hover);
               return (
-                <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={lit ? byId(hover!).accent : "#46557a"} strokeWidth={lit ? 1.4 : 1} vectorEffect="non-scaling-stroke" opacity={lit ? 0.85 : 0.32} strokeDasharray={lit ? "0" : "2 2"} />
+                <g key={i}>
+                  <line
+                    x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y}
+                    stroke={lit ? hotColor! : "#33436b"} strokeWidth={lit ? 1 : 0.5}
+                    vectorEffect="non-scaling-stroke"
+                    opacity={lit ? 0.85 : hover ? 0.12 : 0.3}
+                  />
+                  <line
+                    x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y}
+                    stroke={lit ? "#ffffff" : "#5b78b8"} strokeWidth={lit ? 1.6 : 1}
+                    strokeLinecap="round" strokeDasharray="1.5 8"
+                    vectorEffect="non-scaling-stroke"
+                    className="nn-flow"
+                    style={{ animationDuration: lit ? "0.7s" : "1.7s", opacity: lit ? 1 : hover ? 0.08 : 0.55 }}
+                  />
+                </g>
               );
             })}
           </svg>
 
-          {STARS.map((s, i) => {
-              const isHot = hover === s.id;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSel(s.id)}
-                  onMouseEnter={() => setHover(s.id)}
-                  onMouseLeave={() => setHover(null)}
-                  onFocus={() => setHover(s.id)}
-                  onBlur={() => setHover(null)}
-                  title={`${s.name} — ${s.topic}`}
-                  className="absolute flex flex-col items-center transition-transform duration-200"
-                  style={{ left: `${s.x}%`, top: `${s.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.25 : 1})`, zIndex: isHot ? 20 : 10 }}
+          {/* neurons */}
+          {NEURONS.map((n, i) => {
+            const color = TOPIC_COLOR[n.topic];
+            const isHot = hover === n.id;
+            const lit = hover != null && (hover === n.id || NEIGHBORS[hover]?.has(n.id));
+            const dim = hover != null && !lit;
+            return (
+              <button
+                key={n.id}
+                onClick={() => setSel(n.id)}
+                onMouseEnter={() => setHover(n.id)}
+                onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(n.id)}
+                onBlur={() => setHover(null)}
+                title={`${n.name} — ${n.topic}`}
+                className="absolute flex flex-col items-center transition-all duration-200"
+                style={{ left: `${n.x}%`, top: `${n.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.22 : 1})`, zIndex: isHot ? 40 : 12, opacity: dim ? 0.45 : 1 }}
+              >
+                <span
+                  className="nn-node block rounded-full"
+                  style={{
+                    width: 26, height: 26,
+                    background: `radial-gradient(circle at 34% 30%, #ffffff, ${color} 58%, ${color}22 100%)`,
+                    boxShadow: `0 0 ${isHot ? 26 : lit ? 16 : 9}px ${color}, inset 0 0 6px ${color}aa`,
+                    animationDelay: `${(i % 5) * 0.5}s`,
+                  }}
+                />
+                <span
+                  className="mt-1 max-w-[124px] text-center font-mono text-[10px] leading-tight transition-colors"
+                  style={{ color: isHot || lit ? color : "#8a96b4" }}
                 >
-                  <span
-                    className="nl-star grid place-items-center transition-all duration-200"
-                    style={{ color: s.accent, filter: `drop-shadow(0 0 ${isHot ? 12 : 5}px ${s.accent})`, animationDelay: `${(i % 5) * 0.5}s` }}
-                  >
-                    <StarShape />
+                  {n.name}
+                </span>
+                {isHot && (
+                  <span className="pointer-events-none absolute top-full z-50 mt-1 w-[150px] rounded-lg border px-2 py-1 text-center font-mono text-[9px]" style={{ borderColor: `${color}66`, background: "#0b1018ee", color: "#aebbd9" }}>
+                    {n.blurb}
                   </span>
-                  <span className="mt-0.5 max-w-[120px] text-center font-mono text-[10px] leading-tight transition-colors" style={{ color: isHot ? s.accent : "#8a96b4" }}>
-                    {s.name}
-                  </span>
-                  {isHot && (
-                    <span className="pointer-events-none absolute top-full z-30 mt-1 w-[140px] rounded-lg border px-2 py-1 text-center font-mono text-[9px]" style={{ borderColor: `${s.accent}55`, background: "#0b1018ee", color: "#9fb0d0" }}>
-                      {s.blurb}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                )}
+              </button>
+            );
+          })}
 
+          {/* topic legend */}
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-1 px-3 font-mono text-[9px] text-[#5b6b8c]">
-            {[["Foundations", "#34d399"], ["Grouping", "#a855f7"], ["Language", "#60a5fa"], ["Vision", "#22d3ee"], ["Creating", "#eab308"], ["Fairness", "#fb7185"]].map(([label, c]) => (
-              <span key={label} className="flex items-center gap-1"><span className="inline-block h-2 w-2 rotate-45" style={{ background: c }} /> {label}</span>
+            {Object.entries(TOPIC_COLOR).map(([label, c]) => (
+              <span key={label} className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} /> {label}</span>
             ))}
           </div>
 
           <style>{`
-            @keyframes nlTw { 0%,100%{ opacity:.2 } 50%{ opacity:.75 } }
-            .nl-tw { animation: nlTw 3s ease-in-out infinite; }
-            @keyframes nlStar { 0%,100%{ opacity:.85; transform: scale(1) } 50%{ opacity:1; transform: scale(1.1) } }
-            .nl-star { animation: nlStar 3.6s ease-in-out infinite; }
+            @keyframes nnTw { 0%,100%{ opacity:.16 } 50%{ opacity:.66 } }
+            .nn-tw { animation: nnTw 3s ease-in-out infinite; }
+            @keyframes nnFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -9.5; } }
+            .nn-flow { animation: nnFlow 1.7s linear infinite; }
+            @keyframes nnBreathe { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.09); } }
+            .nn-node { animation: nnBreathe 3.6s ease-in-out infinite; }
           `}</style>
         </div>
       )}
