@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { SUBJECTS } from "@/lib/subjects";
+import { SUBJECTS, SUBJECT_PLATFORM } from "@/lib/subjects";
 import { activitiesBySubject } from "@/lib/activities/registry";
 import { useSubjectTransition } from "@/components/SubjectTransition";
 
@@ -29,17 +29,20 @@ export function TrackGalaxy() {
       <div className="track-galaxy-orbits">
         {SUBJECTS.map((s, i) => {
           const count = activitiesBySubject(s.id).length;
-          const href = `/subjects/${s.id}`;
+          const dest = SUBJECT_PLATFORM[s.id];
+          const soon = dest === null;
           return (
             <button
               key={s.id}
               type="button"
               className="planet-world"
-              style={{ "--acc": s.accent, "--d": `${(i * 0.45).toFixed(2)}s` } as CSSProperties}
-              aria-label={`Enter ${s.name} — ${count} labs`}
+              style={{ "--acc": s.accent, "--d": `${(i * 0.45).toFixed(2)}s`, opacity: soon ? 0.6 : 1 } as CSSProperties}
+              aria-label={soon ? `${s.name} — coming soon` : `Enter ${s.name}`}
+              aria-disabled={soon}
               onClick={() => {
-                if (transition) transition.go(s.id, href);
-                else window.location.href = href;
+                if (soon || !dest) return;
+                if (transition) transition.go(s.id, dest);
+                else window.location.href = dest;
               }}
             >
               <span className="planet-orb" aria-hidden>
@@ -47,8 +50,8 @@ export function TrackGalaxy() {
                 <span className="planet-emoji">{s.emoji}</span>
               </span>
               <span className="planet-name">{s.name}</span>
-              <span className="planet-count">{count} labs</span>
-              <span className="planet-enter">ENTER →</span>
+              <span className="planet-count">{soon ? "coming soon" : `${count} labs`}</span>
+              <span className="planet-enter">{soon ? "SOON" : "ENTER →"}</span>
             </button>
           );
         })}

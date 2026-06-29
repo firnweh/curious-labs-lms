@@ -2232,15 +2232,23 @@ function introSlide(from, to, cta) {
     <div className="hero-intro" style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <IntroStage from={from} to={to}><IntroSceneSprites /></IntroStage>
       {cta && (
-        <a href={cta.href} className="hero-intro-cta">
-          <span aria-hidden="true">{cta.emoji}</span> {cta.label} <span aria-hidden="true">→</span>
-        </a>
+        cta.soon ? (
+          <span className="hero-intro-cta" aria-disabled="true" title="Launching soon" style={{ opacity: 0.7, cursor: 'default' }}>
+            <span aria-hidden="true">{cta.emoji}</span> {cta.label}
+            <span style={{ marginLeft: 8, fontSize: '0.68em', letterSpacing: '0.15em', padding: '2px 7px', borderRadius: 6, background: 'rgba(245,158,11,0.18)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.45)' }}>SOON</span>
+          </span>
+        ) : (
+          <a href={cta.href} className="hero-intro-cta">
+            <span aria-hidden="true">{cta.emoji}</span> {cta.label} <span aria-hidden="true">→</span>
+          </a>
+        )
       )}
     </div>
   );
 }
 
-export function HeroIntro3D()       { return introSlide(0, 15,  { emoji: '🧊', label: 'Start 3D Modelling', href: '/subjects/threed' }); }
-export function HeroIntroRobotics() { return introSlide(15, 30, { emoji: '🤖', label: 'Explore Robotics',  href: '/subjects/robotics' }); }
-export function HeroIntroAI()       { return introSlide(30, 45, { emoji: '🧠', label: 'Explore AI',        href: '/subjects/ai' }); }
-export function HeroIntroWeb()      { return introSlide(45, 60, { emoji: '💻', label: 'Explore Web Dev',   href: '/subjects/coding' }); }
+// Each subject's slide leads into its dedicated platform (3D is not built yet).
+export function HeroIntro3D()       { return introSlide(0, 15,  { emoji: '🧊', label: '3D Modelling', soon: true }); }
+export function HeroIntroRobotics() { return introSlide(15, 30, { emoji: '🤖', label: 'Open Maker Lab',  href: '/maker' }); }
+export function HeroIntroAI()       { return introSlide(30, 45, { emoji: '🧠', label: 'Open Neural Lab', href: '/neural' }); }
+export function HeroIntroWeb()      { return introSlide(45, 60, { emoji: '💻', label: 'Open Studio',      href: '/scratch' }); }

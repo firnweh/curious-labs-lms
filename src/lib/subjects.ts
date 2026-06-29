@@ -74,3 +74,14 @@ export const SUBJECT_MAP: Record<SubjectId, Subject> = Object.fromEntries(
 export function getSubject(id: string): Subject | undefined {
   return SUBJECT_MAP[id as SubjectId];
 }
+
+/**
+ * Where a subject's "explore" entry point leads — its dedicated platform.
+ * `null` = not launched yet (3D Modelling) → show a "coming soon" state.
+ */
+export const SUBJECT_PLATFORM: Record<SubjectId, string | null> = {
+  coding: "/scratch", // Studio
+  robotics: "/maker", // Maker Lab
+  ai: "/neural", // Neural Lab
+  threed: null, // coming soon
+};

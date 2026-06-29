@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Subject } from "@/lib/subjects";
+import { SUBJECT_PLATFORM, type Subject } from "@/lib/subjects";
 import type { ActivityMeta } from "@/lib/activities/types";
 import { useProgress } from "@/lib/progress";
 import { useSubjectTransition } from "@/components/SubjectTransition";
@@ -22,21 +22,13 @@ export function SubjectCard({
   const done = activities.filter((a) => isComplete(a.id)).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   const accent = subject.accent;
-  const href = `/subjects/${subject.id}`;
-  const style = { "--acc": accent, animationDelay: `${index * 70}ms` } as React.CSSProperties;
+  const dest = SUBJECT_PLATFORM[subject.id];
+  const soon = dest === null;
+  const style = { "--acc": accent, animationDelay: `${index * 70}ms`, ...(soon ? { opacity: 0.62, cursor: "default" } : null) } as React.CSSProperties;
+  const cardClass = "lab-card card-in group relative flex min-h-[210px] flex-col overflow-hidden rounded-2xl border border-line/60 bg-panel/40 p-6";
 
-  return (
-    <Link
-      href={href}
-      onClick={(e) => {
-        if (transition) {
-          e.preventDefault();
-          transition.go(subject.id, href);
-        }
-      }}
-      className="lab-card card-in group relative flex min-h-[210px] flex-col overflow-hidden rounded-2xl border border-line/60 bg-panel/40 p-6"
-      style={style}
-    >
+  const body = (
+    <>
       {/* living, per-track ambient backdrop (code rain / circuits / neural net / cube) */}
       <TrackCardFX subject={subject.id} accent={accent} />
       {/* accent top edge blooms on hover */}
@@ -54,7 +46,7 @@ export function SubjectCard({
           >
             {subject.emoji}
           </span>
-          {total > 0 && <Ring pct={pct} accent={accent} />}
+          {total > 0 && !soon && <Ring pct={pct} accent={accent} />}
         </div>
 
         <h3 className="mt-4 font-display text-xl font-bold text-ink">{subject.name}</h3>
@@ -64,15 +56,42 @@ export function SubjectCard({
         <p className="mt-2 flex-1 text-sm text-ink-dim">{subject.blurb}</p>
 
         <div className="mt-4 flex items-center justify-between font-mono text-[11px] tracking-tech text-ink-faint">
-          <span>{total === 0 ? "✨ NEW LABS SOON" : `${done}/${total} COMPLETE · ${total} LABS`}</span>
-          <span
-            className="flex items-center gap-1 font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-            style={{ color: accent }}
-          >
-            ENTER <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
-          </span>
+          <span>{soon ? "✨ LAUNCHING SOON" : total === 0 ? "✨ NEW LABS SOON" : `${done}/${total} COMPLETE · ${total} LABS`}</span>
+          {soon ? (
+            <span className="font-semibold" style={{ color: accent }}>SOON</span>
+          ) : (
+            <span
+              className="flex items-center gap-1 font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+              style={{ color: accent }}
+            >
+              ENTER <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
+            </span>
+          )}
         </div>
       </div>
+    </>
+  );
+
+  if (soon) {
+    return (
+      <div className={cardClass} style={style} aria-disabled="true" aria-label={`${subject.name} — coming soon`}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <Link
+      href={dest}
+      onClick={(e) => {
+        if (transition) {
+          e.preventDefault();
+          transition.go(subject.id, dest);
+        }
+      }}
+      className={cardClass}
+      style={style}
+    >
+      {body}
     </Link>
   );
 }
