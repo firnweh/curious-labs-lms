@@ -71,7 +71,7 @@ const NeuralWordmark = () => (
 );
 
 const StarShape = () => (
-  <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden>
+  <svg width="38" height="38" viewBox="0 0 24 24" aria-hidden>
     <path d="M12 1.4c.5 5.7 4.4 9.6 10.1 10.1-5.7.5-9.6 4.4-10.1 10.1-.5-5.7-4.4-9.6-10.1-10.1 5.7-.5 9.6-4.4 10.1-10.1z" fill="currentColor" />
   </svg>
 );
@@ -102,28 +102,28 @@ export function AILab() {
       {sel && Active ? (
         <div className="min-h-0 flex-1 overflow-auto p-4"><Active /></div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          <p className="mb-2 text-center font-mono text-[11px] text-[#5b6b8c]">✦ Tap a star to open its experiment</p>
-          <div
-            className="relative mx-auto h-[66vh] min-h-[480px] w-full max-w-[1000px] overflow-hidden rounded-2xl border border-[#1e2738]"
-            style={{ backgroundImage: "radial-gradient(ellipse 85% 65% at 50% 38%, #131d3e 0%, #0a1126 48%, #060912 100%)" }}
-          >
-            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {/* starfield */}
-              {BG.map((s, i) => (
-                <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nl-tw" style={{ animationDelay: `${s.d}s` }} />
-              ))}
-              {/* constellation lines */}
-              {LINES.map(([a, b], i) => {
-                const na = byId(a), nb = byId(b);
-                const lit = hover != null && (a === hover || b === hover);
-                return (
-                  <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={lit ? byId(hover!).accent : "#46557a"} strokeWidth={lit ? 1.4 : 1} vectorEffect="non-scaling-stroke" opacity={lit ? 0.85 : 0.32} strokeDasharray={lit ? "0" : "2 2"} />
-                );
-              })}
-            </svg>
+        <div
+          className="relative min-h-0 flex-1 overflow-hidden"
+          style={{ backgroundImage: "radial-gradient(ellipse 95% 75% at 50% 42%, #141f44 0%, #0a1126 50%, #060912 100%)" }}
+        >
+          <p className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 font-mono text-[11px] text-[#7c8baf]">✦ Tap a star to open its experiment</p>
 
-            {STARS.map((s, i) => {
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {/* starfield */}
+            {BG.map((s, i) => (
+              <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nl-tw" style={{ animationDelay: `${s.d}s` }} />
+            ))}
+            {/* constellation lines */}
+            {LINES.map(([a, b], i) => {
+              const na = byId(a), nb = byId(b);
+              const lit = hover != null && (a === hover || b === hover);
+              return (
+                <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={lit ? byId(hover!).accent : "#46557a"} strokeWidth={lit ? 1.4 : 1} vectorEffect="non-scaling-stroke" opacity={lit ? 0.85 : 0.32} strokeDasharray={lit ? "0" : "2 2"} />
+              );
+            })}
+          </svg>
+
+          {STARS.map((s, i) => {
               const isHot = hover === s.id;
               return (
                 <button
@@ -154,9 +154,8 @@ export function AILab() {
                 </button>
               );
             })}
-          </div>
 
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[9px] text-[#5b6b8c]">
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-1 px-3 font-mono text-[9px] text-[#5b6b8c]">
             {[["Foundations", "#34d399"], ["Grouping", "#a855f7"], ["Language", "#60a5fa"], ["Vision", "#22d3ee"], ["Creating", "#eab308"], ["Fairness", "#fb7185"]].map(([label, c]) => (
               <span key={label} className="flex items-center gap-1"><span className="inline-block h-2 w-2 rotate-45" style={{ background: c }} /> {label}</span>
             ))}
