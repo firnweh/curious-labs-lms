@@ -6,10 +6,10 @@ import { useMemo, useState } from "react";
 
 /**
  * Neural Lab — the AI platform shell (sibling of the coding Studio and Maker
- * Lab). Opens to a LAUNCHER GALLERY of experiment cards with a grade-band
- * filter; tapping a card opens that experiment full-screen, with "← All
- * experiments" to return. Each experiment is a self-contained component under
- * ./ai-lab, lazy-loaded on selection.
+ * Lab). Opens to a LAUNCHER GALLERY of experiment cards filtered by TOPIC (AI
+ * area) — never by grade, so it stays open to any learner. Each card carries a
+ * ⭐ difficulty hint instead of a grade. Tapping a card opens that experiment
+ * full-screen, with "← All experiments" to return.
  */
 
 const Loading = () => (
@@ -19,37 +19,43 @@ const Loading = () => (
 const COMP: Record<string, ReturnType<typeof dynamic>> = {
   awareness: dynamic(() => import("./ai-lab/awareness"), { ssr: false, loading: Loading }),
   classifier: dynamic(() => import("./ai-lab/classifier"), { ssr: false, loading: Loading }),
-  sentiment: dynamic(() => import("./ai-lab/sentiment"), { ssr: false, loading: Loading }),
-  vision: dynamic(() => import("./ai-lab/vision"), { ssr: false, loading: Loading }),
-  chatbot: dynamic(() => import("./ai-lab/chatbot"), { ssr: false, loading: Loading }),
   clustering: dynamic(() => import("./ai-lab/clustering"), { ssr: false, loading: Loading }),
-  ethics: dynamic(() => import("./ai-lab/ethics"), { ssr: false, loading: Loading }),
+  sentiment: dynamic(() => import("./ai-lab/sentiment"), { ssr: false, loading: Loading }),
+  chatbot: dynamic(() => import("./ai-lab/chatbot"), { ssr: false, loading: Loading }),
+  vision: dynamic(() => import("./ai-lab/vision"), { ssr: false, loading: Loading }),
   prompt: dynamic(() => import("./ai-lab/prompt"), { ssr: false, loading: Loading }),
+  ethics: dynamic(() => import("./ai-lab/ethics"), { ssr: false, loading: Loading }),
   evaluation: dynamic(() => import("./ai-lab/evaluation"), { ssr: false, loading: Loading }),
   recommend: dynamic(() => import("./ai-lab/recommend"), { ssr: false, loading: Loading }),
 };
 
-interface Exp { id: string; name: string; emoji: string; grades: string; lo: number; hi: number; concept: string; accent: string; blurb: string }
+// Topic = AI area. Order of TOPICS sets the gallery order.
+const TOPICS = [
+  { id: "foundations", label: "Foundations", emoji: "🧱" },
+  { id: "grouping", label: "Grouping", emoji: "🔮" },
+  { id: "language", label: "Language", emoji: "💬" },
+  { id: "vision", label: "Vision", emoji: "👀" },
+  { id: "creating", label: "Creating", emoji: "✨" },
+  { id: "fairness", label: "Fairness", emoji: "⚖️" },
+];
+const topicMeta = (id: string) => TOPICS.find((t) => t.id === id) ?? TOPICS[0];
+
+interface Exp { id: string; name: string; emoji: string; topic: string; diff: 1 | 2 | 3; concept: string; accent: string; blurb: string }
 
 const EXPERIMENTS: Exp[] = [
-  { id: "awareness", name: "AI or Not AI?", emoji: "🤖", grades: "1–3", lo: 1, hi: 3, concept: "AI awareness", accent: "#34d399", blurb: "Sort everyday things — smart AI, or just a plain tool?" },
-  { id: "classifier", name: "Train an AI", emoji: "🍎", grades: "4–7", lo: 4, hi: 7, concept: "Classification · Bias", accent: "#34d399", blurb: "Give examples, train a model, watch it learn — and spot bias." },
-  { id: "sentiment", name: "Mood Meter", emoji: "😀", grades: "5–7", lo: 5, hi: 7, concept: "NLP · sentiment", accent: "#eab308", blurb: "Teach an AI to read the mood of a message." },
-  { id: "vision", name: "Spot the Mistake", emoji: "👀", grades: "5–8", lo: 5, hi: 8, concept: "Computer vision", accent: "#22d3ee", blurb: "Work out why the AI saw the picture wrong." },
-  { id: "chatbot", name: "Chatbot Brain", emoji: "💬", grades: "6–8", lo: 6, hi: 8, concept: "NLP · intent", accent: "#60a5fa", blurb: "Build a chatbot that figures out what you're asking." },
-  { id: "clustering", name: "Group the Unknown", emoji: "🔮", grades: "6–9", lo: 6, hi: 9, concept: "Clustering", accent: "#a855f7", blurb: "Let the AI group things with no labels at all." },
-  { id: "ethics", name: "Who's Affected?", emoji: "⚖️", grades: "6–10", lo: 6, hi: 10, concept: "AI ethics", accent: "#22d3ee", blurb: "Weigh who an AI helps and who it could harm." },
-  { id: "prompt", name: "Prompt Lab", emoji: "✨", grades: "6–10", lo: 6, hi: 10, concept: "Generative AI", accent: "#34d399", blurb: "Craft prompts and catch the AI making things up." },
-  { id: "evaluation", name: "How Good Is It?", emoji: "📊", grades: "7–10", lo: 7, hi: 10, concept: "Model evaluation", accent: "#fb7185", blurb: "Score an AI — accuracy, precision, recall, and its mistakes." },
-  { id: "recommend", name: "Recommend-o-Bot", emoji: "▶️", grades: "7–10", lo: 7, hi: 10, concept: "Recommendations", accent: "#fb7185", blurb: "Run a video recommender and fall into a filter bubble." },
+  { id: "awareness", name: "AI or Not AI?", emoji: "🤖", topic: "foundations", diff: 1, concept: "AI awareness", accent: "#34d399", blurb: "Sort everyday things — smart AI, or just a plain tool?" },
+  { id: "classifier", name: "Train an AI", emoji: "🍎", topic: "grouping", diff: 2, concept: "Classification · Bias", accent: "#34d399", blurb: "Give examples, train a model, watch it learn — and spot bias." },
+  { id: "clustering", name: "Group the Unknown", emoji: "🔮", topic: "grouping", diff: 2, concept: "Clustering", accent: "#a855f7", blurb: "Let the AI group things with no labels at all." },
+  { id: "sentiment", name: "Mood Meter", emoji: "😀", topic: "language", diff: 2, concept: "NLP · sentiment", accent: "#eab308", blurb: "Teach an AI to read the mood of a message." },
+  { id: "chatbot", name: "Chatbot Brain", emoji: "💬", topic: "language", diff: 2, concept: "NLP · intent", accent: "#60a5fa", blurb: "Build a chatbot that figures out what you're asking." },
+  { id: "vision", name: "Spot the Mistake", emoji: "👀", topic: "vision", diff: 2, concept: "Computer vision", accent: "#22d3ee", blurb: "Work out why the AI saw the picture wrong." },
+  { id: "prompt", name: "Prompt Lab", emoji: "✨", topic: "creating", diff: 3, concept: "Generative AI", accent: "#34d399", blurb: "Craft prompts and catch the AI making things up." },
+  { id: "ethics", name: "Who's Affected?", emoji: "⚖️", topic: "fairness", diff: 3, concept: "AI ethics", accent: "#22d3ee", blurb: "Weigh who an AI helps and who it could harm." },
+  { id: "evaluation", name: "How Good Is It?", emoji: "📊", topic: "fairness", diff: 3, concept: "Model evaluation", accent: "#fb7185", blurb: "Score an AI — accuracy, precision, recall, and its mistakes." },
+  { id: "recommend", name: "Recommend-o-Bot", emoji: "▶️", topic: "fairness", diff: 3, concept: "Recommendations", accent: "#fb7185", blurb: "Run a video recommender and fall into a filter bubble." },
 ];
 
-const BANDS = [
-  { id: "all", label: "All", lo: 1, hi: 10 },
-  { id: "1-3", label: "Grades 1–3", lo: 1, hi: 3 },
-  { id: "4-6", label: "Grades 4–6", lo: 4, hi: 6 },
-  { id: "7-10", label: "Grades 7–10", lo: 7, hi: 10 },
-];
+const DIFF_LABEL = ["", "Starter", "Explorer", "Challenge"];
 
 const NeuralWordmark = () => (
   <>
@@ -66,17 +72,26 @@ const NeuralWordmark = () => (
   </>
 );
 
+function Stars({ n }: { n: 1 | 2 | 3 }) {
+  return (
+    <span className="font-mono text-[11px] tracking-tight" style={{ color: "#eab308" }} title={DIFF_LABEL[n]} aria-label={`Difficulty: ${DIFF_LABEL[n]}`}>
+      {"★".repeat(n)}
+      <span className="text-[#3a4255]">{"★".repeat(3 - n)}</span>
+    </span>
+  );
+}
+
 export function AILab() {
   const [sel, setSel] = useState<string | null>(null);
-  const [band, setBand] = useState("all");
+  const [topic, setTopic] = useState("all");
 
   const current = sel ? EXPERIMENTS.find((e) => e.id === sel) ?? null : null;
   const Active = sel ? COMP[sel] : null;
 
-  const shown = useMemo(() => {
-    const b = BANDS.find((x) => x.id === band)!;
-    return EXPERIMENTS.filter((e) => e.lo <= b.hi && e.hi >= b.lo);
-  }, [band]);
+  const shown = useMemo(
+    () => (topic === "all" ? EXPERIMENTS : EXPERIMENTS.filter((e) => e.topic === topic)),
+    [topic],
+  );
 
   return (
     <div className="flex h-full w-full flex-col" style={{ fontFamily: "system-ui, sans-serif" }}>
@@ -100,7 +115,7 @@ export function AILab() {
         )}
         <NeuralWordmark />
         <span className="hidden font-mono text-[11px] text-[#5b6b8c] sm:inline">
-          {current ? `// ${current.name}` : `// ${EXPERIMENTS.length} experiments · Grades 1–10`}
+          {current ? `// ${current.name}` : `// ${EXPERIMENTS.length} AI experiments`}
         </span>
       </header>
 
@@ -113,50 +128,50 @@ export function AILab() {
         /* Launcher gallery */
         <>
           <div className="flex flex-wrap gap-2 border-b border-[#1e2738] px-4 py-2.5">
-            {BANDS.map((bd) => {
-              const on = band === bd.id;
-              const count = EXPERIMENTS.filter((e) => e.lo <= bd.hi && e.hi >= bd.lo).length;
+            {[{ id: "all", label: "All", emoji: "✨" }, ...TOPICS].map((t) => {
+              const on = topic === t.id;
+              const count = t.id === "all" ? EXPERIMENTS.length : EXPERIMENTS.filter((e) => e.topic === t.id).length;
               return (
                 <button
-                  key={bd.id}
-                  onClick={() => setBand(bd.id)}
-                  className="shrink-0 rounded-xl border-2 px-3 py-1.5 font-mono text-xs transition-colors"
+                  key={t.id}
+                  onClick={() => setTopic(t.id)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 font-mono text-xs transition-colors"
                   style={{ borderColor: on ? "#34d399" : "#1e2738", background: on ? "#34d39922" : "transparent", color: on ? "#34d399" : "#9fb0d0" }}
                 >
-                  {bd.label} <span className="text-[#5b6b8c]">{count}</span>
+                  <span aria-hidden>{t.emoji}</span>
+                  {t.label}
+                  <span className="text-[#5b6b8c]">{count}</span>
                 </button>
               );
             })}
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-4">
-            <p className="mb-3 font-mono text-[11px] text-[#5b6b8c]">Pick an experiment to start ↓</p>
+            <p className="mb-3 font-mono text-[11px] text-[#5b6b8c]">Pick what interests you ↓</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {shown.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => setSel(e.id)}
-                  title={`${e.name} — ${e.concept}`}
-                  className="group flex flex-col gap-2 rounded-2xl border-2 border-[#1e2738] bg-[#0f1420] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--a)]"
-                  style={{ ["--a" as string]: e.accent }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span aria-hidden style={{ fontSize: 34, lineHeight: 1 }}>{e.emoji}</span>
-                    <span
-                      className="rounded-md px-2 py-0.5 font-mono text-[10px]"
-                      style={{ color: e.accent, background: `${e.accent}1a`, border: `1px solid ${e.accent}55` }}
-                    >
-                      Grades {e.grades}
+              {shown.map((e) => {
+                const tm = topicMeta(e.topic);
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => setSel(e.id)}
+                    title={`${e.name} — ${e.concept}`}
+                    className="group flex flex-col gap-2 rounded-2xl border-2 border-[#1e2738] bg-[#0f1420] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--a)]"
+                    style={{ ["--a" as string]: e.accent }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span aria-hidden style={{ fontSize: 34, lineHeight: 1 }}>{e.emoji}</span>
+                      <Stars n={e.diff} />
+                    </div>
+                    <span className="font-mono text-sm font-semibold text-[#e8eefc]">{e.name}</span>
+                    <span className="font-mono text-[11px] leading-relaxed text-[#9fb0d0]">{e.blurb}</span>
+                    <span className="mt-auto flex items-center gap-1 pt-1 font-mono text-[10px]" style={{ color: e.accent }}>
+                      <span aria-hidden>{tm.emoji}</span> {tm.label}
+                      <span className="translate-x-0 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100">→</span>
                     </span>
-                  </div>
-                  <span className="font-mono text-sm font-semibold text-[#e8eefc]">{e.name}</span>
-                  <span className="font-mono text-[11px] leading-relaxed text-[#9fb0d0]">{e.blurb}</span>
-                  <span className="mt-auto flex items-center gap-1 pt-1 font-mono text-[10px]" style={{ color: e.accent }}>
-                    {e.concept}
-                    <span className="translate-x-0 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100">→</span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </>
