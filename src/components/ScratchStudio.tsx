@@ -1128,6 +1128,8 @@ export function ScratchStudio() {
 
       {/* Cooler, vibier block palette (only present while the Studio is mounted) */}
       <style>{`
+        /* Partition the block palette from the editor canvas */
+        .blocklyToolbox { border-right: 2px solid rgba(76,151,255,0.4) !important; box-shadow: 1px 0 14px rgba(76,151,255,0.14); }
         .blocklyToolboxCategory { margin: 2px 5px; }
         .blocklyTreeRow { padding: 5px 8px !important; border-radius: 12px; transition: background .15s ease, transform .12s ease; }
         .blocklyToolboxCategory:hover > .blocklyTreeRow,
