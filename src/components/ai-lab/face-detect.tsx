@@ -68,6 +68,8 @@ export default function FaceFinder() {
   const [used, setUsed] = useState<Set<string>>(new Set(FILTERS[0] ? [FILTERS[0].id] : []));
   const [photo, setPhoto] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
+  const [everSaw, setEverSaw] = useState(false);
+  const [everShowAI, setEverShowAI] = useState(false);
 
   // Loop reads live values via refs so it never has to be re-created.
   const filterRef = useRef<Filter | null>(filter);
@@ -175,6 +177,9 @@ export default function FaceFinder() {
     });
   }, [filter, count, used, photo]);
 
+  useEffect(() => { if (count >= 1) setEverSaw(true); }, [count]);
+  useEffect(() => { if (showAI) setEverShowAI(true); }, [showAI]);
+
   const snap = useCallback(() => {
     const video = videoRef.current, overlay = canvasRef.current;
     if (!video || !overlay) return;
@@ -195,6 +200,14 @@ export default function FaceFinder() {
   const doneCount = Object.values(done).filter(Boolean).length;
   const allDone = doneCount === GOALS.length;
   const live = status === "on";
+
+  const LEARN = [
+    { id: "saw", icon: "👁️", text: "An AI found your face by its SHAPE — it doesn't know who you are.", got: everSaw },
+    { id: "keypts", icon: "🎯", text: "It locks onto keypoints — eyes, nose & mouth. Tap “Show the AI” to see the dots.", got: everShowAI },
+    { id: "filter", icon: "🎭", text: "An AR filter is just detection + a sticker glued to those keypoints.", got: !!done.wear },
+    { id: "live", icon: "⚡", text: "It tracks you live, frame by frame — all on your device, nothing uploaded.", got: !!done.snap },
+  ];
+  const learned = LEARN.filter((l) => l.got).length;
 
   return (
     <div className="mx-auto w-full max-w-[680px]" style={{ fontFamily: "system-ui, sans-serif", color: "#e8eefc" }}>
@@ -317,6 +330,19 @@ export default function FaceFinder() {
             </span>
           );
         })}
+      </div>
+
+      {/* What you learned — fills in as they play */}
+      <div className="mt-4 rounded-2xl border p-3" style={{ borderColor: learned ? `${ACCENT}55` : "#1e2738", background: "#0f1420" }}>
+        <p className="mb-2 font-mono text-[10px] tracking-wide" style={{ color: ACCENT }}>🧠 WHAT YOU LEARNED · {learned}/{LEARN.length}</p>
+        <div className="space-y-1.5">
+          {LEARN.map((l) => (
+            <div key={l.id} className="flex items-start gap-2 font-mono text-[11px] leading-relaxed transition-opacity duration-300" style={{ opacity: l.got ? 1 : 0.4 }}>
+              <span className="shrink-0">{l.got ? "✅" : "🔒"}</span>
+              <span style={{ color: l.got ? "#e8eefc" : "#9fb0d0" }}>{l.icon} {l.text}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <Footer accent={ACCENT}>
