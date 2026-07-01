@@ -4,7 +4,7 @@ import { AILab } from "@/components/AILab";
 export const metadata: Metadata = {
   title: "Neural Lab — Curious Labs",
   description:
-    "Neural Lab — train your own AI. Add example data, teach a model to tell things apart, watch it learn, test it, and discover bias across 8 hands-on experiments (Grades 1–10).",
+    "Neural Lab — train your own AI. Follow one learning journey from Novice to AI Mastery across 35 hands-on experiments laid out as a neural network (Grades 1–10).",
 };
 
 // Full-screen platform — a fixed overlay covers the global header/chrome so

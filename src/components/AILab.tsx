@@ -5,12 +5,13 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 /**
- * Neural Lab — the AI platform shell. Two ways in:
- *  • NETWORK — the original 10 concept labs as a LIVING NEURAL NETWORK (neurons
- *    in three layers, synapses firing left→right).
- *  • +25 EXPERIMENTS — the hands-on browser-AI sky: live camera, teachable
- *    models, speech & generative labs, shown as a filterable CONSTELLATION.
- * Every experiment is a self-contained component under ./ai-lab, lazy-loaded.
+ * Neural Lab — the AI platform shell. All 35 hands-on experiments live in one
+ * LEARNING JOURNEY laid out as a neural network: a Novice start node on the
+ * left, category-coloured activity nodes flowing left→right through Foundations
+ * → Training → Vision → Language → Creating → Fairness, and an AI Mastery output
+ * node on the right. A glowing path threads the journey; synapses fire between
+ * layers; hovering a node reveals what it does. Every experiment is a
+ * self-contained component under ./ai-lab, lazy-loaded on open.
  */
 
 const Loading = () => (
@@ -60,39 +61,83 @@ const COMP: Record<string, ReturnType<typeof dynamic>> = {
   "genai-chat": dynamic(() => import("./ai-lab/genai-chat"), { ssr: false, loading: Loading }),
 };
 
-/* ─────────────────────── ORIGINAL 10 — living neural network ─────────────────────── */
+/* ─────────────────────────── activities + categories ─────────────────────────── */
 
-type Layer = "input" | "hidden" | "output";
-interface Neuron { id: string; name: string; topic: string; layer: Layer; x: number; y: number; blurb: string }
+type Cat = "Foundations" | "Training" | "Vision" | "Language" | "Creating" | "Fairness";
+interface Activity { id: string; name: string; cat: Cat; blurb: string; core?: boolean }
 
-const TOPIC_COLOR: Record<string, string> = {
+const CAT_COLOR: Record<Cat, string> = {
   Foundations: "#34d399",
-  Grouping: "#a855f7",
-  Language: "#60a5fa",
+  Training: "#f97316",
   Vision: "#22d3ee",
+  Language: "#60a5fa",
   Creating: "#eab308",
   Fairness: "#fb7185",
 };
+const CAT_SUB: Record<Cat, string> = {
+  Foundations: "what AI is",
+  Training: "teach a model",
+  Vision: "AI that sees",
+  Language: "AI that talks",
+  Creating: "AI that makes",
+  Fairness: "judge & question",
+};
 
-// Input = how AI learns · Hidden = how AI applies itself · Output = how we judge it.
-const NEURONS: Neuron[] = [
-  { id: "awareness", name: "AI or Not AI?", topic: "Foundations", layer: "input", x: 15, y: 27, blurb: "Smart AI, or just a plain tool?" },
-  { id: "classifier", name: "Train an AI", topic: "Grouping", layer: "input", x: 15, y: 51, blurb: "Train a model — and spot its bias." },
-  { id: "clustering", name: "Group the Unknown", topic: "Grouping", layer: "input", x: 15, y: 75, blurb: "Group things with no labels." },
+// Journey order, core concept labs first in each stage, hands-on experiments after.
+const STAGE_IDS: Record<Cat, string[]> = {
+  Foundations: ["awareness"],
+  Training: ["classifier", "clustering", "number-classifier", "teach-image", "teach-object", "teach-pose", "teach-hand", "teach-audio"],
+  Vision: ["vision", "image-classify", "scene-describe", "object-detect", "face-detect", "face-mesh", "pose", "hand", "gesture", "opencv-filters", "junior-face", "qr-scan", "recognition-cards", "apriltag", "ocr"],
+  Language: ["sentiment", "chatbot", "speech-to-text", "text-to-speech", "translate", "text-classifier"],
+  Creating: ["prompt", "genai-chat"],
+  Fairness: ["ethics", "evaluation", "recommend"],
+};
 
-  { id: "sentiment", name: "Mood Meter", topic: "Language", layer: "hidden", x: 50, y: 21, blurb: "Read the mood of a message." },
-  { id: "chatbot", name: "Chatbot Brain", topic: "Language", layer: "hidden", x: 50, y: 43, blurb: "A bot that gets what you ask." },
-  { id: "vision", name: "Spot the Mistake", topic: "Vision", layer: "hidden", x: 50, y: 63, blurb: "Why the AI saw it wrong." },
-  { id: "prompt", name: "Prompt Lab", topic: "Creating", layer: "hidden", x: 50, y: 83, blurb: "Prompt it, catch it inventing." },
+const ACT: Record<string, Activity> = {};
+const add = (id: string, name: string, cat: Cat, blurb: string, core = false) => (ACT[id] = { id, name, cat, blurb, core });
+// Foundations
+add("awareness", "AI or Not AI?", "Foundations", "Smart AI, or just a plain tool?", true);
+// Training
+add("classifier", "Train an AI", "Training", "Train a model — and spot its bias.", true);
+add("clustering", "Group the Unknown", "Training", "Group things with no labels.", true);
+add("number-classifier", "Number Brain", "Training", "Classify & predict from numbers.");
+add("teach-image", "Train an Image Brain", "Training", "Teach it to tell images apart.");
+add("teach-object", "Sorting Robot", "Training", "Teach a waste-sorting robot.");
+add("teach-pose", "Pose Trainer", "Training", "Teach it your own poses.");
+add("teach-hand", "Gesture Trainer", "Training", "Teach it your own hand signs.");
+add("teach-audio", "Sound Trainer", "Training", "Teach it to tell sounds apart.");
+// Vision
+add("vision", "Spot the Mistake", "Vision", "Why the AI saw it wrong.", true);
+add("image-classify", "Image Labeler", "Vision", "Guess what the picture shows.");
+add("scene-describe", "Scene Describer", "Vision", "Snap a photo, get a caption.");
+add("object-detect", "Object Spotter", "Vision", "Find & box everyday objects.");
+add("face-detect", "Face Finder", "Vision", "Find faces live on camera.");
+add("face-mesh", "Face Mesh", "Vision", "478-point mesh + expressions.");
+add("pose", "Pose Tracker", "Vision", "Track your body as a skeleton.");
+add("hand", "Hand Tracker", "Vision", "Map 21 points of your hand.");
+add("gesture", "Gesture Reader", "Vision", "Name your hand gestures live.");
+add("opencv-filters", "Pixel Lab", "Vision", "Bend pixels with CV filters.");
+add("junior-face", "Peekaboo", "Vision", "Face peekaboo for little kids.");
+add("qr-scan", "QR Scanner", "Vision", "Decode QR codes live.");
+add("recognition-cards", "Sign Driver", "Vision", "Steer a robot with hand signs.");
+add("apriltag", "Robot Tags", "Vision", "How robots read marker tags.");
+add("ocr", "Text Reader", "Vision", "Read printed text (OCR).");
+// Language
+add("sentiment", "Mood Meter", "Language", "Read the mood of a message.", true);
+add("chatbot", "Chatbot Brain", "Language", "A bot that gets what you ask.", true);
+add("speech-to-text", "Speech to Text", "Language", "Turn your voice into text.");
+add("text-to-speech", "Text to Speech", "Language", "Make the computer talk.");
+add("translate", "Translator", "Language", "Translate across languages.");
+add("text-classifier", "Text Trainer", "Language", "Teach it to sort sentences.");
+// Creating
+add("prompt", "Prompt Lab", "Creating", "Prompt it, catch it inventing.", true);
+add("genai-chat", "Word Weaver", "Creating", "Generate text, word by word.");
+// Fairness
+add("ethics", "Who's Affected?", "Fairness", "Who it helps, who it harms.", true);
+add("evaluation", "How Good Is It?", "Fairness", "Accuracy, precision, recall.", true);
+add("recommend", "Recommend-o-Bot", "Fairness", "Fall into a filter bubble.", true);
 
-  { id: "ethics", name: "Who's Affected?", topic: "Fairness", layer: "output", x: 85, y: 29, blurb: "Who it helps, who it harms." },
-  { id: "evaluation", name: "How Good Is It?", topic: "Fairness", layer: "output", x: 85, y: 51, blurb: "Accuracy, precision, recall." },
-  { id: "recommend", name: "Recommend-o-Bot", topic: "Fairness", layer: "output", x: 85, y: 73, blurb: "Fall into a filter bubble." },
-];
-const nById = (id: string) => NEURONS.find((n) => n.id === id)!;
-
-// Inner SVG markup per experiment (24x24, line style inherited from the wrapper
-// <svg>; tiny dots opt into fill='currentColor'). Designed + verified per activity.
+// Line icons for the 10 core concept labs (24x24, stroke=currentColor).
 const ICON: Record<string, string> = {
   awareness: "<rect x='4' y='5' width='16' height='14' rx='3'/><line x1='12' y1='2.5' x2='12' y2='5'/><circle cx='12' cy='2.5' r='0.7' fill='currentColor' stroke='none'/><path d='M10 10.5 a2 2 0 1 1 2.6 1.9 c-0.6 0.25 -0.6 0.6 -0.6 1.1'/><circle cx='12' cy='15.6' r='0.7' fill='currentColor' stroke='none'/>",
   classifier: "<path d='M12 4v3'/><path d='M12 7c0 3 -5 3 -5 6'/><path d='M12 7c0 3 5 3 5 6'/><rect x='3' y='15' width='8' height='6' rx='1'/><rect x='13' y='15' width='8' height='6' rx='1'/><circle cx='12' cy='4' r='1.4' fill='currentColor' stroke='none'/>",
@@ -106,324 +151,260 @@ const ICON: Record<string, string> = {
   recommend: "<path d='M9 21V9l3.5-7C13.9 2 15 3.1 15 4.5V8h4.5c1.1 0 1.9 1 1.7 2.1l-1.4 8c-.2 1-1 1.4-1.8 1.4H9'/><path d='M9 21H5.5C4.7 21 4 20.3 4 19.5V12c0-.8.7-1.5 1.5-1.5H9'/>",
 };
 
-const inputN = NEURONS.filter((n) => n.layer === "input");
-const hiddenN = NEURONS.filter((n) => n.layer === "hidden");
-const outputN = NEURONS.filter((n) => n.layer === "output");
+/* ─────────────────────────── layout (deterministic) ─────────────────────────── */
 
-// Dense synapses: every input→hidden and every hidden→output (the classic net look).
-const SYNAPSES: { a: Neuron; b: Neuron }[] = [];
-inputN.forEach((a) => hiddenN.forEach((b) => SYNAPSES.push({ a, b })));
-hiddenN.forEach((a) => outputN.forEach((b) => SYNAPSES.push({ a, b })));
-
-// Pre-computed neighbours so hovering a neuron can light everything it wires to.
-const NEIGHBORS: Record<string, Set<string>> = {};
-NEURONS.forEach((n) => (NEIGHBORS[n.id] = new Set()));
-SYNAPSES.forEach(({ a, b }) => { NEIGHBORS[a.id].add(b.id); NEIGHBORS[b.id].add(a.id); });
-
-const LAYERS: { key: Layer; label: string; sub: string; x: number }[] = [
-  { key: "input", label: "INPUT", sub: "learn", x: 15 },
-  { key: "hidden", label: "HIDDEN", sub: "apply", x: 50 },
-  { key: "output", label: "OUTPUT", sub: "judge", x: 85 },
+const STAGES: { cat: Cat; cx: number }[] = [
+  { cat: "Foundations", cx: 13 },
+  { cat: "Training", cx: 27 },
+  { cat: "Vision", cx: 48 },
+  { cat: "Language", cx: 68 },
+  { cat: "Creating", cx: 80 },
+  { cat: "Fairness", cx: 90 },
 ];
+const NOVICE = { x: 4, y: 50 };
+const MASTERY = { x: 97, y: 50 };
 
-// Deterministic decorative starfield (no Math.random).
-const NN_BG = Array.from({ length: 50 }, (_, i) => ({
-  x: (i * 41) % 100,
-  y: (i * 67 + 9) % 100,
-  r: 0.18 + ((i * 13) % 6) / 18,
-  d: ((i * 7) % 32) / 10,
-}));
+const YTOP = 17, YBOT = 83, SP = 15;
+function place(ids: string[], cx: number): { id: string; x: number; y: number }[] {
+  const n = ids.length;
+  const cols = n <= 6 ? 1 : n <= 12 ? 2 : 3;
+  const perCol = Math.ceil(n / cols);
+  const colGap = 7;
+  const x0 = cx - ((cols - 1) * colGap) / 2;
+  return ids.map((id, i) => {
+    const col = Math.floor(i / perCol);
+    const inCol = i % perCol;
+    const colN = Math.min(perCol, n - col * perCol);
+    const step = Math.min(SP, (YBOT - YTOP) / Math.max(colN - 1, 1));
+    const y = colN === 1 ? 50 : 50 + (inCol - (colN - 1) / 2) * step;
+    return { id, x: x0 + col * colGap, y };
+  });
+}
 
-function NeuralNet({ onPick }: { onPick: (id: string) => void }) {
+const POS: Record<string, { x: number; y: number }> = {};
+STAGES.forEach((s) => place(STAGE_IDS[s.cat], s.cx).forEach((p) => (POS[p.id] = { x: p.x, y: p.y })));
+
+// Forward synapses: each node wires to its 2 nearest nodes in the next stage.
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+interface Edge { a: string; b: string; ax: number; ay: number; bx: number; by: number; color: string }
+const EDGES: Edge[] = [];
+const edge = (a: string, ap: { x: number; y: number }, b: string, bp: { x: number; y: number }) => {
+  const cat = ACT[a]?.cat;
+  const color = cat ? CAT_COLOR[cat] : "#34d399"; // synapses tinted by the source stage's category
+  EDGES.push({ a, b, ax: ap.x, ay: ap.y, bx: bp.x, by: bp.y, color });
+};
+STAGE_IDS[STAGES[0].cat].forEach((id) => edge("novice", NOVICE, id, POS[id]));
+for (let s = 0; s < STAGES.length - 1; s++) {
+  const A = STAGE_IDS[STAGES[s].cat], B = STAGE_IDS[STAGES[s + 1].cat];
+  A.forEach((aid) => {
+    const near = [...B].sort((x, y) => dist(POS[aid], POS[x]) - dist(POS[aid], POS[y])).slice(0, 3);
+    near.forEach((bid) => edge(aid, POS[aid], bid, POS[bid]));
+  });
+}
+STAGE_IDS[STAGES[STAGES.length - 1].cat].forEach((id) => edge(id, POS[id], "mastery", MASTERY));
+
+// neighbours (for hover lighting)
+const NEIGH: Record<string, Set<string>> = {};
+EDGES.forEach((e) => {
+  (NEIGH[e.a] ||= new Set()).add(e.b);
+  (NEIGH[e.b] ||= new Set()).add(e.a);
+});
+
+// Journey path — Novice → the mid node of each stage → AI Mastery.
+const midOf = (ids: string[]) => ids.map((id) => POS[id]).sort((a, b) => Math.abs(a.y - 50) - Math.abs(b.y - 50))[0];
+const WAY = [NOVICE, ...STAGES.map((s) => midOf(STAGE_IDS[s.cat])), MASTERY];
+function smooth(pts: { x: number; y: number }[]) {
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+const JOURNEY = smooth(WAY);
+
+const NAME: Record<string, string> = {};
+Object.values(ACT).forEach((a) => (NAME[a.id] = a.name));
+const TOTAL = Object.keys(ACT).length;
+
+// deterministic starfield
+const BG = Array.from({ length: 60 }, (_, i) => ({ x: (i * 41) % 100, y: (i * 67 + 9) % 100, r: 0.16 + ((i * 13) % 6) / 20, d: ((i * 7) % 32) / 10 }));
+
+/* ─────────────────────────── the journey view ─────────────────────────── */
+
+function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
   const [hover, setHover] = useState<string | null>(null);
-  const hotColor = hover ? TOPIC_COLOR[nById(hover).topic] : null;
+  const hoverCat = hover && ACT[hover] ? ACT[hover].cat : null;
+  const hotColor = hoverCat ? CAT_COLOR[hoverCat] : "#eab308";
+
+  const nodeList = STAGES.flatMap((s) => STAGE_IDS[s.cat]);
 
   return (
     <div
       className="relative min-h-0 flex-1 overflow-hidden"
-      style={{ backgroundImage: "radial-gradient(ellipse 95% 80% at 50% 45%, #131d40 0%, #0a1126 52%, #060912 100%)" }}
+      style={{ backgroundImage: "radial-gradient(ellipse 100% 85% at 50% 45%, #131d40 0%, #0a1126 52%, #060912 100%)" }}
     >
-      <p className="pointer-events-none absolute left-1/2 top-2.5 z-30 -translate-x-1/2 font-mono text-[11px] text-[#7c8baf]">⚡ Tap a neuron to fire its experiment</p>
+      <p className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 text-center font-mono text-[11px] text-[#7c8baf]">
+        ⚡ Follow the path from <span style={{ color: "#34d399" }}>Novice</span> to <span style={{ color: "#facc15" }}>AI Mastery</span> — tap any node to open it
+      </p>
 
-      {/* layer headers */}
-      {LAYERS.map((l) => (
-        <div key={l.key} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${l.x}%`, top: "9%" }}>
-          <div className="font-mono text-[11px] font-bold tracking-[0.25em] text-[#9fb0d0]">{l.label}</div>
-          <div className="font-mono text-[9px] tracking-[0.2em]" style={{ color: "#566a90" }}>{l.sub}</div>
+      {/* category headers */}
+      {STAGES.map((s) => (
+        <div key={s.cat} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${s.cx}%`, top: "8.5%" }}>
+          <div className="font-mono text-[11px] font-bold tracking-[0.18em]" style={{ color: CAT_COLOR[s.cat] }}>{s.cat.toUpperCase()}</div>
+          <div className="font-mono text-[8.5px] tracking-[0.14em] text-[#566a90]">{CAT_SUB[s.cat]}</div>
         </div>
       ))}
 
-      {/* synapses + starfield */}
+      {/* svg: starfield · synapses · journey path */}
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {NN_BG.map((s, i) => (
-          <circle key={`bg${i}`} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nn-tw" style={{ animationDelay: `${s.d}s` }} />
+        {BG.map((s, i) => (
+          <circle key={`bg${i}`} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nj-tw" style={{ animationDelay: `${s.d}s` }} />
         ))}
-        {SYNAPSES.map((s, i) => {
-          const lit = hover != null && (s.a.id === hover || s.b.id === hover);
+        {EDGES.map((e, i) => {
+          const lit = hover != null && (e.a === hover || e.b === hover);
           return (
             <g key={i}>
+              {/* solid synapse — tinted by source category so the net reads as colour-coded layers */}
               <line
-                x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y}
-                stroke={lit ? hotColor! : "#33436b"} strokeWidth={lit ? 1 : 0.5}
+                x1={e.ax} y1={e.ay} x2={e.bx} y2={e.by}
+                stroke={lit ? hotColor : e.color} strokeWidth={lit ? 1.5 : 0.7}
                 vectorEffect="non-scaling-stroke"
-                opacity={lit ? 0.85 : hover ? 0.12 : 0.3}
+                opacity={lit ? 0.95 : hover ? 0.07 : 0.42}
               />
+              {/* firing pulse travelling along the synapse */}
               <line
-                x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y}
-                stroke={lit ? "#ffffff" : "#5b78b8"} strokeWidth={lit ? 1.6 : 1}
-                strokeLinecap="round" strokeDasharray="1.5 8"
-                vectorEffect="non-scaling-stroke"
-                className="nn-flow"
-                style={{ animationDuration: lit ? "0.7s" : "1.7s", opacity: lit ? 1 : hover ? 0.08 : 0.55 }}
+                x1={e.ax} y1={e.ay} x2={e.bx} y2={e.by}
+                stroke={lit ? "#ffffff" : "#aebbe0"} strokeWidth={lit ? 1.3 : 0.9}
+                strokeLinecap="round" strokeDasharray="0.7 6"
+                vectorEffect="non-scaling-stroke" className="nj-flow"
+                opacity={lit ? 1 : hover ? 0.04 : 0.5}
+                style={{ animationDelay: `${(i % 8) * 0.18}s` }}
               />
             </g>
           );
         })}
+        {/* journey path — glow + core + animated flow */}
+        <path d={JOURNEY} fill="none" stroke="#facc15" strokeWidth={7} strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={hover ? 0.1 : 0.16} style={{ filter: "blur(1px)" }} />
+        <path d={JOURNEY} fill="none" stroke="#f5c542" strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={hover ? 0.3 : 0.75} />
+        <path d={JOURNEY} fill="none" stroke="#fff7d6" strokeWidth={1.6} strokeLinecap="round" strokeDasharray="0.6 7" vectorEffect="non-scaling-stroke" className="nj-flow" opacity={hover ? 0.3 : 0.9} />
       </svg>
 
-      {/* neurons */}
-      {NEURONS.map((n, i) => {
-        const color = TOPIC_COLOR[n.topic];
-        const isHot = hover === n.id;
-        const lit = hover != null && (hover === n.id || NEIGHBORS[hover]?.has(n.id));
+      {/* Novice + Mastery milestones */}
+      <Milestone x={NOVICE.x} y={NOVICE.y} color="#34d399" title="NOVICE" sub="start here" glyph="🌱" side="right" dim={hover != null} />
+      <Milestone x={MASTERY.x} y={MASTERY.y} color="#facc15" title="AI MASTERY" sub="you made it!" glyph="🏆" side="left" dim={hover != null} />
+
+      {/* activity nodes */}
+      {nodeList.map((id, i) => {
+        const a = ACT[id];
+        const p = POS[id];
+        const color = CAT_COLOR[a.cat];
+        const isHot = hover === id;
+        const lit = hover != null && (isHot || NEIGH[hover]?.has(id));
         const dim = hover != null && !lit;
+        const above = p.y > 56;
+        const sz = a.core ? 38 : 28;
         return (
           <button
-            key={n.id}
-            onClick={() => onPick(n.id)}
-            onMouseEnter={() => setHover(n.id)}
+            key={id}
+            onClick={() => onPick(id)}
+            onMouseEnter={() => setHover(id)}
             onMouseLeave={() => setHover(null)}
-            onFocus={() => setHover(n.id)}
+            onFocus={() => setHover(id)}
             onBlur={() => setHover(null)}
-            title={`${n.name} — ${n.topic}`}
+            title={`${a.name} — ${a.cat}`}
             className="absolute flex flex-col items-center transition-all duration-200"
-            style={{ left: `${n.x}%`, top: `${n.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.22 : 1})`, zIndex: isHot ? 40 : 12, opacity: dim ? 0.45 : 1 }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.28 : 1})`, zIndex: isHot ? 45 : 12, opacity: dim ? 0.4 : 1 }}
           >
             <span
-              className="nn-node grid place-items-center rounded-full"
+              className="nj-node grid place-items-center rounded-full"
               style={{
-                width: 40, height: 40,
-                background: "radial-gradient(circle at 50% 32%, #16263f, #070d18 80%)",
+                width: sz, height: sz,
+                background: "radial-gradient(circle at 50% 32%, #16263f, #070d18 82%)",
                 border: `2px solid ${color}`,
-                boxShadow: `0 0 ${isHot ? 24 : lit ? 15 : 9}px ${isHot ? color : color + "cc"}, inset 0 0 9px ${color}44`,
+                boxShadow: `0 0 ${isHot ? 22 : lit ? 14 : 8}px ${isHot ? color : color + "cc"}, inset 0 0 8px ${color}44`,
                 color: "#eef4ff",
-                animationDelay: `${(i % 5) * 0.5}s`,
+                animationDelay: `${(i % 6) * 0.45}s`,
               }}
             >
-              <svg
-                viewBox="0 0 24 24" width="22" height="22"
-                fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                style={{ filter: `drop-shadow(0 0 3px ${color})` }}
-                dangerouslySetInnerHTML={{ __html: ICON[n.id] }}
-              />
+              {a.core ? (
+                <svg
+                  viewBox="0 0 24 24" width={sz > 34 ? 21 : 16} height={sz > 34 ? 21 : 16}
+                  fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                  style={{ filter: `drop-shadow(0 0 3px ${color})` }}
+                  dangerouslySetInnerHTML={{ __html: ICON[id] }}
+                />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ color, filter: `drop-shadow(0 0 3px ${color})` }}>
+                  <path d="M12 1.4c.5 5.7 4.4 9.6 10.1 10.1-5.7.5-9.6 4.4-10.1 10.1-.5-5.7-4.4-9.6-10.1-10.1 5.7-.5 9.6-4.4 10.1-10.1z" fill="currentColor" />
+                </svg>
+              )}
             </span>
             <span
-              className="mt-1 max-w-[124px] text-center font-mono text-[10px] leading-tight transition-colors"
-              style={{ color: isHot || lit ? color : "#8a96b4" }}
+              className="mt-1 max-w-[92px] text-center font-mono text-[9px] leading-tight transition-colors"
+              style={{ color: isHot || lit ? color : "#7f8dad" }}
             >
-              {n.name}
+              {a.name}
             </span>
             {isHot && (
-              <span className="pointer-events-none absolute top-full z-50 mt-1 w-[150px] rounded-lg border px-2 py-1 text-center font-mono text-[9px]" style={{ borderColor: `${color}66`, background: "#0b1018ee", color: "#aebbd9" }}>
-                {n.blurb}
+              <span
+                className="pointer-events-none absolute left-1/2 z-50 w-[168px] -translate-x-1/2 rounded-lg border px-2.5 py-1.5 text-center font-mono"
+                style={{ borderColor: `${color}66`, background: "#0b1018f2", color: "#cdd8f0", [above ? "bottom" : "top"]: "100%", [above ? "marginBottom" : "marginTop"]: 8 } as React.CSSProperties}
+              >
+                <span className="block text-[10px] font-bold" style={{ color }}>{a.name}</span>
+                <span className="mt-0.5 block text-[9px] leading-snug text-[#9fb0d0]">{a.blurb}</span>
+                <span className="mt-1 block text-[8px] uppercase tracking-[0.15em] text-[#5b6b8c]">{a.cat} · {a.core ? "concept lab" : "hands-on"}</span>
               </span>
             )}
           </button>
         );
       })}
 
-      {/* topic legend */}
-      <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-1 px-3 font-mono text-[9px] text-[#5b6b8c]">
-        {Object.entries(TOPIC_COLOR).map(([label, c]) => (
-          <span key={label} className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} /> {label}</span>
+      {/* legend */}
+      <div className="pointer-events-none absolute bottom-2.5 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-3 font-mono text-[9px] text-[#5b6b8c]">
+        {(Object.keys(CAT_COLOR) as Cat[]).map((c) => (
+          <span key={c} className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: CAT_COLOR[c], boxShadow: `0 0 5px ${CAT_COLOR[c]}` }} />
+            {c} ({STAGE_IDS[c].length})
+          </span>
         ))}
       </div>
 
       <style>{`
-        @keyframes nnTw { 0%,100%{ opacity:.16 } 50%{ opacity:.66 } }
-        .nn-tw { animation: nnTw 3s ease-in-out infinite; }
-        @keyframes nnFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -9.5; } }
-        .nn-flow { animation: nnFlow 1.7s linear infinite; }
-        @keyframes nnBreathe { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.09); } }
-        .nn-node { animation: nnBreathe 3.6s ease-in-out infinite; }
+        @keyframes njTw { 0%,100%{ opacity:.16 } 50%{ opacity:.62 } }
+        .nj-tw { animation: njTw 3s ease-in-out infinite; }
+        @keyframes njFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -7.6; } }
+        .nj-flow { animation: njFlow 1.5s linear infinite; }
+        @keyframes njBreathe { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.07); } }
+        .nj-node { animation: njBreathe 3.6s ease-in-out infinite; }
       `}</style>
     </div>
   );
 }
 
-/* ──────────────────── +25 HANDS-ON EXPERIMENTS — constellation sky ──────────────────── */
-
-interface Star { id: string; name: string; topic: string; x: number; y: number; accent: string; blurb: string }
-const EXTRA_STARS: Star[] = [
-  // Training (teachable models)
-  { id: "teach-image", name: "Train an Image Brain", topic: "Training", x: 7, y: 66, accent: "#f97316", blurb: "Teach it to tell images apart." },
-  { id: "teach-object", name: "Sorting Robot", topic: "Training", x: 18, y: 77, accent: "#f97316", blurb: "Teach a waste-sorting robot." },
-  { id: "teach-pose", name: "Pose Trainer", topic: "Training", x: 8, y: 89, accent: "#f97316", blurb: "Teach it your own poses." },
-  { id: "teach-hand", name: "Gesture Trainer", topic: "Training", x: 21, y: 90, accent: "#f97316", blurb: "Teach it your own hand signs." },
-  { id: "teach-audio", name: "Sound Trainer", topic: "Training", x: 31, y: 80, accent: "#f97316", blurb: "Teach it to tell sounds apart." },
-  { id: "number-classifier", name: "Number Brain", topic: "Training", x: 30, y: 66, accent: "#f97316", blurb: "Classify & predict from numbers." },
-  // Vision (live camera + classic CV)
-  { id: "face-detect", name: "Face Finder", topic: "Vision", x: 51, y: 13, accent: "#22d3ee", blurb: "Find faces live on camera." },
-  { id: "face-mesh", name: "Face Mesh", topic: "Vision", x: 61, y: 18, accent: "#22d3ee", blurb: "478-point mesh + expressions." },
-  { id: "object-detect", name: "Object Spotter", topic: "Vision", x: 69, y: 13, accent: "#22d3ee", blurb: "Find & box everyday objects." },
-  { id: "image-classify", name: "Image Labeler", topic: "Vision", x: 45, y: 32, accent: "#22d3ee", blurb: "Guess what the picture shows." },
-  { id: "scene-describe", name: "Scene Describer", topic: "Vision", x: 56, y: 38, accent: "#22d3ee", blurb: "Snap a photo, get a caption." },
-  { id: "pose", name: "Pose Tracker", topic: "Vision", x: 67, y: 33, accent: "#22d3ee", blurb: "Track your body as a skeleton." },
-  { id: "hand", name: "Hand Tracker", topic: "Vision", x: 43, y: 49, accent: "#22d3ee", blurb: "Map 21 points of your hand." },
-  { id: "gesture", name: "Gesture Reader", topic: "Vision", x: 54, y: 55, accent: "#22d3ee", blurb: "Name your hand gestures live." },
-  { id: "opencv-filters", name: "Pixel Lab", topic: "Vision", x: 65, y: 49, accent: "#22d3ee", blurb: "Bend pixels with CV filters." },
-  { id: "junior-face", name: "Peekaboo", topic: "Vision", x: 40, y: 65, accent: "#22d3ee", blurb: "Face peekaboo for little kids." },
-  { id: "qr-scan", name: "QR Scanner", topic: "Vision", x: 50, y: 72, accent: "#22d3ee", blurb: "Decode QR codes live." },
-  { id: "recognition-cards", name: "Sign Driver", topic: "Vision", x: 60, y: 67, accent: "#22d3ee", blurb: "Steer a robot with hand signs." },
-  { id: "apriltag", name: "Robot Tags", topic: "Vision", x: 70, y: 60, accent: "#22d3ee", blurb: "How robots read marker tags." },
-  { id: "ocr", name: "Text Reader", topic: "Vision", x: 48, y: 88, accent: "#22d3ee", blurb: "Read printed text (OCR)." },
-  // Language (speech & text)
-  { id: "speech-to-text", name: "Speech to Text", topic: "Language", x: 84, y: 35, accent: "#60a5fa", blurb: "Turn your voice into text." },
-  { id: "text-to-speech", name: "Text to Speech", topic: "Language", x: 93, y: 43, accent: "#60a5fa", blurb: "Make the computer talk." },
-  { id: "translate", name: "Translator", topic: "Language", x: 83, y: 52, accent: "#60a5fa", blurb: "Translate across languages." },
-  { id: "text-classifier", name: "Text Trainer", topic: "Language", x: 92, y: 61, accent: "#60a5fa", blurb: "Teach it to sort sentences." },
-  // Creating (generative)
-  { id: "genai-chat", name: "Word Weaver", topic: "Creating", x: 78, y: 79, accent: "#eab308", blurb: "Generate text, word by word." },
-];
-const sById = (id: string) => EXTRA_STARS.find((s) => s.id === id)!;
-
-const EXTRA_TOPICS: [string, string][] = [
-  ["Training", "#f97316"],
-  ["Vision", "#22d3ee"],
-  ["Language", "#60a5fa"],
-  ["Creating", "#eab308"],
-];
-
-// Constellation lines join stars WITHIN a topic (both ends are new experiments).
-const EXTRA_LINES: [string, string][] = [
-  ["teach-image", "teach-object"], ["teach-pose", "teach-hand"], ["teach-audio", "number-classifier"], ["teach-object", "teach-audio"],
-  ["face-detect", "face-mesh"], ["face-mesh", "object-detect"], ["image-classify", "scene-describe"], ["scene-describe", "pose"],
-  ["hand", "gesture"], ["gesture", "opencv-filters"], ["junior-face", "qr-scan"], ["qr-scan", "recognition-cards"], ["recognition-cards", "apriltag"],
-  ["speech-to-text", "text-to-speech"], ["translate", "text-classifier"],
-];
-
-// Deterministic decorative starfield (no Math.random).
-const SKY_BG = Array.from({ length: 70 }, (_, i) => ({
-  x: (i * 37) % 100,
-  y: (i * 61 + 11) % 100,
-  r: 0.18 + ((i * 13) % 6) / 16,
-  d: ((i * 7) % 32) / 10,
-}));
-
-const StarShape = () => (
-  <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden>
-    <path d="M12 1.4c.5 5.7 4.4 9.6 10.1 10.1-5.7.5-9.6 4.4-10.1 10.1-.5-5.7-4.4-9.6-10.1-10.1 5.7-.5 9.6-4.4 10.1-10.1z" fill="currentColor" />
-  </svg>
-);
-
-function MoreSky({ onPick }: { onPick: (id: string) => void }) {
-  const [hover, setHover] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string | null>(null);
-
-  const visible = (id: string) => filter === null || sById(id).topic === filter;
-  const shown = EXTRA_STARS.filter((s) => visible(s.id));
-
+function Milestone({ x, y, color, title, sub, glyph, side, dim }: { x: number; y: number; color: string; title: string; sub: string; glyph: string; side: "left" | "right"; dim: boolean }) {
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4">
-      <p className="mb-2 text-center font-mono text-[11px] text-[#5b6b8c]">
-        ✦ {filter ? `${shown.length} ${filter} experiments — tap a star` : "Tap a star to open it · hover to see what it does"}
-      </p>
-      <div
-        className="relative mx-auto h-[68vh] min-h-[520px] w-full max-w-[1040px] overflow-hidden rounded-2xl border border-[#1e2738]"
-        style={{ backgroundImage: "radial-gradient(ellipse 85% 65% at 50% 38%, #131d3e 0%, #0a1126 48%, #060912 100%)" }}
+    <div className="pointer-events-none absolute z-30 flex flex-col items-center" style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%,-50%)", opacity: dim ? 0.6 : 1, transition: "opacity .2s" }}>
+      <span
+        className="nj-node grid place-items-center rounded-full text-2xl"
+        style={{ width: 56, height: 56, background: "radial-gradient(circle at 50% 30%, #16263f, #070d18 82%)", border: `2.5px solid ${color}`, boxShadow: `0 0 24px ${color}, inset 0 0 12px ${color}55` }}
       >
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {SKY_BG.map((s, i) => (
-            <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nl-tw" style={{ animationDelay: `${s.d}s` }} />
-          ))}
-          {EXTRA_LINES.filter(([a, b]) => visible(a) && visible(b)).map(([a, b], i) => {
-            const na = sById(a), nb = sById(b);
-            const lit = hover != null && (a === hover || b === hover);
-            return (
-              <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={lit ? sById(hover!).accent : "#46557a"} strokeWidth={lit ? 1.4 : 1} vectorEffect="non-scaling-stroke" opacity={lit ? 0.85 : 0.3} strokeDasharray={lit ? "0" : "2 2"} />
-            );
-          })}
-        </svg>
-
-        {shown.map((s, i) => {
-          const isHot = hover === s.id;
-          const showLabel = filter !== null || isHot;
-          return (
-            <button
-              key={s.id}
-              onClick={() => onPick(s.id)}
-              onMouseEnter={() => setHover(s.id)}
-              onMouseLeave={() => setHover(null)}
-              onFocus={() => setHover(s.id)}
-              onBlur={() => setHover(null)}
-              title={`${s.name} — ${s.topic}`}
-              className="absolute flex flex-col items-center transition-transform duration-200"
-              style={{ left: `${s.x}%`, top: `${s.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.3 : 1})`, zIndex: isHot ? 20 : 10 }}
-            >
-              <span
-                className="nl-star grid place-items-center transition-all duration-200"
-                style={{ color: s.accent, filter: `drop-shadow(0 0 ${isHot ? 12 : 5}px ${s.accent})`, animationDelay: `${(i % 5) * 0.5}s` }}
-              >
-                <StarShape />
-              </span>
-              {showLabel && (
-                <span className="mt-0.5 max-w-[120px] text-center font-mono text-[10px] leading-tight" style={{ color: s.accent }}>
-                  {s.name}
-                </span>
-              )}
-              {isHot && (
-                <span className="pointer-events-none absolute top-full z-30 mt-4 w-[140px] rounded-lg border px-2 py-1 text-center font-mono text-[9px]" style={{ borderColor: `${s.accent}55`, background: "#0b1018ee", color: "#9fb0d0" }}>
-                  {s.blurb}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {glyph}
+      </span>
+      <div className="mt-1 text-center" style={{ minWidth: 74 }}>
+        <div className="font-mono text-[11px] font-bold tracking-[0.14em]" style={{ color }}>{title}</div>
+        <div className="font-mono text-[8.5px] text-[#7c8baf]">{sub}</div>
       </div>
-
-      {/* Topic legend doubles as a filter */}
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-mono text-[9px]">
-        <button
-          type="button"
-          onClick={() => setFilter(null)}
-          className="rounded-full border px-2.5 py-1 transition-colors"
-          style={{ borderColor: filter === null ? "#cdd6f4" : "#2a3550", color: filter === null ? "#e8eefc" : "#5b6b8c" }}
-        >
-          ✦ All ({EXTRA_STARS.length})
-        </button>
-        {EXTRA_TOPICS.map(([label, c]) => {
-          const on = filter === label;
-          const n = EXTRA_STARS.filter((s) => s.topic === label).length;
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={() => setFilter(on ? null : label)}
-              className="flex items-center gap-1 rounded-full border px-2.5 py-1 transition-colors"
-              style={{ borderColor: on ? c : "#2a3550", color: on ? c : "#5b6b8c" }}
-            >
-              <span className="inline-block h-2 w-2 rotate-45" style={{ background: c }} /> {label} ({n})
-            </button>
-          );
-        })}
-      </div>
-
-      <style>{`
-        @keyframes nlTw { 0%,100%{ opacity:.2 } 50%{ opacity:.75 } }
-        .nl-tw { animation: nlTw 3s ease-in-out infinite; }
-        @keyframes nlStar { 0%,100%{ opacity:.85; transform: scale(1) } 50%{ opacity:1; transform: scale(1.1) } }
-        .nl-star { animation: nlStar 3.6s ease-in-out infinite; }
-      `}</style>
+      <span aria-hidden className="absolute top-1/2 -translate-y-1/2 font-mono text-lg" style={{ color, [side]: -18, opacity: 0.7 } as React.CSSProperties}>
+        {side === "right" ? "»" : "«"}
+      </span>
     </div>
   );
 }
 
 /* ─────────────────────────────────────── shell ─────────────────────────────────────── */
-
-// Name lookup across all 35 experiments (for the header label).
-const NAME: Record<string, string> = {};
-NEURONS.forEach((n) => (NAME[n.id] = n.name));
-EXTRA_STARS.forEach((s) => (NAME[s.id] = s.name));
 
 const NeuralWordmark = () => (
   <>
@@ -436,29 +417,14 @@ const NeuralWordmark = () => (
 
 export function AILab() {
   const [sel, setSel] = useState<string | null>(null);
-  const [view, setView] = useState<"network" | "more">("network");
-
   const Active = sel ? COMP[sel] : null;
-  const tab = (key: "network" | "more", label: string) => {
-    const on = view === key;
-    return (
-      <button
-        type="button"
-        onClick={() => setView(key)}
-        className="rounded-lg border px-2.5 py-1 font-mono text-[11px] transition-colors"
-        style={{ borderColor: on ? "#34d399" : "#2a3550", background: on ? "#0f1f1a" : "#0f1626", color: on ? "#34d399" : "#7c8baf" }}
-      >
-        {label}
-      </button>
-    );
-  };
 
   return (
     <div className="flex h-full w-full flex-col" style={{ fontFamily: "system-ui, sans-serif" }}>
       <header className="flex items-center gap-3 border-b border-[#1e2738] px-4 py-2.5">
         {sel ? (
           <button onClick={() => setSel(null)} className="flex items-center gap-1 rounded-lg border border-[#2a3550] bg-[#0f1626] px-2.5 py-1 font-mono text-xs text-[#9fb0d0] transition-colors hover:border-[#34d399] hover:text-[#34d399]">
-            ← {view === "more" ? "Sky" : "Network"}
+            ← Journey
           </button>
         ) : (
           <Link href="/" title="Leave Neural Lab" className="flex items-center gap-1 rounded-lg border border-[#2a3550] bg-[#0f1626] px-2.5 py-1 font-mono text-xs text-[#9fb0d0] transition-colors hover:border-[#34d399] hover:text-[#34d399]">
@@ -467,22 +433,14 @@ export function AILab() {
         )}
         <NeuralWordmark />
         <span className="hidden font-mono text-[11px] text-[#5b6b8c] sm:inline">
-          {sel ? `// ${NAME[sel]}` : view === "more" ? `// experiment sky · ${EXTRA_STARS.length} experiments` : `// neural net · ${NEURONS.length} core labs`}
+          {sel ? `// ${NAME[sel]}` : `// learning journey · ${TOTAL} experiments`}
         </span>
-        {!sel && (
-          <div className="ml-auto flex items-center gap-1.5">
-            {tab("network", `Network · ${NEURONS.length}`)}
-            {tab("more", `+${EXTRA_STARS.length} Experiments`)}
-          </div>
-        )}
       </header>
 
       {sel && Active ? (
         <div className="min-h-0 flex-1 overflow-auto p-4"><Active /></div>
-      ) : view === "network" ? (
-        <NeuralNet onPick={setSel} />
       ) : (
-        <MoreSky onPick={setSel} />
+        <NeuralJourney onPick={setSel} />
       )}
     </div>
   );
