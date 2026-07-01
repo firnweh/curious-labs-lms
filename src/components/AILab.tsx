@@ -149,6 +149,31 @@ const ICON: Record<string, string> = {
   ethics: "<circle cx='12' cy='4' r='1.6' fill='currentColor' stroke='none'/><path d='M12 5.6V20'/><path d='M6 20h12'/><path d='M5 8h14'/><path d='M5 8l-2.5 5a2.5 2.5 0 0 0 5 0L5 8z'/><path d='M19 8l-2.5 5a2.5 2.5 0 0 0 5 0L19 8z'/>",
   evaluation: "<circle cx='11' cy='11' r='8'/><circle cx='11' cy='11' r='4'/><circle cx='11' cy='11' r='1.25' fill='currentColor' stroke='none'/><path d='M14 16.5 L16.5 19 L20 14'/>",
   recommend: "<path d='M9 21V9l3.5-7C13.9 2 15 3.1 15 4.5V8h4.5c1.1 0 1.9 1 1.7 2.1l-1.4 8c-.2 1-1 1.4-1.8 1.4H9'/><path d='M9 21H5.5C4.7 21 4 20.3 4 19.5V12c0-.8.7-1.5 1.5-1.5H9'/>",
+  "number-classifier": "<rect x='3' y='4' width='5' height='5' rx='1'/><rect x='9.5' y='4' width='5' height='5' rx='1'/><rect x='16' y='4' width='5' height='5' rx='1'/><polyline points='4 20 9 15 13 18 20 11'/><polyline points='16 11 20 11 20 15'/>",
+  "teach-image": "<rect x='3' y='5' width='14' height='12' rx='1.5'/><path d='M6 14l3-3.5 2.5 2.5L14 10'/><circle cx='7' cy='8.5' r='1.3'/><path d='M19 16v5M16.5 18.5h5'/>",
+  "teach-object": "<rect x='3' y='13' width='7' height='8' rx='1'/><rect x='14' y='13' width='7' height='8' rx='1'/><circle cx='6.5' cy='4' r='1.6'/><polyline points='6.5 6 6.5 10 6.5 10'/><polyline points='4 8 6.5 10.5 9 8'/>",
+  "teach-pose": "<circle cx='12' cy='5' r='2.5'/><path d='M12 8v7'/><path d='M12 10l-4-2'/><path d='M12 10l4 1'/><path d='M12 15l-3 5'/><path d='M12 15l3 4'/>",
+  "teach-hand": "<path d='M7 12V6.5a1.3 1.3 0 0 1 2.6 0V11'/><path d='M9.6 11V5.3a1.3 1.3 0 0 1 2.6 0V11'/><path d='M12.2 11V6a1.3 1.3 0 0 1 2.6 0V11'/><path d='M14.8 11V8a1.3 1.3 0 0 1 2.6 0v5a5.4 5.4 0 0 1-5.4 5.4h-2A5.4 5.4 0 0 1 4.6 15l-1.3-2.4a1.3 1.3 0 0 1 2.2-1.3L7 12.6'/>",
+  "teach-audio": "<rect x='9' y='3' width='6' height='11' rx='3'/><path d='M6 11a6 6 0 0 0 12 0'/><line x1='12' y1='17' x2='12' y2='21'/><line x1='9' y1='21' x2='15' y2='21'/>",
+  "image-classify": "<rect x='3' y='4' width='12' height='12' rx='1.5'/><path d='M3 12l3-3 3 3 2-2 4 4'/><circle cx='7' cy='8' r='1' fill='currentColor' stroke='none'/><path d='M13 15l4 4a2 2 0 0 0 2.8 0l1-1a2 2 0 0 0 0-2.8l-4-4'/><circle cx='18.5' cy='15.5' r='1' fill='currentColor' stroke='none'/>",
+  "scene-describe": "<rect x='3' y='5' width='10' height='9' rx='1'/><circle cx='6' cy='8' r='1'/><path d='m4 13 3-3 2.5 2.5'/><line x1='16' y1='7' x2='21' y2='7'/><line x1='16' y1='11' x2='20' y2='11'/>",
+  "object-detect": "<polyline points='4 6 4 4 6 4'/><polyline points='18 4 20 4 20 6'/><polyline points='20 18 20 20 18 20'/><polyline points='6 20 4 20 4 18'/><rect x='9' y='9' width='6' height='6' rx='1'/>",
+  "face-detect": "<circle cx='12' cy='12' r='4'/><circle cx='10.5' cy='11' r='0.6' fill='currentColor' stroke='none'/><circle cx='13.5' cy='11' r='0.6' fill='currentColor' stroke='none'/><path d='M10.5 13.2c.5.6 2.5.6 3 0'/><path d='M4 8V5h3'/><path d='M20 8V5h-3'/><path d='M4 16v3h3'/><path d='M20 16v3h-3'/>",
+  "face-mesh": "<ellipse cx='12' cy='12' rx='7' ry='9'/><path d='M8 8l4 3 4-3M8 8l-1 5 5 3 5-3-1-5M12 11l0 5'/><circle cx='9' cy='10' r='0.6' fill='currentColor' stroke='none'/><circle cx='15' cy='10' r='0.6' fill='currentColor' stroke='none'/>",
+  "pose": "<circle cx='12' cy='4.5' r='2'/><line x1='12' y1='6.5' x2='12' y2='14'/><line x1='6' y1='8.5' x2='18' y2='8.5'/><line x1='6' y1='8.5' x2='4' y2='13'/><line x1='18' y1='8.5' x2='20' y2='13'/><line x1='12' y1='14' x2='8' y2='21'/><line x1='12' y1='14' x2='16' y2='21'/><circle cx='6' cy='8.5' r='0.9' fill='currentColor' stroke='none'/><circle cx='18' cy='8.5' r='0.9' fill='currentColor' stroke='none'/><circle cx='12' cy='14' r='0.9' fill='currentColor' stroke='none'/>",
+  "hand": "<path d='M7 14v-3a1 1 0 0 1 2 0v1'/><path d='M9 12V8a1 1 0 0 1 2 0v3'/><path d='M11 11V7a1 1 0 0 1 2 0v4'/><path d='M13 11V9a1 1 0 0 1 2 0v4c0 4-2 8-5 8s-6-3-6-6l1-3a1 1 0 0 1 2 1'/><circle cx='8' cy='8' r='0.7' fill='currentColor' stroke='none'/><circle cx='12' cy='7' r='0.7' fill='currentColor' stroke='none'/><circle cx='14' cy='9' r='0.7' fill='currentColor' stroke='none'/>",
+  "gesture": "<path d='M7 21v-8H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h2l3-6a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2l-1 6a2 2 0 0 1-2 2H7Z'/>",
+  "opencv-filters": "<rect x='4' y='4' width='7' height='7'/><rect x='13' y='4' width='7' height='7'/><rect x='4' y='13' width='7' height='7'/><line x1='13' y1='17' x2='20' y2='17'/><circle cx='16' cy='17' r='1.6' fill='currentColor' stroke='none'/>",
+  "junior-face": "<circle cx='12' cy='12' r='9'/><circle cx='9' cy='10' r='1' fill='currentColor' stroke='none'/><circle cx='15' cy='10' r='1' fill='currentColor' stroke='none'/><path d='M8 14a5 4 0 0 0 8 0'/>",
+  "qr-scan": "<rect x='4' y='4' width='16' height='16' rx='2'/><rect x='7' y='7' width='3' height='3' fill='currentColor' stroke='none'/><rect x='14' y='7' width='3' height='3' fill='currentColor' stroke='none'/><rect x='7' y='14' width='3' height='3' fill='currentColor' stroke='none'/><line x1='14' y1='14' x2='14' y2='14'/><rect x='14.5' y='14.5' width='2' height='2' fill='currentColor' stroke='none'/>",
+  "recognition-cards": "<rect x='5' y='4' width='14' height='16' rx='2'/><line x1='12' y1='16' x2='12' y2='8'/><polyline points='8.5 11.5 12 8 15.5 11.5'/>",
+  "apriltag": "<rect x='3' y='3' width='18' height='18' rx='1'/><rect x='6' y='6' width='12' height='12'/><rect x='9' y='9' width='3' height='3' fill='currentColor' stroke='none'/><rect x='13' y='13' width='2' height='2' fill='currentColor' stroke='none'/>",
+  "ocr": "<rect x='5' y='3' width='14' height='18' rx='1.5'/><line x1='8' y1='7' x2='16' y2='7'/><line x1='8' y1='11' x2='16' y2='11'/><line x1='8' y1='15' x2='13' y2='15'/><line x1='3' y1='11' x2='21' y2='11'/>",
+  "speech-to-text": "<rect x='6' y='3' width='5' height='10' rx='2.5'/><path d='M4 11a4.5 4.5 0 0 0 9 0'/><line x1='8.5' y1='15.5' x2='8.5' y2='18'/><line x1='15' y1='7' x2='21' y2='7'/><line x1='15' y1='11' x2='19' y2='11'/>",
+  "text-to-speech": "<path d='M4 9h4l4-3v12l-4-3H4z'/><path d='M16 9a4 4 0 0 1 0 6'/><path d='M18.5 7a7 7 0 0 1 0 10'/>",
+  "translate": "<path d='M3 15l3-8 3 8'/><line x1='3.8' y1='12.5' x2='8.2' y2='12.5'/><path d='M15 20h6l-3-8-3 8'/><circle cx='18' cy='6' r='2'/><line x1='18' y1='3' x2='18' y2='8'/>",
+  "text-classifier": "<line x1='4' y1='6' x2='14' y2='6'/><line x1='4' y1='10' x2='11' y2='10'/><path d='M12 8h5m0 0-2-2m2 2-2 2'/><rect x='4' y='16' width='6' height='4'/><rect x='14' y='16' width='6' height='4'/>",
+  "genai-chat": "<path d='M4 20l3-1 11-11-2-2L5 17l-1 3Z'/><line x1='4' y1='20' x2='14' y2='20'/><path d='M19 4l.7 1.3L21 6l-1.3.7L19 8l-.7-1.3L17 6l1.3-.7Z'/>",
 };
 
 /* ─────────────────────────── layout (deterministic) ─────────────────────────── */
@@ -296,18 +321,26 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
     <div
       ref={ref}
       className="relative min-h-0 flex-1 overflow-hidden"
-      style={{ backgroundImage: "radial-gradient(ellipse 100% 85% at 50% 45%, #131d40 0%, #0a1126 52%, #060912 100%)" }}
+      style={{
+        backgroundColor: "#05070e",
+        backgroundImage: [
+          "radial-gradient(55% 45% at 50% 4%, rgba(52,211,153,0.07), transparent 70%)",
+          "radial-gradient(60% 55% at 92% 100%, rgba(99,102,241,0.09), transparent 70%)",
+          "radial-gradient(55% 55% at 8% 100%, rgba(34,211,238,0.06), transparent 70%)",
+          "radial-gradient(ellipse 135% 100% at 50% 40%, #0c1630 0%, #080e1f 46%, #05070e 100%)",
+        ].join(","),
+      }}
     >
-      <p className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 text-center font-mono text-[11px] text-[#7c8baf]">
+      <p className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 text-center font-mono text-[11px] text-[#aab8d8]">
         ⚡ Follow the forward pass from <span style={{ color: "#34d399" }}>Novice</span> to <span style={{ color: "#facc15" }}>AI Mastery</span> — tap any node to open it
       </p>
 
       {/* category / layer headers */}
       {STAGES.map((s) => (
         <div key={s.cat} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${s.cx}%`, top: "7%" }}>
-          <div className="font-mono text-[11px] font-bold tracking-[0.18em]" style={{ color: CAT_COLOR[s.cat] }}>{s.cat.toUpperCase()}</div>
-          <div className="font-mono text-[8.5px] tracking-[0.14em] text-[#566a90]">{CAT_SUB[s.cat]}</div>
-          <div className="font-mono text-[7.5px] tracking-[0.18em] text-[#3d4b6b]">{s.tag}</div>
+          <div className="font-mono text-[11px] font-bold tracking-[0.18em]" style={{ color: CAT_COLOR[s.cat], textShadow: `0 0 12px ${CAT_COLOR[s.cat]}66` }}>{s.cat.toUpperCase()}</div>
+          <div className="font-mono text-[8.5px] tracking-[0.14em] text-[#8b9cc0]">{CAT_SUB[s.cat]}</div>
+          <div className="font-mono text-[7.5px] tracking-[0.18em] text-[#57668c]">{s.tag}</div>
         </div>
       ))}
 
@@ -419,18 +452,18 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
               className="nj-node grid place-items-center rounded-full"
               style={{
                 width: sz, height: sz,
-                background: "radial-gradient(circle at 50% 32%, #16263f, #070d18 82%)",
-                border: `2px solid ${color}`,
-                boxShadow: `0 0 ${isHot ? 22 : lit ? 13 : 6}px ${isHot ? color : color + "cc"}, inset 0 0 8px ${color}44`,
-                color: "#eef4ff",
+                background: `radial-gradient(circle at 50% 28%, ${color}3a 0%, ${color}12 45%, #0a1120 82%)`,
+                border: `1.5px solid ${color}`,
+                boxShadow: `0 0 ${isHot ? 24 : lit ? 14 : 7}px ${isHot ? color : color + "aa"}, inset 0 1px 3px ${color}66, inset 0 0 10px ${color}22`,
+                color: isHot || lit ? "#ffffff" : color,
                 animationDelay: `${(STAGE_IDX[id] ?? 0) * 0.3 + (i % 3) * 0.12}s`,
               }}
             >
-              {a.core ? (
+              {ICON[id] ? (
                 <svg
-                  viewBox="0 0 24 24" width={sz > 34 ? 21 : 16} height={sz > 34 ? 21 : 16}
+                  viewBox="0 0 24 24" width={sz > 34 ? 21 : 15} height={sz > 34 ? 21 : 15}
                   fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                  style={{ filter: `drop-shadow(0 0 3px ${color})` }}
+                  style={{ filter: `drop-shadow(0 0 2.5px ${color})` }}
                   dangerouslySetInnerHTML={{ __html: ICON[id] }}
                 />
               ) : (
@@ -441,7 +474,7 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
             </span>
             <span
               className="mt-1 max-w-[94px] rounded text-center font-mono text-[9px] leading-tight transition-opacity duration-200"
-              style={{ color: isHot || lit ? color : "#8593b2", opacity: showLabel ? 1 : 0, padding: "1px 5px", background: "#070d18b0", textShadow: "0 1px 3px #000" }}
+              style={{ color: isHot || lit ? color : "#aab8d8", opacity: showLabel ? 1 : 0, padding: "1px 5px", background: "#0a1220cc", textShadow: "0 1px 3px #000" }}
             >
               {a.name}
             </span>
@@ -460,7 +493,7 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
       })}
 
       {/* legend */}
-      <div className="pointer-events-none absolute bottom-2.5 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-3 font-mono text-[9px] text-[#5b6b8c]">
+      <div className="pointer-events-none absolute bottom-2.5 left-1/2 z-20 flex max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-3 font-mono text-[9px] text-[#8b9cc0]">
         {(Object.keys(CAT_COLOR) as Cat[]).map((c) => (
           <span key={c} className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-full" style={{ background: CAT_COLOR[c], boxShadow: `0 0 5px ${CAT_COLOR[c]}` }} />
