@@ -214,7 +214,6 @@ function place(ids: string[], cx: number): { id: string; x: number; y: number }[
 const POS: Record<string, { x: number; y: number }> = {};
 STAGES.forEach((s) => place(STAGE_IDS[s.cat], s.cx).forEach((p) => (POS[p.id] = { x: p.x, y: p.y })));
 
-// Forward synapses: each node wires to its 2 nearest nodes in the next stage.
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 interface Edge { a: string; b: string; ax: number; ay: number; bx: number; by: number; color: string; tcolor: string }
 const RAW: Edge[] = [];
@@ -224,21 +223,33 @@ const edge = (a: string, ap: { x: number; y: number }, b: string, bp: { x: numbe
   const tcolor = bc ? CAT_COLOR[bc] : "#facc15"; // target tint (mastery → gold)
   RAW.push({ a, b, ax: ap.x, ay: ap.y, bx: bp.x, by: bp.y, color, tcolor });
 };
-STAGE_IDS[STAGES[0].cat].forEach((id) => edge("novice", NOVICE, id, POS[id]));
-for (let s = 0; s < STAGES.length - 1; s++) {
-  const A = STAGE_IDS[STAGES[s].cat], B = STAGE_IDS[STAGES[s + 1].cat];
-  A.forEach((aid) => {
-    const near = [...B].sort((x, y) => dist(POS[aid], POS[x]) - dist(POS[aid], POS[y])).slice(0, 2);
-    near.forEach((bid) => edge(aid, POS[aid], bid, POS[bid]));
-  });
-}
-STAGE_IDS[STAGES[STAGES.length - 1].cat].forEach((id) => edge(id, POS[id], "mastery", MASTERY));
 
-// Fan-in cap — each target keeps only its 4 shortest incoming edges, so each
-// layer seam reads as a clean hourglass instead of a hairball.
+// Wire the net COLUMN-by-COLUMN (each vertical column → the next), so that
+// multi-column stages (Vision's 3 columns, Training's 2) are threaded together
+// internally instead of leaving inner columns orphaned. Each source fans out to
+// its 2 nearest in the next column, and every target is guaranteed its nearest
+// incoming — so no node is ever left unconnected.
+const posOf = (id: string) => (id === "novice" ? NOVICE : id === "mastery" ? MASTERY : POS[id]);
+const colGroups = new Map<number, string[]>();
+STAGES.flatMap((s) => STAGE_IDS[s.cat]).forEach((id) => {
+  const xk = Math.round(POS[id].x * 2) / 2;
+  (colGroups.get(xk) || colGroups.set(xk, []).get(xk)!).push(id);
+});
+const CHAIN: string[][] = [["novice"], ...[...colGroups.entries()].sort((a, b) => a[0] - b[0]).map(([, ids]) => ids), ["mastery"]];
+const nearestIn = (id: string, pool: string[], k: number) =>
+  [...pool].sort((x, y) => dist(posOf(id), posOf(x)) - dist(posOf(id), posOf(y))).slice(0, k);
+for (let c = 0; c < CHAIN.length - 1; c++) {
+  const A = CHAIN[c], B = CHAIN[c + 1];
+  A.forEach((aid) => nearestIn(aid, B, 2).forEach((bid) => edge(aid, posOf(aid), bid, posOf(bid))));
+  B.forEach((bid) => { const a = nearestIn(bid, A, 1)[0]; edge(a, posOf(a), bid, posOf(bid)); });
+}
+
+// Dedupe, then fan-in cap — each target keeps only its 4 shortest incoming edges
+// so each column seam reads as a clean hourglass instead of a hairball.
 const elen = (e: Edge) => Math.hypot(e.ax - e.bx, e.ay - e.by);
+const seenE = new Set<string>();
 const byT: Record<string, Edge[]> = {};
-RAW.forEach((e) => (byT[e.b] ||= []).push(e));
+RAW.forEach((e) => { const k = e.a + "|" + e.b; if (seenE.has(k)) return; seenE.add(k); (byT[e.b] ||= []).push(e); });
 const EDGES: Edge[] = [];
 Object.values(byT).forEach((list) => { list.sort((x, y) => elen(x) - elen(y)); EDGES.push(...list.slice(0, 4)); });
 
