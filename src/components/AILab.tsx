@@ -267,9 +267,16 @@ STAGES.forEach((s, i) => STAGE_IDS[s.cat].forEach((id) => (STAGE_IDX[id] = i)));
 // deterministic string hash → 0..99 (pseudo synapse "weight", no Math.random)
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 100; };
 
-// Journey path — Novice → the mid node of each stage → AI Mastery.
-const midOf = (ids: string[]) => ids.map((id) => POS[id]).sort((a, b) => Math.abs(a.y - 50) - Math.abs(b.y - 50))[0];
-const WAY = [NOVICE, ...STAGES.map((s) => midOf(STAGE_IDS[s.cat])), MASTERY];
+// Serpentine journey — thread ONE node per column, alternating high/low targets,
+// so the gold path visibly weaves up and down across the whole net (not a flat
+// line) and passes through many more nodes. x is monotonic → smooth S-curves.
+const JCOL_TARGET = [50, 26, 76, 20, 80, 26, 72, 38, 54];
+const COLS_X = [...colGroups.entries()].sort((a, b) => a[0] - b[0]).map(([, ids]) => ids);
+const wayIds = COLS_X.map((ids, i) => {
+  const t = JCOL_TARGET[i] ?? 50;
+  return [...ids].sort((x, y) => Math.abs(POS[x].y - t) - Math.abs(POS[y].y - t))[0];
+});
+const WAY = [NOVICE, ...wayIds.map((id) => POS[id]), MASTERY];
 function smooth(pts: { x: number; y: number }[]) {
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -280,7 +287,6 @@ function smooth(pts: { x: number; y: number }[]) {
   }
   return d;
 }
-const JOURNEY = smooth(WAY);
 
 const NAME: Record<string, string> = {};
 Object.values(ACT).forEach((a) => (NAME[a.id] = a.name));
