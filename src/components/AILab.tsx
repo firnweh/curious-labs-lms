@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Neural Lab — the AI platform shell. All 35 hands-on experiments live in one
@@ -153,30 +153,35 @@ const ICON: Record<string, string> = {
 
 /* ─────────────────────────── layout (deterministic) ─────────────────────────── */
 
-const STAGES: { cat: Cat; cx: number }[] = [
-  { cat: "Foundations", cx: 13 },
-  { cat: "Training", cx: 27 },
-  { cat: "Vision", cx: 48 },
-  { cat: "Language", cx: 68 },
-  { cat: "Creating", cx: 80 },
-  { cat: "Fairness", cx: 90 },
+// "input layer" style tags reinforce the deep-net reading.
+const STAGES: { cat: Cat; cx: number; tag: string }[] = [
+  { cat: "Foundations", cx: 13, tag: "input layer" },
+  { cat: "Training", cx: 28, tag: "hidden 1" },
+  { cat: "Vision", cx: 48, tag: "hidden 2" },
+  { cat: "Language", cx: 68, tag: "hidden 3" },
+  { cat: "Creating", cx: 80, tag: "hidden 4" },
+  { cat: "Fairness", cx: 91, tag: "output layer" },
 ];
 const NOVICE = { x: 4, y: 50 };
 const MASTERY = { x: 97, y: 50 };
+const BAND_W = 15; // category "layer" band width, in 0..100 units
 
 const YTOP = 17, YBOT = 83, SP = 15;
 function place(ids: string[], cx: number): { id: string; x: number; y: number }[] {
   const n = ids.length;
   const cols = n <= 6 ? 1 : n <= 12 ? 2 : 3;
   const perCol = Math.ceil(n / cols);
-  const colGap = 7;
+  const colGap = cols === 3 ? 5.5 : 7;
   const x0 = cx - ((cols - 1) * colGap) / 2;
   return ids.map((id, i) => {
     const col = Math.floor(i / perCol);
     const inCol = i % perCol;
     const colN = Math.min(perCol, n - col * perCol);
-    const step = Math.min(SP, (YBOT - YTOP) / Math.max(colN - 1, 1));
-    const y = colN === 1 ? 50 : 50 + (inCol - (colN - 1) / 2) * step;
+    // sparse stages spread wider so they feel intentional, not lonely
+    const step = Math.min(colN <= 3 ? 22 : SP, (YBOT - YTOP) / Math.max(colN - 1, 1));
+    let y = colN === 1 ? 50 : 50 + (inCol - (colN - 1) / 2) * step;
+    if (cols === 3 && col === 1) y += step / 2; // hex-stagger the middle Vision column
+    y = Math.max(YTOP - 3, Math.min(YBOT + 3, y));
     return { id, x: x0 + col * colGap, y };
   });
 }
@@ -186,22 +191,31 @@ STAGES.forEach((s) => place(STAGE_IDS[s.cat], s.cx).forEach((p) => (POS[p.id] = 
 
 // Forward synapses: each node wires to its 2 nearest nodes in the next stage.
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
-interface Edge { a: string; b: string; ax: number; ay: number; bx: number; by: number; color: string }
-const EDGES: Edge[] = [];
+interface Edge { a: string; b: string; ax: number; ay: number; bx: number; by: number; color: string; tcolor: string }
+const RAW: Edge[] = [];
 const edge = (a: string, ap: { x: number; y: number }, b: string, bp: { x: number; y: number }) => {
-  const cat = ACT[a]?.cat;
-  const color = cat ? CAT_COLOR[cat] : "#34d399"; // synapses tinted by the source stage's category
-  EDGES.push({ a, b, ax: ap.x, ay: ap.y, bx: bp.x, by: bp.y, color });
+  const ac = ACT[a]?.cat, bc = ACT[b]?.cat;
+  const color = ac ? CAT_COLOR[ac] : "#34d399"; // source tint (novice → green)
+  const tcolor = bc ? CAT_COLOR[bc] : "#facc15"; // target tint (mastery → gold)
+  RAW.push({ a, b, ax: ap.x, ay: ap.y, bx: bp.x, by: bp.y, color, tcolor });
 };
 STAGE_IDS[STAGES[0].cat].forEach((id) => edge("novice", NOVICE, id, POS[id]));
 for (let s = 0; s < STAGES.length - 1; s++) {
   const A = STAGE_IDS[STAGES[s].cat], B = STAGE_IDS[STAGES[s + 1].cat];
   A.forEach((aid) => {
-    const near = [...B].sort((x, y) => dist(POS[aid], POS[x]) - dist(POS[aid], POS[y])).slice(0, 3);
+    const near = [...B].sort((x, y) => dist(POS[aid], POS[x]) - dist(POS[aid], POS[y])).slice(0, 2);
     near.forEach((bid) => edge(aid, POS[aid], bid, POS[bid]));
   });
 }
 STAGE_IDS[STAGES[STAGES.length - 1].cat].forEach((id) => edge(id, POS[id], "mastery", MASTERY));
+
+// Fan-in cap — each target keeps only its 4 shortest incoming edges, so each
+// layer seam reads as a clean hourglass instead of a hairball.
+const elen = (e: Edge) => Math.hypot(e.ax - e.bx, e.ay - e.by);
+const byT: Record<string, Edge[]> = {};
+RAW.forEach((e) => (byT[e.b] ||= []).push(e));
+const EDGES: Edge[] = [];
+Object.values(byT).forEach((list) => { list.sort((x, y) => elen(x) - elen(y)); EDGES.push(...list.slice(0, 4)); });
 
 // neighbours (for hover lighting)
 const NEIGH: Record<string, Set<string>> = {};
@@ -209,6 +223,13 @@ EDGES.forEach((e) => {
   (NEIGH[e.a] ||= new Set()).add(e.b);
   (NEIGH[e.b] ||= new Set()).add(e.a);
 });
+
+// layer index per activity (times the left→right forward-pass wave)
+const STAGE_IDX: Record<string, number> = {};
+STAGES.forEach((s, i) => STAGE_IDS[s.cat].forEach((id) => (STAGE_IDX[id] = i)));
+
+// deterministic string hash → 0..99 (pseudo synapse "weight", no Math.random)
+const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 100; };
 
 // Journey path — Novice → the mid node of each stage → AI Mastery.
 const midOf = (ids: string[]) => ids.map((id) => POS[id]).sort((a, b) => Math.abs(a.y - 50) - Math.abs(b.y - 50))[0];
@@ -235,62 +256,137 @@ const BG = Array.from({ length: 60 }, (_, i) => ({ x: (i * 41) % 100, y: (i * 67
 /* ─────────────────────────── the journey view ─────────────────────────── */
 
 function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const [{ w, h }, setSize] = useState({ w: 0, h: 0 });
+  const [reduce, setReduce] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setSize({ w: el.clientWidth, h: el.clientHeight });
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const upd = () => setReduce(mq.matches); upd();
+    mq.addEventListener("change", upd);
+    return () => { ro.disconnect(); mq.removeEventListener("change", upd); };
+  }, []);
+
   const hoverCat = hover && ACT[hover] ? ACT[hover].cat : null;
   const hotColor = hoverCat ? CAT_COLOR[hoverCat] : "#eab308";
-
   const nodeList = STAGES.flatMap((s) => STAGE_IDS[s.cat]);
+
+  const PX = (n: number) => (n / 100) * w;
+  const PY = (n: number) => (n / 100) * h;
+
+  // projected, horizontal-tangent bezier synapses (pixel space → no distortion)
+  const pxEdges = w
+    ? EDGES.map((e, i) => {
+        const x1 = PX(e.ax), y1 = PY(e.ay), x2 = PX(e.bx), y2 = PY(e.by);
+        const dx = x2 - x1, k = 0.45;
+        const jit = ((i * 53) % 7 - 3) * (h / 100) * 0.9;
+        const d = `M ${x1} ${y1} C ${x1 + dx * k} ${y1 + jit} ${x2 - dx * k} ${y2 - jit} ${x2} ${y2}`;
+        const wgt = 0.35 + 0.65 * (hash(e.a + e.b) / 100);
+        return { e, i, x1, y1, x2, y2, d, wgt };
+      })
+    : [];
+  const journeyD = w ? smooth(WAY.map((p) => ({ x: PX(p.x), y: PY(p.y) }))) : "";
 
   return (
     <div
+      ref={ref}
       className="relative min-h-0 flex-1 overflow-hidden"
       style={{ backgroundImage: "radial-gradient(ellipse 100% 85% at 50% 45%, #131d40 0%, #0a1126 52%, #060912 100%)" }}
     >
       <p className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 text-center font-mono text-[11px] text-[#7c8baf]">
-        ⚡ Follow the path from <span style={{ color: "#34d399" }}>Novice</span> to <span style={{ color: "#facc15" }}>AI Mastery</span> — tap any node to open it
+        ⚡ Follow the forward pass from <span style={{ color: "#34d399" }}>Novice</span> to <span style={{ color: "#facc15" }}>AI Mastery</span> — tap any node to open it
       </p>
 
-      {/* category headers */}
+      {/* category / layer headers */}
       {STAGES.map((s) => (
-        <div key={s.cat} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${s.cx}%`, top: "8.5%" }}>
+        <div key={s.cat} className="pointer-events-none absolute z-20 -translate-x-1/2 text-center" style={{ left: `${s.cx}%`, top: "7%" }}>
           <div className="font-mono text-[11px] font-bold tracking-[0.18em]" style={{ color: CAT_COLOR[s.cat] }}>{s.cat.toUpperCase()}</div>
           <div className="font-mono text-[8.5px] tracking-[0.14em] text-[#566a90]">{CAT_SUB[s.cat]}</div>
+          <div className="font-mono text-[7.5px] tracking-[0.18em] text-[#3d4b6b]">{s.tag}</div>
         </div>
       ))}
 
-      {/* svg: starfield · synapses · journey path */}
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {BG.map((s, i) => (
-          <circle key={`bg${i}`} cx={s.x} cy={s.y} r={s.r} fill="#cdd6f4" className="nj-tw" style={{ animationDelay: `${s.d}s` }} />
-        ))}
-        {EDGES.map((e, i) => {
-          const lit = hover != null && (e.a === hover || e.b === hover);
-          return (
-            <g key={i}>
-              {/* solid synapse — tinted by source category so the net reads as colour-coded layers */}
-              <line
-                x1={e.ax} y1={e.ay} x2={e.bx} y2={e.by}
-                stroke={lit ? hotColor : e.color} strokeWidth={lit ? 1.5 : 0.7}
-                vectorEffect="non-scaling-stroke"
-                opacity={lit ? 0.95 : hover ? 0.07 : 0.42}
-              />
-              {/* firing pulse travelling along the synapse */}
-              <line
-                x1={e.ax} y1={e.ay} x2={e.bx} y2={e.by}
-                stroke={lit ? "#ffffff" : "#aebbe0"} strokeWidth={lit ? 1.3 : 0.9}
-                strokeLinecap="round" strokeDasharray="0.7 6"
-                vectorEffect="non-scaling-stroke" className="nj-flow"
-                opacity={lit ? 1 : hover ? 0.04 : 0.5}
-                style={{ animationDelay: `${(i % 8) * 0.18}s` }}
-              />
+      {w > 0 && (
+        <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <filter id="nj-soft" x="-250%" y="-250%" width="600%" height="600%"><feGaussianBlur stdDeviation="1.1" /></filter>
+            <filter id="nj-comet" x="-400%" y="-400%" width="900%" height="900%"><feGaussianBlur stdDeviation="1.7" /></filter>
+            {pxEdges.map(({ e, i, x1, y1, x2, y2 }) => (
+              <linearGradient key={i} id={`nj-g${i}`} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
+                <stop offset="0" stopColor={e.color} />
+                <stop offset="0.5" stopColor={`color-mix(in oklab, ${e.color} 55%, #ffffff)`} />
+                <stop offset="1" stopColor={e.tcolor} />
+              </linearGradient>
+            ))}
+          </defs>
+
+          {/* category "layer" bands */}
+          {STAGES.map((s) => {
+            const bw = PX(BAND_W), hot = hoverCat === s.cat;
+            return <rect key={s.cat} x={PX(s.cx) - bw / 2} y={0} width={bw} height={h} rx={bw * 0.16} fill={CAT_COLOR[s.cat]} opacity={hot ? 0.09 : 0.038} style={{ transition: "opacity .2s" }} />;
+          })}
+
+          {/* starfield */}
+          {BG.map((s, i) => (
+            <circle key={`bg${i}`} cx={PX(s.x)} cy={PY(s.y)} r={Math.max(0.5, s.r * (w / 130))} fill="#cdd6f4" className="nj-tw" style={{ animationDelay: `${s.d}s` }} />
+          ))}
+
+          {/* synapses — gradient strand + firing pulse */}
+          {pxEdges.map(({ e, i, d, wgt }) => {
+            const lit = hover != null && (e.a === hover || e.b === hover);
+            const dim = hover != null && !lit;
+            return (
+              <g key={i}>
+                <path id={`nj-syn${i}`} d={d} fill="none"
+                  stroke={lit ? hotColor : `url(#nj-g${i})`}
+                  strokeWidth={lit ? 2 : 0.4 + 1.1 * wgt} strokeLinecap="round"
+                  opacity={lit ? 0.95 : dim ? 0.05 : 0.16 + 0.28 * wgt}
+                  vectorEffect="non-scaling-stroke" />
+                <path d={d} fill="none" stroke={lit ? "#ffffff" : "#b9c6ea"}
+                  strokeWidth={lit ? 1.3 : 0.8} strokeLinecap="round" strokeDasharray="1 9"
+                  vectorEffect="non-scaling-stroke" className="nj-flow"
+                  opacity={lit ? 0.9 : dim ? 0.03 : 0.3} style={{ animationDelay: `${(STAGE_IDX[e.a] ?? 0) * 0.3}s` }} />
+              </g>
+            );
+          })}
+
+          {/* journey ribbon — glow + core + flow */}
+          <path d={journeyD} fill="none" stroke="#facc15" strokeWidth={9} strokeLinecap="round" opacity={hover ? 0.08 : 0.15} style={{ filter: "blur(2px)" }} />
+          <path id="nj-journey" d={journeyD} fill="none" stroke="#f5c542" strokeWidth={2.2} strokeLinecap="round" opacity={hover ? 0.25 : 0.7} />
+          <path d={journeyD} fill="none" stroke="#fff7d6" strokeWidth={2.2} strokeLinecap="round" strokeDasharray="1 10" className="nj-flow" opacity={hover ? 0.25 : 0.85} />
+
+          {/* signal particles — a dot leaves each source as its layer fires */}
+          {!reduce && (
+            <g opacity={hover ? 0.06 : 0.85}>
+              {pxEdges.map(({ i, e }) => (
+                <circle key={i} r={1.6} fill="#dbe6ff" filter="url(#nj-soft)">
+                  <animateMotion dur={`${1.5 + (i % 5) * 0.14}s`} repeatCount="indefinite" begin={`${(STAGE_IDX[e.a] ?? 0) * 0.5}s`}>
+                    <mpath href={`#nj-syn${i}`} />
+                  </animateMotion>
+                </circle>
+              ))}
             </g>
-          );
-        })}
-        {/* journey path — glow + core + animated flow */}
-        <path d={JOURNEY} fill="none" stroke="#facc15" strokeWidth={7} strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={hover ? 0.1 : 0.16} style={{ filter: "blur(1px)" }} />
-        <path d={JOURNEY} fill="none" stroke="#f5c542" strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={hover ? 0.3 : 0.75} />
-        <path d={JOURNEY} fill="none" stroke="#fff7d6" strokeWidth={1.6} strokeLinecap="round" strokeDasharray="0.6 7" vectorEffect="non-scaling-stroke" className="nj-flow" opacity={hover ? 0.3 : 0.9} />
-      </svg>
+          )}
+
+          {/* gold comet running the hero route */}
+          {!reduce && journeyD && (
+            <g opacity={hover ? 0.15 : 1}>
+              {([[2.4, "#fff7d6", "0s"], [1.7, "#fde68a", "-0.12s"], [1.2, "#f5c542", "-0.24s"], [0.8, "#f59e0b", "-0.36s"]] as [number, string, string][]).map(([r, c, off], k) => (
+                <circle key={k} r={r} fill={c} filter="url(#nj-comet)" opacity={k === 0 ? 1 : 0.5 - k * 0.12}>
+                  <animateMotion dur="6.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1" begin={off}>
+                    <mpath href="#nj-journey" />
+                  </animateMotion>
+                </circle>
+              ))}
+            </g>
+          )}
+        </svg>
+      )}
 
       {/* Novice + Mastery milestones */}
       <Milestone x={NOVICE.x} y={NOVICE.y} color="#34d399" title="NOVICE" sub="start here" glyph="🌱" side="right" dim={hover != null} />
@@ -305,7 +401,8 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
         const lit = hover != null && (isHot || NEIGH[hover]?.has(id));
         const dim = hover != null && !lit;
         const above = p.y > 56;
-        const sz = a.core ? 38 : 28;
+        const showLabel = a.core || isHot || lit;
+        const sz = a.core ? 38 : 27;
         return (
           <button
             key={id}
@@ -316,7 +413,7 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
             onBlur={() => setHover(null)}
             title={`${a.name} — ${a.cat}`}
             className="absolute flex flex-col items-center transition-all duration-200"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.28 : 1})`, zIndex: isHot ? 45 : 12, opacity: dim ? 0.4 : 1 }}
+            style={{ left: `${p.x}%`, top: `${p.y}%`, transform: `translate(-50%,-50%) scale(${isHot ? 1.3 : 1})`, zIndex: isHot ? 45 : 12, opacity: dim ? 0.42 : 1 }}
           >
             <span
               className="nj-node grid place-items-center rounded-full"
@@ -324,9 +421,9 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
                 width: sz, height: sz,
                 background: "radial-gradient(circle at 50% 32%, #16263f, #070d18 82%)",
                 border: `2px solid ${color}`,
-                boxShadow: `0 0 ${isHot ? 22 : lit ? 14 : 8}px ${isHot ? color : color + "cc"}, inset 0 0 8px ${color}44`,
+                boxShadow: `0 0 ${isHot ? 22 : lit ? 13 : 6}px ${isHot ? color : color + "cc"}, inset 0 0 8px ${color}44`,
                 color: "#eef4ff",
-                animationDelay: `${(i % 6) * 0.45}s`,
+                animationDelay: `${(STAGE_IDX[id] ?? 0) * 0.3 + (i % 3) * 0.12}s`,
               }}
             >
               {a.core ? (
@@ -337,21 +434,21 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
                   dangerouslySetInnerHTML={{ __html: ICON[id] }}
                 />
               ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ color, filter: `drop-shadow(0 0 3px ${color})` }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" style={{ color, filter: `drop-shadow(0 0 3px ${color})` }}>
                   <path d="M12 1.4c.5 5.7 4.4 9.6 10.1 10.1-5.7.5-9.6 4.4-10.1 10.1-.5-5.7-4.4-9.6-10.1-10.1 5.7-.5 9.6-4.4 10.1-10.1z" fill="currentColor" />
                 </svg>
               )}
             </span>
             <span
-              className="mt-1 max-w-[92px] text-center font-mono text-[9px] leading-tight transition-colors"
-              style={{ color: isHot || lit ? color : "#7f8dad" }}
+              className="mt-1 max-w-[94px] rounded text-center font-mono text-[9px] leading-tight transition-opacity duration-200"
+              style={{ color: isHot || lit ? color : "#8593b2", opacity: showLabel ? 1 : 0, padding: "1px 5px", background: "#070d18b0", textShadow: "0 1px 3px #000" }}
             >
               {a.name}
             </span>
             {isHot && (
               <span
                 className="pointer-events-none absolute left-1/2 z-50 w-[168px] -translate-x-1/2 rounded-lg border px-2.5 py-1.5 text-center font-mono"
-                style={{ borderColor: `${color}66`, background: "#0b1018f2", color: "#cdd8f0", [above ? "bottom" : "top"]: "100%", [above ? "marginBottom" : "marginTop"]: 8 } as React.CSSProperties}
+                style={{ borderColor: `${color}66`, background: "#0b1018f2", color: "#cdd8f0", [above ? "bottom" : "top"]: "100%", [above ? "marginBottom" : "marginTop"]: 10 } as React.CSSProperties}
               >
                 <span className="block text-[10px] font-bold" style={{ color }}>{a.name}</span>
                 <span className="mt-0.5 block text-[9px] leading-snug text-[#9fb0d0]">{a.blurb}</span>
@@ -373,12 +470,13 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
       </div>
 
       <style>{`
-        @keyframes njTw { 0%,100%{ opacity:.16 } 50%{ opacity:.62 } }
-        .nj-tw { animation: njTw 3s ease-in-out infinite; }
-        @keyframes njFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -7.6; } }
-        .nj-flow { animation: njFlow 1.5s linear infinite; }
-        @keyframes njBreathe { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.07); } }
-        .nj-node { animation: njBreathe 3.6s ease-in-out infinite; }
+        @keyframes njTw { 0%,100%{ opacity:.14 } 50%{ opacity:.55 } }
+        .nj-tw { animation: njTw 3.2s ease-in-out infinite; }
+        @keyframes njFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -11; } }
+        .nj-flow { animation: njFlow 1.6s linear infinite; }
+        @keyframes njBreathe { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.04); } }
+        .nj-node { animation: njBreathe 4.5s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .nj-flow, .nj-node, .nj-tw { animation: none !important; } }
       `}</style>
     </div>
   );
