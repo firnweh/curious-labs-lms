@@ -184,8 +184,8 @@ const STAGES: { cat: Cat; cx: number; tag: string }[] = [
   { cat: "Training", cx: 28, tag: "hidden 1" },
   { cat: "Vision", cx: 48, tag: "hidden 2" },
   { cat: "Language", cx: 68, tag: "hidden 3" },
-  { cat: "Creating", cx: 80, tag: "hidden 4" },
-  { cat: "Fairness", cx: 91, tag: "output layer" },
+  { cat: "Creating", cx: 78, tag: "hidden 4" },
+  { cat: "Fairness", cx: 86, tag: "output layer" },
 ];
 const NOVICE = { x: 4, y: 50 };
 const MASTERY = { x: 97, y: 50 };
@@ -267,27 +267,6 @@ STAGES.forEach((s, i) => STAGE_IDS[s.cat].forEach((id) => (STAGE_IDX[id] = i)));
 // deterministic string hash → 0..99 (pseudo synapse "weight", no Math.random)
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 100; };
 
-// Serpentine journey — thread ONE node per column, alternating high/low targets,
-// so the gold path visibly weaves up and down across the whole net (not a flat
-// line) and passes through many more nodes. x is monotonic → smooth S-curves.
-const JCOL_TARGET = [50, 26, 76, 20, 80, 26, 72, 38, 54];
-const COLS_X = [...colGroups.entries()].sort((a, b) => a[0] - b[0]).map(([, ids]) => ids);
-const wayIds = COLS_X.map((ids, i) => {
-  const t = JCOL_TARGET[i] ?? 50;
-  return [...ids].sort((x, y) => Math.abs(POS[x].y - t) - Math.abs(POS[y].y - t))[0];
-});
-const WAY = [NOVICE, ...wayIds.map((id) => POS[id]), MASTERY];
-function smooth(pts: { x: number; y: number }[]) {
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
-  }
-  return d;
-}
-
 const NAME: Record<string, string> = {};
 Object.values(ACT).forEach((a) => (NAME[a.id] = a.name));
 const TOTAL = Object.keys(ACT).length;
@@ -332,7 +311,6 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
         return { e, i, x1, y1, x2, y2, d, wgt };
       })
     : [];
-  const journeyD = w ? smooth(WAY.map((p) => ({ x: PX(p.x), y: PY(p.y) }))) : "";
 
   return (
     <div
@@ -365,7 +343,6 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
         <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
           <defs>
             <filter id="nj-soft" x="-250%" y="-250%" width="600%" height="600%"><feGaussianBlur stdDeviation="1.1" /></filter>
-            <filter id="nj-comet" x="-400%" y="-400%" width="900%" height="900%"><feGaussianBlur stdDeviation="1.7" /></filter>
             {pxEdges.map(({ e, i, x1, y1, x2, y2 }) => (
               <linearGradient key={i} id={`nj-g${i}`} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
                 <stop offset="0" stopColor={e.color} />
@@ -405,11 +382,6 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
             );
           })}
 
-          {/* journey ribbon — glow + core + flow */}
-          <path d={journeyD} fill="none" stroke="#facc15" strokeWidth={9} strokeLinecap="round" opacity={hover ? 0.08 : 0.15} style={{ filter: "blur(2px)" }} />
-          <path id="nj-journey" d={journeyD} fill="none" stroke="#f5c542" strokeWidth={2.2} strokeLinecap="round" opacity={hover ? 0.25 : 0.7} />
-          <path d={journeyD} fill="none" stroke="#fff7d6" strokeWidth={2.2} strokeLinecap="round" strokeDasharray="1 10" className="nj-flow" opacity={hover ? 0.25 : 0.85} />
-
           {/* signal particles — a dot leaves each source as its layer fires */}
           {!reduce && (
             <g opacity={hover ? 0.06 : 0.85}>
@@ -423,18 +395,6 @@ function NeuralJourney({ onPick }: { onPick: (id: string) => void }) {
             </g>
           )}
 
-          {/* gold comet running the hero route */}
-          {!reduce && journeyD && (
-            <g opacity={hover ? 0.15 : 1}>
-              {([[2.4, "#fff7d6", "0s"], [1.7, "#fde68a", "-0.12s"], [1.2, "#f5c542", "-0.24s"], [0.8, "#f59e0b", "-0.36s"]] as [number, string, string][]).map(([r, c, off], k) => (
-                <circle key={k} r={r} fill={c} filter="url(#nj-comet)" opacity={k === 0 ? 1 : 0.5 - k * 0.12}>
-                  <animateMotion dur="6.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines=".45 0 .55 1" begin={off}>
-                    <mpath href="#nj-journey" />
-                  </animateMotion>
-                </circle>
-              ))}
-            </g>
-          )}
         </svg>
       )}
 
